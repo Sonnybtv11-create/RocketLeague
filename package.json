@@ -1,0 +1,16 @@
+{
+  "name": "turbo-pitch",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "TURBO PITCH - a single-file browser car-soccer game with RocketSim-accurate physics",
+  "scripts": {
+    "assemble": "node tools/assemble.mjs",
+    "test": "node tools/run-selftests.mjs",
+    "serve": "http-server -p 8080 -c-1 ."
+  },
+  "devDependencies": {
+    "esbuild": "0.25.0",
+    "three": "0.186.1"
+  }
+}
