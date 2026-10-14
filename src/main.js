@@ -98,6 +98,7 @@ const game = {
 window.__game = game; // debug / automation hook
 window.__render = { renderer, scene, camera, ctx };
 
+const MENU_CAR_SHIFT = 0; // uu; negative moves the car left on screen
 const BOT_NAMES = ['Nova', 'Blitz', 'Comet', 'Rook', 'Viper', 'Echo', 'Jolt', 'Titan', 'Pulse', 'Drift'];
 
 function bodyHitbox(bodyId) { return (CAR_BODIES.find((b) => b.id === bodyId) || CAR_BODIES[0]).hitbox; }
@@ -143,6 +144,7 @@ function newSession(cfg, mode) {
   game.acc = 0;
   game.paused = false;
   input.setEnabled(true);
+  input.resetBallCam && input.resetBallCam();
   ui.hideMenus();
   audio.unlock && audio.unlock();
 }
@@ -181,10 +183,12 @@ function onAction(name, down = true) {
   } else if (name === 'skipReplay') {
     game.match && game.match.skipReplay();
   } else if (name === 'scoreboard') {
+    scoreboardOpen = !!down;
     ui.showScoreboard && ui.showScoreboard(down);
   }
 }
 let debugOn = false;
+let scoreboardOpen = false;
 function pauseGame() { game.paused = true; input.setEnabled(false); ui.showPause(); audio.setPaused && audio.setPaused(true); }
 
 let _appliedQuality = settings.graphics.quality;
@@ -310,9 +314,14 @@ function frame(now) {
     let n = 0;
     while (game.acc >= K.TICK_TIME && n < 8) { w.step(); game.prevFrame = game.curFrame; game.curFrame = captureFrame(w, null); game.acc -= K.TICK_TIME; n++; }
     view = interpolateFrames(game.prevFrame, game.curFrame, game.acc / K.TICK_TIME);
-    const t = now / 1000 * 0.12;
+    // showroom turntable: car ~35-40% of screen width, framed in the left part of the screen
+    const t = now / 1000 * 0.18;
     const car = view.cars[0];
-    camOpts = { mode: 'fixed', fixed: { pos: { x: car.pos.x + Math.cos(t) * 520, y: car.pos.y + Math.sin(t) * 520, z: 170 }, target: { x: car.pos.x, y: car.pos.y, z: 40 } } };
+    const R = 380, cx = Math.cos(t), cy = Math.sin(t);
+    // shift the look target sideways (perpendicular to the view) so the car sits left of centre
+    const side = MENU_CAR_SHIFT;
+    const tx = car.pos.x + (-cy) * side, ty = car.pos.y + cx * side;
+    camOpts = { mode: 'fixed', fixed: { fov: 34, pos: { x: car.pos.x + cx * R, y: car.pos.y + cy * R, z: 110 }, target: { x: tx, y: ty, z: 35 } } };
   } else if (!game.paused) {
     if (game.match && game.match.frameUpdate) game.match.frameUpdate(dt);
     const inReplay = game.match && game.match.state === 'replay';
@@ -333,6 +342,7 @@ function frame(now) {
     }
   }
   view.match = game.match ? game.match.getView() : null;
+  view.hideNameplates = game.mode === 'menu' || game.paused || scoreboardOpen || !!(ui.isMenuOpen && ui.isMenuOpen()) || !!(view.match && view.match.state === 'ended');
   if (params.has('cam')) {
     const c = params.get('cam').split(',').map(Number);
     camOpts = { mode: 'fixed', fixed: { pos: { x: c[0], y: c[1], z: c[2] }, target: { x: c[3], y: c[4], z: c[5] } } };
@@ -396,4 +406,10 @@ if (params.get('advance') && game.world) {
 }
 if (params.has('debug')) { debugOn = true; ui.setDebug && ui.setDebug(true); }
 requestAnimationFrame((t) => { last = t; frame(t); });
+// Precompile every shader (incl. VFX that first appear at GO / first goal / first demo) so play never hitches.
+(async () => {
+  const restore = vfx.prewarm ? vfx.prewarm() : null;
+  try { if (renderer.compileAsync) await renderer.compileAsync(scene, camera); } catch (e) { /* optional */ }
+  if (restore) restore();
+})();
 window.__ready = true;
