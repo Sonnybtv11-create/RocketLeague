@@ -674,7 +674,11 @@ class Bot {
     if (DEBUG_STUCK) console.log('escape', why, this.skill.name, this.mode, this.maneuver && this.maneuver.name, car.body.pos.x | 0, car.body.pos.y | 0, car.body.pos.z | 0, 'up', car.body.rot.m[8].toFixed(2), 'wheels', car.numWheelsInContact, 'v', Math.hypot(car.body.vel.x, car.body.vel.y) | 0);
     const lvl = this.stuckLevel = ((this.stuckLevel || 0) + 1) % 3;
     const onWheels = car.isOnGround && car.body.rot.m[8] > 0.5;
-    if (lvl === 1 && onWheels && !wasReversing) this.maneuver = new Unstuck(steer >= 0 ? -1 : 1, 70);
+    if (!car.isOnGround) {
+      // wedged on 1-2 wheels (e.g. against a goal wall): no jump possible,
+      // drive along the surface forward / backward instead
+      this.maneuver = new Unstuck(0, 60, lvl === 1 ? -1 : 1);
+    } else if (lvl === 1 && onWheels && !wasReversing) this.maneuver = new Unstuck(steer >= 0 ? -1 : 1, 70);
     else if (lvl === 2 && onWheels) this.maneuver = new Unstuck(steer >= 0 ? 1 : -1, 50);
     else this.maneuver = new Flip(0, 0, { jumpTicks: 10, gap: 4, name: 'jumpOut' });
   }

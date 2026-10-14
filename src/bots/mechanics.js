@@ -279,10 +279,10 @@ export class Aerial {
 // ---------------------------------------------------------------- utility
 // Reverse with the wheels turned for a while (unstick from walls / posts)
 export class Unstuck {
-  constructor(steer, ticks = 80) { this.name = 'unstuck'; this.steer = steer; this.ticks = ticks; this.k = 0; }
+  constructor(steer, ticks = 80, throttle = -1) { this.name = 'unstuck'; this.steer = steer; this.ticks = ticks; this.k = 0; this.thr = throttle; }
   step(bot, car, c) {
     const k = this.k++;
-    c.throttle = -1; c.steer = this.steer;
+    c.throttle = this.thr; c.steer = this.steer;
     if (!car.isOnGround && k > 5) { recover(car, c, null); }
     // upside down / on the side: jump to auto-flip / pop off
     const up = carUp(car);
