@@ -53,6 +53,16 @@ Renderer: WebGLRenderer, sRGB output, ACES tone mapping, PCFSoft shadow maps ena
 | Bots | bots/bot.js (+ bots/*.js) | `createBot({difficulty:'rookie'|'pro'|'allstar', carId, team, rng}) → { tick(world, matchView, dt) → Controls, events: [] }` |
 | Match flow & replay | game/match.js, game/replay.js | `createMatch({world, mode:'exhibition'|'freeplay', teamSize, durationSec, rng}) → Match` (see header of game/match.js) |
 
+### MatchView (view.match, from `match.getView()`)
+```
+{ mode: 'exhibition'|'freeplay', state: 'countdown'|'playing'|'goal'|'replay'|'ended',
+  clockSec, isOvertime, overtimeSec, countdown (3,2,1 during countdown, 0 = GO shown), scores: [blue, orange],
+  players: [{carId, name, team, isBot, goals, assists, saves, shots, demos, score}],
+  lastGoal: {team, scorerId, scorerName, assistId, assistName, ballSpeed} | null,
+  winner (0|1|null), mvpId, replayActive, ballHidden (true while the ball has exploded after a goal —
+  the ball renderer hides ball + shadow), waitingForBallToLand (zero-second rule active) }
+```
+
 `info` passed to `ui.update`: `{ fps, playerCarId, tick, ballCam, inputDevice, mode ('menu'|'exhibition'|'freeplay'), paused, playerCar (CarView), world }`
 
 `api` given to the UI by main.js:
