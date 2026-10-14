@@ -98,7 +98,7 @@ const game = {
 window.__game = game; // debug / automation hook
 window.__render = { renderer, scene, camera, ctx };
 
-const MENU_CAR_SHIFT = 0; // uu; negative moves the car left on screen
+const MENU_CAR_SHIFT = -90; // uu; negative moves the car left on screen
 const BOT_NAMES = ['Nova', 'Blitz', 'Comet', 'Rook', 'Viper', 'Echo', 'Jolt', 'Titan', 'Pulse', 'Drift'];
 
 function bodyHitbox(bodyId) { return (CAR_BODIES.find((b) => b.id === bodyId) || CAR_BODIES[0]).hitbox; }
@@ -156,7 +156,7 @@ function menuScene() {
   const car = world.addCar({ team: settings.game.team || 0, hitbox: bodyHitbox(bodyId), bodyId, name: settings.game.playerName, isBot: false });
   car.accent = settings.game.accent;
   car.setSpawn(0, -600, K.CAR_SPAWN_REST_Z, Math.PI / 2 + 0.6);
-  world.ball.reset(0, 400, K.BALL_KICKOFF_Z);
+  world.ball.reset(0, 2600, K.BALL_KICKOFF_Z);
   for (let i = 0; i < 60; i++) world.step();
   game.world = world; game.match = null; game.mode = 'menu'; game.bots = new Map(); game.playerCarId = car.id;
   syncCarModels(world);
