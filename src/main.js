@@ -21,6 +21,8 @@ import { createAudio } from './audio/audio.js';
 import { createUI } from './ui/ui.js';
 import { createBot } from './bots/bot.js';
 import { createMatch } from './game/match.js';
+import { createNetHost, createNetClient } from './net/session.js';
+import { webrtcSupported } from './net/rtc.js';
 
 const params = new URLSearchParams(location.search);
 const { settings, stats } = loadAll();
@@ -94,6 +96,8 @@ const game = {
   world: null, match: null, bots: new Map(), playerCarId: -1, mode: 'menu',
   prevFrame: null, curFrame: null, acc: 0, paused: false, cfg: null,
   events: [], predictor: new BallPredictor(),
+  net: null,      // LAN session: createNetHost() / createNetClient() result
+  lan: null,      // 'host' | 'client' while a LAN match is running
 };
 window.__game = game; // debug / automation hook
 window.__render = { renderer, scene, camera, ctx };
@@ -101,6 +105,10 @@ window.__render = { renderer, scene, camera, ctx };
 const MENU_CAR_SHIFT = -90; // uu; negative moves the car left on screen
 const BOT_NAMES = ['Nova', 'Blitz', 'Comet', 'Rook', 'Viper', 'Echo', 'Jolt', 'Titan', 'Pulse', 'Drift'];
 
+const DEFAULT_DODGE_DEADZONE = 0.5;
+function rosterOf(world) {
+  return world.cars.map((c) => ({ id: c.id, team: c.team, name: c.name, isBot: !!c.isBot, bodyId: c.bodyId, hitbox: c.hitbox, accent: c.accent }));
+}
 function bodyHitbox(bodyId) { return (CAR_BODIES.find((b) => b.id === bodyId) || CAR_BODIES[0]).hitbox; }
 
 function newSession(cfg, mode) {
@@ -113,12 +121,22 @@ function newSession(cfg, mode) {
   const player = cfg.spectate ? null : world.addCar({ team: playerTeam, hitbox: bodyHitbox(bodyId), bodyId, name: settings.game.playerName || 'Player', isBot: false });
   if (player) { player.accent = cfg.accent || settings.game.accent; player.dodgeDeadzone = settings.controls.dodgeDeadzone; }
   game.playerCarId = player ? player.id : -1;
+  // LAN: one car per connected joiner (their controls arrive over the network)
+  const humans = [0, 0];
+  if (player) humans[player.team]++;
+  const lanSlots = game.lan === 'host' && game.net ? game.net.connected() : [];
+  for (const s of lanSlots) {
+    const car = world.addCar({ team: s.team, hitbox: bodyHitbox(s.bodyId), bodyId: s.bodyId, name: s.name, isBot: false });
+    car.accent = s.accent; car.dodgeDeadzone = DEFAULT_DODGE_DEADZONE;
+    s.carId = car.id; s.queue.length = 0;
+    humans[s.team]++;
+  }
   if (mode === 'exhibition') {
     const names = [...BOT_NAMES].sort(() => Math.random() - 0.5);
     const bodies = CAR_BODIES.map((b) => b.id);
     for (let t = 0; t < 2; t++) {
-      const size = t === 0 ? (cfg.blueSize || teamSize) : (cfg.orangeSize || teamSize);
-      const n = Math.max(0, size - (player && player.team === t ? 1 : 0));
+      const size = cfg.noBots ? 0 : t === 0 ? (cfg.blueSize || teamSize) : (cfg.orangeSize || teamSize);
+      const n = Math.max(0, size - humans[t]);
       for (let i = 0; i < n; i++) {
         const bid = bodies[Math.floor(Math.random() * bodies.length)];
         const diff = (t === playerTeam ? cfg.teammateDifficulty : cfg.opponentDifficulty) || cfg.difficulty || 'pro';
@@ -137,6 +155,11 @@ function newSession(cfg, mode) {
     world.ball.body.vel.set(0, 0, -1);
   }
   game.match = createMatch({ world, mode, teamSize, durationSec: cfg.durationSec || 300, rng: Math.random });
+  if (lanSlots.length) {
+    const roster = rosterOf(world);
+    for (const s of lanSlots) s.peer.send({ t: 'start', you: s.carId, roster, cfg: { teamSize, durationSec: cfg.durationSec || 300 } });
+    game.netSentTick = -1; game.netMvAt = 0;
+  }
   syncCarModels(world);
   vfx.clear && vfx.clear();
   game.prevFrame = captureFrame(world, game.match);
@@ -164,6 +187,81 @@ function menuScene() {
   input.setEnabled(false);
 }
 
+// ---------------------------------------------------------------- LAN play
+// Host: runs the real simulation and match, takes joiners' controls each tick, streams snapshots,
+// events and the match view. Joiner: renders the host's snapshots with a local copy of the arena.
+function lanChanged() { ui.refreshMenu && ui.refreshMenu(); }
+function lanClose() {
+  if (game.net) { game.net.close(); game.net = null; }
+  game.lan = null;
+}
+function hostPlayerLeft(s) {
+  // mid-match: a bot takes over the car
+  if (game.lan !== 'host' || !game.world) return;
+  const car = game.world.getCar(s.carId);
+  if (!car || game.bots.has(car.id)) return;
+  car.isBot = true; car.difficulty = 'pro';
+  game.bots.set(car.id, createBot({ difficulty: 'pro', carId: car.id, team: car.team, rng: Math.random }));
+  game.net.broadcast({ t: 'ev', e: [{ type: 'netLeave', name: s.name }] });
+}
+function clientStart(m) {
+  const world = new World();
+  for (const r of [...m.roster].sort((a, b) => a.id - b.id)) {
+    const car = world.addCar({ team: r.team, hitbox: r.hitbox, bodyId: r.bodyId, name: r.name, isBot: r.isBot });
+    car.id = r.id; car.accent = r.accent;
+  }
+  world.resetKickoff();
+  world.carsFrozen = true;
+  const client = game.net;
+  client.setStatic(m.roster, world.pads);
+  client.matchView = {
+    mode: 'exhibition', state: 'countdown', clockSec: (m.cfg && m.cfg.durationSec) || 300, isOvertime: false, overtimeSec: 0, countdown: 3,
+    scores: [0, 0], players: m.roster.map((r) => ({ carId: r.id, name: r.name, team: r.team, isBot: r.isBot, goals: 0, assists: 0, saves: 0, shots: 0, demos: 0, score: 0 })),
+    lastGoal: null, winner: null, mvpId: null, replayActive: false, ballHidden: false, waitingForBallToLand: false, isKickoffPause: false,
+  };
+  game.world = world; game.mode = 'exhibition'; game.lan = 'client'; game.cfg = { teamSize: (m.cfg && m.cfg.teamSize) || 1, lan: true };
+  game.bots = new Map(); game.playerCarId = m.you;
+  game.match = {
+    get state() { return client.matchView.state; },
+    getView: () => client.matchView,
+    isEnded: () => client.matchView.state === 'ended',
+    getReplayView: () => null,
+    skipReplay() {}, frameUpdate() {}, preTick() {}, postTick() { return []; }, recordFrame() {}, resetBall() {},
+  };
+  syncCarModels(world);
+  vfx.clear && vfx.clear();
+  game.prevFrame = captureFrame(world, null); game.curFrame = game.prevFrame;
+  game.acc = 0; game.paused = false;
+  input.setEnabled(true);
+  input.resetBallCam && input.resetBallCam();
+  ui.hideMenus();
+  audio.unlock && audio.unlock();
+}
+function clientLeft(reason) {
+  game.lanNotice = reason;
+  const wasPlaying = game.lan === 'client';
+  game.net = null; game.lan = null;
+  if (wasPlaying) { game.paused = false; menuScene(); }
+  ui.showLanMenu ? ui.showLanMenu() : ui.showMainMenu();
+}
+// host: after the frame's ticks, stream the world (60 Hz), events and match info to joiners
+function hostSend(evs, replay, now) {
+  const net = game.net;
+  if (!net.connected().length) return;
+  if (replay) {
+    if (now - (game.netReplayAt || 0) >= 15) { game.netReplayAt = now; net.sendFrame(replay.view, replay.cameraHint || { mode: 'wide' }); }
+  } else if (game.curFrame && game.curFrame.tick - game.netSentTick >= 2) {
+    game.netSentTick = game.curFrame.tick;
+    net.sendFrame(game.curFrame, null);
+  }
+  const mv = game.match && game.match.getView();
+  if (mv && (evs.length || now - game.netMvAt > 100 || mv.state !== game.netMvState)) {
+    game.netMvAt = now; game.netMvState = mv.state;
+    net.broadcast({ t: 'mv', v: mv });
+  }
+  if (evs.length) net.broadcast({ t: 'ev', e: evs });
+}
+
 // ---------------------------------------------------------------- input / UI
 const input = createInput({ canvas, settings, onAction });
 game.input = input;
@@ -181,7 +279,7 @@ function onAction(name, down = true) {
   } else if (name === 'debug') {
     debugOn = !debugOn; ui.setDebug && ui.setDebug(debugOn);
   } else if (name === 'skipReplay') {
-    game.match && game.match.skipReplay();
+    if (game.lan !== 'client') game.match && game.match.skipReplay();
   } else if (name === 'scoreboard') {
     scoreboardOpen = !!down;
     ui.showScoreboard && ui.showScoreboard(down);
@@ -189,15 +287,18 @@ function onAction(name, down = true) {
 }
 let debugOn = false;
 let scoreboardOpen = false;
-function pauseGame() { game.paused = true; input.setEnabled(false); ui.showPause(); audio.setPaused && audio.setPaused(true); }
+function pauseGame() {
+  game.paused = true; input.setEnabled(false); ui.showPause();
+  if (!game.lan) audio.setPaused && audio.setPaused(true); // LAN matches keep running behind the menu
+}
 
 let _appliedQuality = settings.graphics.quality;
 const api = {
-  startMatch(cfg) { settings.game.lastMode = { ...settings.game.lastMode, ...cfg }; saveAll(settings, stats); newSession(cfg, 'exhibition'); },
-  startFreePlay(cfg = {}) { newSession({ teamSize: 1, ...cfg }, 'freeplay'); },
+  startMatch(cfg) { lanClose(); settings.game.lastMode = { ...settings.game.lastMode, ...cfg }; saveAll(settings, stats); newSession(cfg, 'exhibition'); },
+  startFreePlay(cfg = {}) { lanClose(); newSession({ teamSize: 1, ...cfg }, 'freeplay'); },
   resumeGame() { game.paused = false; input.setEnabled(true); ui.hideMenus(); audio.setPaused && audio.setPaused(false); },
-  quitToMenu() { game.paused = false; menuScene(); ui.showMainMenu(); audio.setPaused && audio.setPaused(false); },
-  rematch() { if (game.cfg) newSession(game.cfg, game.mode === 'menu' ? 'exhibition' : game.mode); },
+  quitToMenu() { lanClose(); game.paused = false; menuScene(); ui.showMainMenu(); audio.setPaused && audio.setPaused(false); },
+  rematch() { if (game.lan === 'client') return; if (game.cfg) newSession(game.cfg, game.mode === 'menu' ? 'exhibition' : game.mode); },
   settingsChanged() {
     applyRenderScale();
     if (settings.graphics.quality !== _appliedQuality) {
@@ -234,7 +335,58 @@ const api = {
   },
   getGame() { return game; },
   isFreePlay() { return game.mode === 'freeplay'; },
+
+  // ---- LAN play (see src/net/)
+  lanSupported() { return webrtcSupported(); },
+  lanRole() { return game.net ? game.net.role : null; },
+  lanInMatch() { return !!game.lan; },
+  lanHost() { return lanHost(); },
+  lanState() {
+    const n = game.net;
+    return {
+      role: n ? n.role : null, notice: game.lanNotice || '',
+      slots: n && n.role === 'host' ? n.slots.map((s) => ({ id: s.id, status: s.status, team: s.team, name: s.name, code: s.code, error: s.error || '' })) : [],
+      client: n && n.role === 'client' ? { status: n.status, error: n.error, reason: n.reason, lobby: n.lobby, replyCode: n.replyCode } : null,
+    };
+  },
+  lanInvite() { const h = lanHost(); return h.invite(); },
+  lanAcceptReply(id, code) { return game.net && game.net.role === 'host' ? game.net.acceptReply(id, code) : null; },
+  lanSetTeam(id, team) {
+    const n = game.net;
+    if (!n || n.role !== 'host') return;
+    if (id === 'host') { settings.game.team = team; n.hostTeam = team; n.sendLobby(); saveAll(settings, stats); if (game.mode === 'menu') menuScene(); } else n.setTeam(id, team);
+  },
+  lanSetInfo(text) { const n = game.net; if (n && n.role === 'host' && n.lobbyInfo !== text) { n.lobbyInfo = text; n.sendLobby(); } },
+  lanRemove(id) { game.net && game.net.role === 'host' && game.net.remove(id); },
+  lanStart(cfg) {
+    const n = lanHost();
+    n.hostName = settings.game.playerName || 'Host';
+    settings.game.lastLan = { ...cfg };
+    saveAll(settings, stats);
+    game.lan = 'host';
+    newSession({ ...cfg, playerTeam: settings.game.team || 0, bodyId: settings.game.carBody, accent: settings.game.accent }, 'exhibition');
+  },
+  async lanJoin(code) {
+    if (game.net && game.net.role === 'host') lanClose();
+    if (game.net) { game.net.close(); game.net = null; }
+    game.lanNotice = '';
+    const client = createNetClient({ onChange: lanChanged, onStart: clientStart, onEvents: (e) => frameEvents.push(...e), onLeave: clientLeft });
+    game.net = client;
+    return client.join(code, { name: settings.game.playerName || 'Player', bodyId: settings.game.carBody, accent: settings.game.accent });
+  },
+  lanLeave() { if (!game.lan) lanClose(); },
 };
+function lanHost() {
+  if (game.net && game.net.role === 'host') return game.net;
+  lanClose();
+  game.lanNotice = '';
+  const n = createNetHost({ onChange: lanChanged, onLeave: hostPlayerLeft });
+  n.hostName = settings.game.playerName || 'Host';
+  n.hostTeam = settings.game.team || 0;
+  game.net = n;
+  return n;
+}
+window.__api = api; // debug / automation hook
 const ui = createUI({ root: document.getElementById('ui-root'), api, settings, stats });
 
 // ---------------------------------------------------------------- prediction line (free play)
@@ -275,6 +427,13 @@ function physicsTick() {
     const car = w.getCar(game.playerCarId);
     if (car) car.controls = input.sampleTick();
   }
+  if (game.lan === 'host') {
+    for (const c of w.cars) {
+      if (c.isBot || c.id === game.playerCarId) continue;
+      const k = game.net.takeControls(c.id);
+      if (k) c.controls = k;
+    }
+  }
   for (const [id, bot] of game.bots) {
     const car = w.getCar(id);
     if (!car) continue;
@@ -307,8 +466,19 @@ function frame(now) {
   const w = game.world;
   if (!w) return;
 
-  const replay = game.match && game.match.getReplayView ? game.match.getReplayView() : null;
-  if (game.mode === 'menu') {
+  let replay = game.match && game.match.getReplayView ? game.match.getReplayView() : null;
+  let netView = null;
+  if (game.lan === 'client') {
+    // joiner: sample controls at 120 Hz and send them; the host simulates
+    game.acc += dt;
+    let n = 0;
+    const list = [];
+    while (game.acc >= K.TICK_TIME && n < 8) { list.push(game.paused ? makeControls() : input.sampleTick()); game.acc -= K.TICK_TIME; n++; }
+    if (n === 8) game.acc = 0;
+    if (list.length && game.net) game.net.sendInputs(list);
+    netView = game.net ? game.net.buildView(now) : null;
+    if (netView && netView.hint) replay = { view: netView.view, cameraHint: netView.hint };
+  } else if (game.mode === 'menu') {
     // idle showroom: keep stepping so suspension settles; slow orbit
     game.acc += dt;
     let n = 0;
@@ -322,7 +492,7 @@ function frame(now) {
     const side = MENU_CAR_SHIFT;
     const tx = car.pos.x + (-cy) * side, ty = car.pos.y + cx * side;
     camOpts = { mode: 'fixed', fixed: { fov: 34, pos: { x: car.pos.x + cx * R, y: car.pos.y + cy * R, z: 110 }, target: { x: tx, y: ty, z: 35 } } };
-  } else if (!game.paused) {
+  } else if (!game.paused || game.lan) {
     if (game.match && game.match.frameUpdate) game.match.frameUpdate(dt);
     const inReplay = game.match && game.match.state === 'replay';
     if (!inReplay) {
@@ -336,6 +506,9 @@ function frame(now) {
     if (replay) {
       view = replay.view; view.isReplay = true;
       camOpts = { mode: 'replay', hint: replay.cameraHint, targetCarId: replay.cameraHint && replay.cameraHint.targetCarId };
+    } else if (game.lan === 'client') {
+      view = netView ? netView.view : interpolateFrames(game.prevFrame, game.curFrame, 1);
+      camOpts = { mode: 'car', targetCarId: game.playerCarId, ballCam: input.isBallCam(), look: input.getLook() };
     } else {
       view = interpolateFrames(game.prevFrame, game.curFrame, Math.min(game.acc / K.TICK_TIME, 1));
       camOpts = { mode: game.playerCarId >= 0 ? 'car' : 'spectator', targetCarId: game.playerCarId, ballCam: input.isBallCam(), look: input.getLook() };
@@ -358,6 +531,7 @@ function frame(now) {
     }
   });
   const evs = frameEvents.splice(0);
+  if (game.lan === 'host' && game.net) safe('net', () => hostSend(evs, replay, now));
   safe('vfx.events', () => vfx.onEvents(evs, view));
   safe('camera', () => camCtl.update(view, camOpts, dt));
   safe('vfx', () => vfx.update(view, dt, camera));
@@ -366,7 +540,7 @@ function frame(now) {
   safe('audio.events', () => audio.onEvents(evs, view));
   safe('audio', () => audio.update(view, { pos: camera.position, quaternion: camera.quaternion, playerCarId: game.playerCarId, camera }, dt));
   safe('ui.events', () => ui.onEvents(evs, view));
-  safe('ui', () => ui.update(view, dt, { fps, playerCarId: game.playerCarId, tick: w.tick, ballCam: input.isBallCam(), inputDevice: input.lastDevice, mode: game.mode, paused: game.paused, playerCar: pc, world: w }));
+  safe('ui', () => ui.update(view, dt, { fps, playerCarId: game.playerCarId, tick: w.tick, ballCam: input.isBallCam(), inputDevice: input.lastDevice, mode: game.mode, paused: game.paused, playerCar: pc, world: w, lan: game.lan }));
   game.fps = fps;
   for (const e of evs) {
     if (e.type === EV.MATCH_END) onMatchEnd(e);

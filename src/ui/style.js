@@ -374,6 +374,28 @@ export const CSS = String.raw`
 .tp-end-shade { position: absolute; inset: 0; background: radial-gradient(ellipse at 58% 60%, rgba(2, 4, 12, 0.78), rgba(2, 4, 12, 0.55) 80%); backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px); }
 .tp-end .tp-nav { top: 52%; width: calc(var(--u) * 30); }
 
+/* LAN play */
+.tp-code { width: 100%; height: calc(var(--u) * 9); resize: none; padding: calc(var(--u) * 0.8) calc(var(--u) * 1.1); border: calc(var(--u) * 0.2) solid rgba(255, 255, 255, 0.2);
+  background: rgba(0, 0, 0, 0.4); color: #cfe0ff; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: calc(var(--u) * 1.35); line-height: 1.35; word-break: break-all;
+  outline: none; pointer-events: auto; user-select: text; -webkit-user-select: text; }
+.tp-code:focus, .tp-code.tp-focus { border-color: var(--gold); }
+.tp-code[readonly] { color: #ffe29a; }
+.tp-lan-slot { border-left: calc(var(--u) * 0.45) solid var(--blue); background: rgba(255, 255, 255, 0.04); padding: calc(var(--u) * 1.2) calc(var(--u) * 1.6); margin-bottom: calc(var(--u) * 1.2); }
+.tp-lan-slot.t1 { border-left-color: var(--orange); }
+.tp-lan-slot .top { display: flex; align-items: center; gap: calc(var(--u) * 1.4); }
+.tp-lan-slot .top .nm { flex: 1; font-size: calc(var(--u) * 2.1); font-weight: 700; }
+.tp-lan-slot .top .st { font-size: calc(var(--u) * 1.5); letter-spacing: 0.12em; text-transform: uppercase; color: var(--dim); }
+.tp-lan-slot .top .st.ok { color: #7dffb0; }
+.tp-lan-slot .top .st.bad { color: #ff8080; }
+.tp-lan-slot .step { margin-top: calc(var(--u) * 1.1); font-size: calc(var(--u) * 1.55); color: var(--dim); line-height: 1.45; }
+.tp-lan-slot .step b { color: #fff; }
+.tp-lan-slot .act { display: flex; gap: calc(var(--u) * 1); margin-top: calc(var(--u) * 0.8); }
+.tp-lan-slot .act .tp-btn { flex: 1; }
+.tp-note { font-size: calc(var(--u) * 1.6); color: var(--dim); line-height: 1.5; margin-bottom: calc(var(--u) * 2); }
+.tp-note b { color: #fff; }
+.tp-note.warn { color: #ffcf7a; }
+.tp-note.err { color: #ff9a9a; }
+
 /* ================================================================ debug + fps */
 .tp-fps { position: absolute; left: calc(var(--u) * 1); top: calc(var(--u) * 1); z-index: 31; padding: calc(var(--u) * 0.3) calc(var(--u) * 0.8); background: rgba(0, 0, 0, 0.55);
   font-family: var(--mono); font-size: calc(var(--u) * 1.5); color: #9dff9d; }

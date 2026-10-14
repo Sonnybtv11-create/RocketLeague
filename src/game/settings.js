@@ -125,6 +125,7 @@ export const DEFAULT_SETTINGS = {
   game: {
     playerName: 'Player', carBody: 'vector', accent: '#e8e8e8', team: 0,
     lastMode: { teamSize: 1, difficulty: 'pro' },
+    lastLan: null,          // last LAN lobby setup {teamSize, noBots, difficulty, durationSec}
     freeplay: { predictionLine: true, unlimitedBoost: true },
   },
 };

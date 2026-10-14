@@ -306,7 +306,8 @@ export function createHUD({ api, settings }) {
               lg.ownGoal ? h('span', { style: { color: 'var(--gold-l)' } }, 'OWN GOAL') : null)].filter(Boolean));
         }
         replaySkip.innerHTML = '';
-        replaySkip.append('Press ', h('span.tp-key' + (pad ? '.pad' : ''), keyTxt), ' / click to skip');
+        if (info.lan === 'client') replaySkip.append('Replay'); // only the host can skip in LAN matches
+        else replaySkip.append('Press ', h('span.tp-key' + (pad ? '.pad' : ''), keyTxt), ' / click to skip');
       }
     }
 

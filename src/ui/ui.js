@@ -1,7 +1,7 @@
 // OWNER: UI agent.
 // createUI({ root, api, settings, stats }) -> {
 //   update(view, frameDt, info), onEvents(events, view), showMainMenu(), showPause(), hideMenus(),
-//   showEndScreen(matchView), showScoreboard(bool), isMenuOpen(), setDebug(on), dispose() }
+//   showEndScreen(matchView), showScoreboard(bool), isMenuOpen(), setDebug(on), showLanMenu(), refreshMenu(), dispose() }
 // info = { fps, playerCarId, tick, ballCam, inputDevice, mode ('menu'|'exhibition'|'freeplay'), paused, playerCar, world }
 //
 // Modules: style.js (CSS, injected once), hud.js (in-match HUD + Tab scoreboard), menus.js (main / play /
@@ -56,6 +56,14 @@ export function createUI({ root, api, settings, stats }) {
       menus.showMain();
     },
     showPause() { hud.setScoreboard(false); menus.showPause(); },
+    // LAN play: open the LAN page (e.g. after a connection drops) / re-render it when the session changes
+    showLanMenu() {
+      endShown = false;
+      hud.clearTransient();
+      hud.setScoreboard(false);
+      menus.showLan();
+    },
+    refreshMenu() { menus.refreshIf(['lan', 'lanhost', 'lanjoin']); },
     hideMenus() {
       if (endShown) hud.clearTransient();
       endShown = false;
