@@ -24,7 +24,7 @@ const S = 0.01;
 const { X, Y, H, GW, GD } = ARENA_PARAMS;
 
 // Sun direction (towards the sun), sim coords -> three (x, z, y)
-const SUN_SIM = new THREE.Vector3(-0.50, -0.45, 0.74).normalize();
+const SUN_SIM = new THREE.Vector3(-0.64, 0.2, 0.74).normalize();
 const SUN_DIR = new THREE.Vector3(SUN_SIM.x, SUN_SIM.z, SUN_SIM.y);
 const HAZE = 0xa9c6dc;
 

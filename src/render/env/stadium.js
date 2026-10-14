@@ -177,9 +177,9 @@ function buildCrowd(path, quality) {
             const endBias = y / 6500; // -1 blue end .. +1 orange end
             let c;
             const r = R();
-            if (endBias < -0.35 && r < 0.55) c = blue[(R() * 3) | 0];
-            else if (endBias > 0.35 && r < 0.55) c = orange[(R() * 3) | 0];
-            else if (r < 0.2) c = (R() < 0.5 ? blue : orange)[(R() * 3) | 0];
+            if (endBias < -0.3 && r < 0.68) c = blue[(R() * 3) | 0];
+            else if (endBias > 0.3 && r < 0.68) c = orange[(R() * 3) | 0];
+            else if (r < 0.35) c = (R() < 0.5 + endBias * 0.6 ? orange : blue)[(R() * 3) | 0];
             else c = palette[(R() * palette.length) | 0];
             items.push([x + (R() - 0.5) * 14, y + (R() - 0.5) * 14, z + 8, c, R(), R(), R(), R()]);
           }
@@ -196,7 +196,7 @@ function buildCrowd(path, quality) {
   for (let i = 0; i < n; i++) {
     const it = items[i];
     iPos[i * 3] = it[0] * S; iPos[i * 3 + 1] = it[2] * S; iPos[i * 3 + 2] = it[1] * S;
-    const c = it[3].clone().multiplyScalar(0.75 + 0.35 * it[4]);
+    const c = it[3].clone().multiplyScalar(0.8 + 0.25 * it[4]);
     iCol[i * 3] = c.r; iCol[i * 3 + 1] = c.g; iCol[i * 3 + 2] = c.b;
     iRnd[i * 4] = it[4]; iRnd[i * 4 + 1] = it[5]; iRnd[i * 4 + 2] = it[6]; iRnd[i * 4 + 3] = it[7];
   }
@@ -211,7 +211,7 @@ function buildCrowd(path, quality) {
   g.instanceCount = Math.round(n * quality);
   g.userData.total = n;
   const mat = new THREE.ShaderMaterial({
-    uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, { uTime: { value: 0 }, uExcite: { value: 0.1 }, uLight: { value: new THREE.Color(0.62, 0.64, 0.7) } }]),
+    uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, { uTime: { value: 0 }, uExcite: { value: 0.1 }, uLight: { value: new THREE.Color(0.4, 0.41, 0.46) } }]),
     vertexShader: CROWD_VERT, fragmentShader: CROWD_FRAG, fog: true,
   });
   const mesh = new THREE.Mesh(g, mat);

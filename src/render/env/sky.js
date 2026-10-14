@@ -72,7 +72,7 @@ export function createSky(sunDir, radius = 1800) {
   });
   const mesh = new THREE.Mesh(new THREE.SphereGeometry(radius, 48, 24), mat);
   mesh.frustumCulled = false;
-  mesh.renderOrder = -10;
+  mesh.renderOrder = 100; // after the other opaques: early-z skips covered pixels
   mesh.name = 'sky';
   return mesh;
 }

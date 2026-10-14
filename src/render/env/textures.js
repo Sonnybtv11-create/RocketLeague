@@ -57,14 +57,14 @@ export function makeFieldTextures(renderer) {
     for (let iy = -5; iy < 5; iy++) {
       const light = ((ix + iy) & 1) === 0;
       const team = iy < 0 ? 0 : 1;
-      let r = light ? 62 : 52, gg = light ? 112 : 98, b = light ? 50 : 44;
+      let r = light ? 66 : 50, gg = light ? 118 : 94, b = light ? 53 : 42;
       if (team === 0) { r -= 3; b += 5; } else { r += 5; gg += 1; b -= 3; }
       g.fillStyle = `rgb(${r},${gg},${b})`;
       g.fillRect(ix * SQ, iy * SQ, SQ, SQ);
     }
   }
   // fine mowing stripes inside each square (alternating direction per square)
-  g.globalAlpha = 0.05;
+  g.globalAlpha = 0.025;
   for (let ix = -4; ix < 4; ix++) for (let iy = -5; iy < 5; iy++) {
     const horiz = ((ix + iy) & 1) === 0;
     for (let k = 0; k < 8; k += 2) {
@@ -177,8 +177,8 @@ export function makeFieldTextures(renderer) {
   }
   // pad markings
   for (const p of BOOST_PADS_SMALL) {
-    g.fillStyle = 'rgba(20,40,20,0.35)'; g.beginPath(); g.arc(p[0], p[1], 150, 0, Math.PI * 2); g.fill();
-    line(14, 'rgba(255,255,255,0.55)'); g.beginPath(); g.arc(p[0], p[1], 150, 0, Math.PI * 2); g.stroke();
+    g.fillStyle = 'rgba(20,40,20,0.18)'; g.beginPath(); g.arc(p[0], p[1], 125, 0, Math.PI * 2); g.fill();
+    line(10, 'rgba(255,255,255,0.4)'); g.beginPath(); g.arc(p[0], p[1], 125, 0, Math.PI * 2); g.stroke();
   }
   for (const p of BOOST_PADS_BIG) {
     g.fillStyle = 'rgba(30,30,20,0.35)'; g.beginPath(); g.arc(p[0], p[1], 260, 0, Math.PI * 2); g.fill();
@@ -266,7 +266,7 @@ function drawLowerWall(team) {
     e.g.fillStyle = light; e.g.fillRect(0, vy(b), W, vy(a) - vy(b));
   }
   // ad board band
-  const A0 = RAMP + 120, A1 = V_LOWER - 34;
+  const A1 = V_LOWER - 30, A0 = A1 - 150;
   g.fillStyle = '#121828'; g.fillRect(0, vy(A1), W, vy(A0) - vy(A1));
   e.g.fillStyle = '#05070c'; e.g.fillRect(0, vy(A1), W, vy(A0) - vy(A1));
   const words = ['TURBO PITCH', '»»»', 'SUPERSONIC', '»»»'];
@@ -275,9 +275,9 @@ function drawLowerWall(team) {
     const x0 = k * bw;
     // board frame
     g.fillStyle = k % 2 ? col : '#1b2338'; g.fillRect(x0 + 4, vy(A1) + 4, bw - 8, bh - 8);
-    e.g.fillStyle = k % 2 ? col : '#0b0f1a'; e.g.globalAlpha = k % 2 ? 0.35 : 1; e.g.fillRect(x0 + 4, vy(A1) + 4, bw - 8, bh - 8); e.g.globalAlpha = 1;
+    e.g.fillStyle = k % 2 ? col : '#0b0f1a'; e.g.globalAlpha = k % 2 ? 0.22 : 1; e.g.fillRect(x0 + 4, vy(A1) + 4, bw - 8, bh - 8); e.g.globalAlpha = 1;
     for (const ctx2 of [g, e.g]) {
-      ctx2.fillStyle = k % 2 ? '#ffffff' : (ctx2 === g ? '#f2f4f8' : '#c8ccd6');
+      ctx2.fillStyle = k % 2 ? (ctx2 === g ? '#ffffff' : '#a0a4ac') : (ctx2 === g ? '#f2f4f8' : '#8a8e98');
       fitText(ctx2, words[k], x0 + bw / 2, vy(A1) + bh / 2 + 2, bw * 0.84, Math.round(bh * (k % 2 ? 0.8 : 0.5)));
     }
   }
@@ -307,7 +307,7 @@ export function makeHexTexture(renderer) {
   const { c, g } = canvas(W, Hh);
   const a = Hh / 3; // px
   g.clearRect(0, 0, W, Hh);
-  g.fillStyle = 'rgba(255,255,255,0.10)'; g.fillRect(0, 0, W, Hh);
+  g.fillStyle = 'rgba(255,255,255,0.17)'; g.fillRect(0, 0, W, Hh);
   g.strokeStyle = 'rgba(255,255,255,1)'; g.lineWidth = 2.2;
   const hex = (cx, cy) => {
     g.beginPath();

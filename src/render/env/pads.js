@@ -108,11 +108,11 @@ function bigGlowGeometry() {
   return mergeGeometries(parts.map((p) => p.toNonIndexed()), false);
 }
 function smallBaseGeometry() {
-  const prof = [new THREE.Vector2(0, 0.0), new THREE.Vector2(0.95, 0.0), new THREE.Vector2(1.0, 0.03), new THREE.Vector2(0.92, 0.08), new THREE.Vector2(0.5, 0.1), new THREE.Vector2(0.46, 0.06), new THREE.Vector2(0, 0.06)];
+  const prof = [new THREE.Vector2(0, 0.0), new THREE.Vector2(0.72, 0.0), new THREE.Vector2(0.76, 0.03), new THREE.Vector2(0.7, 0.08), new THREE.Vector2(0.44, 0.1), new THREE.Vector2(0.4, 0.06), new THREE.Vector2(0, 0.06)];
   return new THREE.LatheGeometry(prof, 28);
 }
 function smallGlowGeometry() {
-  const puck = new THREE.CylinderGeometry(0.4, 0.44, 0.12, 24); puck.translate(0, 0.1, 0);
+  const puck = new THREE.CylinderGeometry(0.34, 0.38, 0.14, 24); puck.translate(0, 0.11, 0);
   return puck;
 }
 function flameGeometry() {
