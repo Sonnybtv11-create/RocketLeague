@@ -276,7 +276,7 @@ export class Loft {
 // ----------------------------------------------------------------------------
 // Primitive helpers (uu). All return non-indexed BufferGeometry with normals.
 
-export function roundedBox(lx, ly, lz, r, seg = 2) {
+export function roundedBox(lx, ly, lz, r, seg = 1) {
   const g = new RoundedBoxGeometry(lx, ly, lz, seg, Math.min(r, Math.min(lx, ly, lz) / 2 - 0.01));
   return g.index ? g.toNonIndexed() : g;
 }

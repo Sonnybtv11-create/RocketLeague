@@ -95,7 +95,7 @@ function fender(ps, slot, w, { rin, rout, z0, z1, a0 = -0.25, a1 = Math.PI + 0.2
 }
 
 function light(ps, color, lx, ly, lz, x, y, z, rx = 0, ry = 0, rz = 0, r = 0.8) {
-  const g = setColor(roundedBox(lx, ly, lz, r, 2), ...color);
+  const g = setColor(roundedBox(lx, ly, lz, r, 1), ...color);
   ps.addMirrored('light', g, M(x, y, z, rx, ry, rz));
 }
 
@@ -112,7 +112,7 @@ function surfBox(ps, slot, loft, x, u, lx, ly, lz, { embed = 0.4, r = 0.5, color
   const m = new THREE.Matrix4().makeBasis(_X, _Y, _Z);
   if (roll) m.multiply(new THREE.Matrix4().makeRotationX(roll));
   m.setPosition(_P.x + _Y.x * (ly / 2 - embed), _P.y + _Y.y * (ly / 2 - embed), _P.z + _Y.z * (ly / 2 - embed));
-  let g = roundedBox(lx, ly, lz, r, 2);
+  let g = roundedBox(lx, ly, lz, r, 1);
   if (color) g = setColor(g, ...color);
   if (mirrored) ps.addMirrored(slot, g, m); else ps.add(slot, g, m);
 }
@@ -286,7 +286,8 @@ const BODY_SPECS = {
       fender(ps, 'paint', wb, { rin: 19.6, rout: 22.8, z0: 25.5, z1: 46.2, a0: -0.1, a1: Math.PI + 0.35, segs: 20 });
       fender(ps, 'trim', wb, { rin: 19.2, rout: 19.7, z0: 26, z1: 45.6, a0: -0.1, a1: Math.PI + 0.35, segs: 20, lip: 0.2 });
       const fin = extrudeSide([[-62, 14], [-60, 34.5], [-56.5, 35], [-44, 21], [-30, 16], [-30, 14]], 2.2, 0.6);
-      ps.addMirrored('accent', fin, M(0, 0, 33));
+      ps.addMirrored('paint', fin, M(0, 0, 33));
+      ps.addMirrored('accent', extrudeSide([[-61.2, 30.5], [-60.4, 34.6], [-56.8, 35.1], [-54.6, 32.4]], 2.6, 0.4), M(0, 0, 33));
       // sponson side intakes
       ps.addMirrored('trim', roundedBox(12, 3, 2, 0.8), M(4, 4.2, 38.5, 0, 0.08, 0));
       // shovel splitter
@@ -294,7 +295,6 @@ const BODY_SPECS = {
       // lights: slim slits at the nose, tail bar between fins
       light(ps, HEAD, 6, 1.4, 6, 76.2, 1.4, 14, 0, -0.35, -0.1, 0.6);
       light(ps, TAIL, 1.4, 1.8, 16, -58.4, 11.6, 10, 0, 0, 0, 0.6);
-      light(ps, TAIL, 1, 12, 1, -60.6, 26, 34.2, 0, 0, -0.65, 0.4);
     },
   },
   // =========================================================================

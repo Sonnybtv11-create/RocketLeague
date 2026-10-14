@@ -33,7 +33,7 @@ function buildTyre(width) {
   prof.push([ri + 10, hw * 0.98, 0]);
   prof.push([ri, hw * 0.82, 0]);
   const P = prof.length;
-  const SEG = 96, BLOCKS = 24, depth = 4.2;
+  const SEG = 72, BLOCKS = 24, depth = 4.2;
   const pos = [], idx = [];
   for (let i = 0; i < SEG; i++) {
     const th = (i / SEG) * Math.PI * 2, ct = Math.cos(th), st = Math.sin(th);
@@ -84,11 +84,11 @@ function buildRim(width, spokes) {
   const SILVER = [0.78, 0.8, 0.84], GRAPH = [0.1, 0.11, 0.13], LIP = [0.92, 0.93, 0.95], DARK = [0.05, 0.05, 0.06];
   const parts = [];
   // barrel (inner, dark) — sits inside the tyre bead
-  parts.push(setColor(orientOutward(lathe([[63, -hw * 0.8], [65, -hw * 0.75], [65, hw * 0.6], [63, hw * 0.66]], 32)), ...GRAPH));
+  parts.push(setColor(orientOutward(lathe([[63, -hw * 0.8], [65, -hw * 0.75], [65, hw * 0.6], [63, hw * 0.66]], 24)), ...GRAPH));
   // outer lip ring (polished)
-  parts.push(setColor(orientOutward(lathe([[58, face - 6], [66, face - 3], [67.5, face + 1.5], [65.5, face + 3], [59, face + 1], [57, face - 3]], 40)), ...LIP));
+  parts.push(setColor(orientOutward(lathe([[58, face - 6], [66, face - 3], [67.5, face + 1.5], [65.5, face + 3], [59, face + 1], [57, face - 3]], 28)), ...LIP));
   // recessed dish (dark) behind the spokes
-  parts.push(setColor(orientOutward(lathe([[0.5, face - 14], [40, face - 14], [58, face - 8], [58.5, face - 6]], 32)), ...DARK));
+  parts.push(setColor(orientOutward(lathe([[0.5, face - 14], [40, face - 14], [58, face - 8], [58.5, face - 6]], 24)), ...DARK));
   // spokes: twisted turbine blades, each a tapered box from hub to lip
   for (let s = 0; s < spokes; s++) {
     const a = (s / spokes) * Math.PI * 2;

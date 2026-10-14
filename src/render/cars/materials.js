@@ -32,7 +32,7 @@ export function getPaint(team) {
   if (!m) {
     const tc = TEAM_COLORS[team] || TEAM_COLORS[0];
     m = new THREE.MeshPhysicalMaterial({
-      color: tc.primary, roughness: 0.32, metalness: 0.35,
+      color: tc.primary, roughness: 0.34, metalness: 0.12,
       clearcoat: 1.0, clearcoatRoughness: 0.05, envMapIntensity: 1.1, name: 'car.paint.' + team,
     });
     paintCache.set(team, m); envUsers.add(m);

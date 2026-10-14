@@ -175,6 +175,10 @@ totalEmissiveRadiance = uGlow * (gRing * 2.6 + gCore * 0.12) + vec3(1.0, 0.97, 0
     return true;
   }
 
+  // dev hook (?cardebug=1) used by the automated checks
+  const dbg = typeof location !== 'undefined' && location.search.includes('cardebug') ? { peakFlash: 0, flash: 0, shadow } : null;
+  if (dbg) (window.__carsDebug || (window.__carsDebug = { ctx, models: [] })).ball = dbg;
+
   return {
     object3d: group,
     update(bv, dt = 1 / 60, view) {
@@ -183,7 +187,9 @@ totalEmissiveRadiance = uGlow * (gRing * 2.6 + gCore * 0.12) + vec3(1.0, 0.97, 0
       group.visible = !hidden;
       if (hidden || !bv) { havePrev = false; return; }
       applySimTransform(ball, bv.pos, bv.rot);
-      // --- touch flash: big velocity change with a car close by
+      // --- touch flash: big velocity change with a car close by (decay first so a new hit shows at full strength)
+      flash *= Math.exp(-Math.min(dt, 0.05) * 7);
+      if (flash < 0.01) flash = 0;
       if (havePrev && prevPos.distanceTo(bv.pos) < 600) {
         const dvx = bv.vel.x - prevVel.x, dvy = bv.vel.y - prevVel.y, dvz = bv.vel.z - prevVel.z;
         const dv = Math.sqrt(dvx * dvx + dvy * dvy + dvz * dvz);
@@ -198,9 +204,8 @@ totalEmissiveRadiance = uGlow * (gRing * 2.6 + gCore * 0.12) + vec3(1.0, 0.97, 0
         }
       }
       prevVel.set(bv.vel.x, bv.vel.y, bv.vel.z); prevPos.set(bv.pos.x, bv.pos.y, bv.pos.z); havePrev = true;
-      flash *= Math.exp(-dt * 7);
-      if (flash < 0.01) flash = 0;
       uniforms.uFlash.value = flash;
+      if (dbg) { dbg.peakFlash = Math.max(dbg.peakFlash, flash); dbg.flash = flash; }
       // --- accent glow tint by pitch half (sim +Y = orange half)
       const wO = THREE.MathUtils.smoothstep(bv.pos.y, 150, 1400), wB = THREE.MathUtils.smoothstep(-bv.pos.y, 150, 1400);
       const wW = 1 - wO - wB;
