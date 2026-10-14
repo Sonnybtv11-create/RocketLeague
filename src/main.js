@@ -91,6 +91,7 @@ const game = {
   events: [], predictor: new BallPredictor(),
 };
 window.__game = game; // debug / automation hook
+window.__render = { renderer, scene, camera, ctx };
 
 const BOT_NAMES = ['Nova', 'Blitz', 'Comet', 'Rook', 'Viper', 'Echo', 'Jolt', 'Titan', 'Pulse', 'Drift'];
 
