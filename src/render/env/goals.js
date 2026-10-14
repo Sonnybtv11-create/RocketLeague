@@ -88,14 +88,14 @@ export function createGoals(ctx, geos) {
     // goal floor (team-lit hex floor)
     const fl = clean(geos.goalFloor[team]);
     scaleUV(fl, (2 * GW) / 380, (GD - Y) / 380);
-    floorParts.push(setEmis(setColor(fl, light.clone().lerp(new THREE.Color(0xffffff), 0.3)), glow, team ? 0.55 : 0.9));
+    floorParts.push(setEmis(setColor(fl, light.clone().lerp(new THREE.Color(0xffffff), 0.3).multiplyScalar(team ? 0.6 : 1)), glow, team ? 0.4 : 0.9));
 
     // net (side walls, roof, back): transparent diamond mesh, team tint
     const net = clean(geos.goalNet[team]);
     scaleUV(net, 1 / 1.6, 1 / 1.6); // uv in metres -> one diamond pair per 1.6 m
     // orange glows much brighter than blue at equal intensity: balance so both
     // goal mouths read as openings at range
-    netParts.push(setEmis(setColor(net, light.clone().multiplyScalar(team ? 0.55 : 0.8)), glow, team ? 0.3 : 0.6));
+    netParts.push(setEmis(setColor(net, light.clone().multiplyScalar(team ? 0.32 : 0.8)), glow, team ? 0.18 : 0.6));
 
     // outer backing shell behind the net (dark structure, single-sided, faces into the goal)
     const o = 70, D0 = Y + 10, D1 = GD + o;

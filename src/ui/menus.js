@@ -46,6 +46,7 @@ export function createMenus({ api, settings, stats, onOpenChange }) {
   let settingsTab = 'camera';
   let rebindEndT = -1e9;
   let backHandledAt = -1e9;
+  let modalKind = null;      // 'rebind' | 'conflict'
 
   const input = () => (api.getInput ? api.getInput() : null);
   const changed = () => { api.settingsChanged && api.settingsChanged(); };
@@ -138,7 +139,8 @@ export function createMenus({ api, settings, stats, onOpenChange }) {
     return h('div.tp-row', h('div.nm', label, hint ? h('small', hint) : null),
       seg(options, obj[key], (v) => { obj[key] = v; changed(); refresh(); }, { key: 's:' + label }), h('div.val'));
   }
-  function title(main, crumb) { return h('div.tp-title', h('span.main', main), crumb ? h('span.crumb', crumb) : null); }
+  // page header: dark band across the top so titles never sit on busy stadium boards
+  function title(main, crumb) { return h('div.tp-head', h('div.tp-title', h('span.main', main), crumb ? h('span.crumb', crumb) : null)); }
   function footer(...extra) {
     const f = h('div.tp-footer');
     if (stack.length > 1) f.appendChild(btn('Back', () => back(true), { key: 'footer-back' }));
@@ -182,8 +184,8 @@ export function createMenus({ api, settings, stats, onOpenChange }) {
   // ------------------------------------------------------------------ pages
   const PAGES = {
     main(p) {
-      p.append(h('div.tp-shade-l'), logo());
-      const navEl = h('div.tp-nav',
+      p.append(h('div.tp-shade-r'), h('div.tp-head', { style: { height: 'calc(var(--u) * 30)' } }), logo());
+      const navEl = h('div.tp-nav.right',
         btn('Play', () => push('play'), { sub: 'Exhibition' }),
         btn('Free Play', () => push('freeplay'), { sub: 'Training' }),
         btn('Garage', () => push('garage'), { sub: 'Car & paint' }),
@@ -191,7 +193,7 @@ export function createMenus({ api, settings, stats, onOpenChange }) {
         btn('Controls', () => push('controls'), { sub: 'Help' }),
         btn('Stats', () => push('stats'), { sub: 'Career' }));
       p.appendChild(navEl);
-      tipEl = h('div.tp-side');
+      tipEl = h('div.tp-side.below');
       renderTip();
       p.appendChild(tipEl);
       const f = h('div.tp-footer', playerCard(),
@@ -209,12 +211,27 @@ export function createMenus({ api, settings, stats, onOpenChange }) {
         split: !!(lm.teammateDifficulty && lm.opponentDifficulty && (lm.teammateDifficulty !== lm.difficulty || lm.opponentDifficulty !== lm.difficulty)),
         playerTeam: settings.game.team === 1 ? 1 : 0,
         durationSec: lm.durationSec || 300,
+        custom: !!(lm.blueSize && lm.orangeSize && lm.blueSize !== lm.orangeSize),
+        blueSize: lm.blueSize || lm.teamSize || 1,
+        orangeSize: lm.orangeSize || lm.teamSize || 1,
       });
+      const mySize = () => (cfg.custom ? (cfg.playerTeam === 1 ? cfg.orangeSize : cfg.blueSize) : cfg.teamSize);
       const body = CAR_BODIES.find((b) => b.id === settings.game.carBody) || CAR_BODIES[0];
-      p.append(h('div.tp-shade-l'), title('Play', 'Exhibition vs bots'));
-      const panel = h('div.tp-panel.tp-scroll', { style: { left: 'calc(var(--u) * 4)', top: 'calc(var(--u) * 13)', width: 'calc(var(--u) * 74)', maxHeight: 'calc(100% - var(--u) * 21)', padding: 'calc(var(--u) * 2.6) calc(var(--u) * 3)' } });
+      p.append(h('div.tp-shade-r'), title('Play', 'Exhibition vs bots'));
+      const panel = h('div.tp-panel.tp-scroll', { style: { right: 'calc(var(--u) * 3)', top: 'calc(var(--u) * 13)', width: 'min(calc(var(--u) * 70), 44vw)', maxHeight: 'calc(100% - var(--u) * 21)', padding: 'calc(var(--u) * 2.2) calc(var(--u) * 2.8)' } });
       panel.append(
-        group('Mode', seg([[1, '1v1', 'Duel'], [2, '2v2', 'Doubles'], [3, '3v3', 'Standard']], cfg.teamSize, (v) => { cfg.teamSize = v; refresh(); }, { key: 'mode' })),
+        group('Mode', seg([[1, '1v1', 'Duel'], [2, '2v2', 'Doubles'], [3, '3v3', 'Standard'], ['custom', 'Custom', 'Any mix']], cfg.custom ? 'custom' : cfg.teamSize, (v) => {
+          if (v === 'custom') { if (!cfg.custom) { cfg.custom = true; cfg.blueSize = cfg.teamSize; cfg.orangeSize = cfg.teamSize; } }
+          else { cfg.custom = false; cfg.teamSize = v; }
+          refresh();
+        }, { key: 'mode' })));
+      if (cfg.custom) {
+        const sizes = [[1, '1'], [2, '2'], [3, '3']];
+        panel.appendChild(h('div', { style: { display: 'flex', gap: 'calc(var(--u) * 2)' } },
+          h('div', { style: { flex: '1' } }, group('Blue size', seg(sizes, cfg.blueSize, (v) => { cfg.blueSize = v; refresh(); }, { key: 'bsize' }))),
+          h('div', { style: { flex: '1' } }, group('Orange size', seg(sizes, cfg.orangeSize, (v) => { cfg.orangeSize = v; refresh(); }, { key: 'osize', orangeFor: cfg.orangeSize })))));
+      }
+      panel.append(
         group('Bot difficulty', seg(DIFFS, cfg.difficulty, (v) => { cfg.difficulty = v; if (!cfg.split) { cfg.teammateDifficulty = v; cfg.opponentDifficulty = v; } refresh(); }, { key: 'diff' })),
       );
       const splitRow = h('div.tp-row', { style: { padding: 0, borderBottom: 0, gridTemplateColumns: '1fr auto' } },
@@ -223,7 +240,7 @@ export function createMenus({ api, settings, stats, onOpenChange }) {
       splitRow.appendChild(tg);
       panel.appendChild(h('div.tp-group', splitRow));
       if (cfg.split) {
-        if (cfg.teamSize > 1) panel.appendChild(group('Teammates', seg(DIFFS, cfg.teammateDifficulty, (v) => { cfg.teammateDifficulty = v; refresh(); }, { key: 'tdiff' })));
+        if (mySize() > 1) panel.appendChild(group('Teammates', seg(DIFFS, cfg.teammateDifficulty, (v) => { cfg.teammateDifficulty = v; refresh(); }, { key: 'tdiff' })));
         panel.appendChild(group('Opponents', seg(DIFFS, cfg.opponentDifficulty, (v) => { cfg.opponentDifficulty = v; refresh(); }, { key: 'odiff' })));
       }
       panel.append(
@@ -235,7 +252,8 @@ export function createMenus({ api, settings, stats, onOpenChange }) {
           btn('Garage', () => push('garage'), { cls: 'ital', key: 'to-garage' }))),
         btn('Start match', () => {
           const c = {
-            teamSize: cfg.teamSize, difficulty: cfg.difficulty,
+            teamSize: cfg.custom ? Math.max(cfg.blueSize, cfg.orangeSize) : cfg.teamSize, difficulty: cfg.difficulty,
+            blueSize: cfg.custom ? cfg.blueSize : cfg.teamSize, orangeSize: cfg.custom ? cfg.orangeSize : cfg.teamSize,
             teammateDifficulty: cfg.split ? cfg.teammateDifficulty : cfg.difficulty,
             opponentDifficulty: cfg.split ? cfg.opponentDifficulty : cfg.difficulty,
             playerTeam: cfg.playerTeam, bodyId: settings.game.carBody, accent: settings.game.accent, durationSec: cfg.durationSec,
@@ -250,8 +268,10 @@ export function createMenus({ api, settings, stats, onOpenChange }) {
     freeplay(p) {
       const fp = settings.game.freeplay;
       const inPause = ctx === 'pause';
-      p.append(h(inPause ? 'div.tp-shade-full' : 'div.tp-shade-l'), title('Free Play', inPause ? 'Options' : 'Training'));
-      const panel = h('div.tp-panel.accent-o', { style: { left: 'calc(var(--u) * 4)', top: 'calc(var(--u) * 13)', width: 'calc(var(--u) * 74)', padding: 'calc(var(--u) * 2) 0' } });
+      p.append(h(inPause ? 'div.tp-shade-full' : 'div.tp-shade-r'), title('Free Play', inPause ? 'Options' : 'Training'));
+      const panel = h('div.tp-panel.accent-o', { style: inPause
+        ? { left: 'calc(var(--u) * 4)', top: 'calc(var(--u) * 13)', width: 'calc(var(--u) * 74)', padding: 'calc(var(--u) * 2) 0' }
+        : { right: 'calc(var(--u) * 3)', top: 'calc(var(--u) * 13)', width: 'min(calc(var(--u) * 70), 44vw)', padding: 'calc(var(--u) * 2) 0' } });
       const rows = h('div.tp-rows',
         toggleRow('Ball prediction line', fp, 'predictionLine', 'Shows where the ball will travel over the next few seconds'),
         toggleRow('Unlimited boost', fp, 'unlimitedBoost', 'Boost never runs out'),
@@ -400,7 +420,7 @@ export function createMenus({ api, settings, stats, onOpenChange }) {
       const w = mv.winner === 0 || mv.winner === 1 ? mv.winner : (mv.scores ? (mv.scores[0] > mv.scores[1] ? 0 : mv.scores[1] > mv.scores[0] ? 1 : null) : null);
       let res = 'Match complete';
       if (me && w !== null) res = me.team === w ? 'Victory' : 'Defeat';
-      p.append(h('div.tp-shade-full', { style: { background: 'rgba(2,4,10,.5)' } }));
+      p.append(h('div.tp-end-shade'));
       const banner = h('div.tp-end-banner',
         h('div.res', res),
         h('div.tp-goal-band.' + (w === 1 ? 't1' : 't0'), h('div.tp-goal-title', w === null ? 'DRAW' : `${TEAM_NAME[w]} WINS`)));
@@ -492,9 +512,10 @@ export function createMenus({ api, settings, stats, onOpenChange }) {
     },
     controls(b) {
       const c = settings.controls;
+      if (c.deadzoneShape === 'circle') { c.deadzoneShape = 'radial'; changed(); } // older saves
       b.append(h('div.tp-sect', 'Gamepad'),
         sliderRow('Controller deadzone', c, 'deadzone', 0, 0.5, 0.01, f2),
-        segRow('Deadzone shape', c, 'deadzoneShape', [['cross', 'Cross'], ['circle', 'Circle']]),
+        segRow('Deadzone shape', c, 'deadzoneShape', [['cross', 'Cross'], ['radial', 'Circle']]),
         sliderRow('Dodge deadzone', c, 'dodgeDeadzone', 0.1, 0.9, 0.01, f2),
         sliderRow('Aerial sensitivity', c, 'aerialSensitivity', 0.5, 3, 0.05, f2),
         sliderRow('Steering sensitivity', c, 'steeringSensitivity', 0.5, 3, 0.05, f2),
@@ -561,12 +582,14 @@ export function createMenus({ api, settings, stats, onOpenChange }) {
     const inp = input();
     if (!inp || !inp.startRebind) return;
     rebinding = { action, device };
+    const prevBinding = clone(settings.bindings[device][action] ?? (device === 'kb' ? [] : ''));
     const cancelBtn = h('button.tp-btn', { type: 'button', 'data-nav': '', 'data-key': 'rb-cancel' }, h('span', 'Cancel'));
     // cancel on press (not click) so the input module never sees this mouse press as the new binding
     const stop = (e) => { e.preventDefault(); e.stopPropagation(); cancelRebind(); };
     cancelBtn.addEventListener('pointerdown', stop);
     cancelBtn.addEventListener('mousedown', stop);
     cancelBtn.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); cancelRebind(); });
+    modalKind = 'rebind';
     modal = h('div.tp-modal', h('div.box',
       h('div.t1', `Rebind · ${device === 'kb' ? 'Keyboard / mouse' : 'Gamepad'}`),
       h('div.t2', ACTION_LABELS[action] || action),
@@ -579,10 +602,12 @@ export function createMenus({ api, settings, stats, onOpenChange }) {
       inp.startRebind(action, device, (res) => {
         if (!rebinding || rebinding.action !== action || rebinding.device !== device) return;
         rebindEndT = performance.now();
-        applyRebindResult(action, device, res);
+        const code = applyRebindResult(action, device, res);
         closeModal();
         changed();
         refresh();
+        const conflicts = code ? findConflicts(action, device, code) : [];
+        if (conflicts.length) showConflict(action, device, code, prevBinding, conflicts);
       });
     } catch (err) {
       closeModal();
@@ -593,19 +618,64 @@ export function createMenus({ api, settings, stats, onOpenChange }) {
   function applyRebindResult(action, device, res) {
     let code = res;
     if (res && typeof res === 'object') code = res.code ?? res.binding ?? res.value ?? null;
-    if (code === null || code === undefined || code === false || code === true || code === '') return;
+    if (code === null || code === undefined || code === false || code === true || code === '' || typeof code !== 'string') return null;
     if (device === 'kb') {
       const cur = settings.bindings.kb[action];
-      if (!(Array.isArray(cur) ? cur.includes(code) : cur === code)) settings.bindings.kb[action] = Array.isArray(code) ? code : [code];
+      if (!(Array.isArray(cur) ? cur.includes(code) : cur === code)) settings.bindings.kb[action] = [code];
     } else if (settings.bindings.pad[action] !== code) settings.bindings.pad[action] = code;
+    return code;
+  }
+  // ---- binding conflicts: the same key / button on two actions
+  function findConflicts(action, device, code) {
+    const map = settings.bindings[device] || {};
+    return Object.keys(map).filter((a) => a !== action && (Array.isArray(map[a]) ? map[a].includes(code) : map[a] === code));
+  }
+  function showConflict(action, device, code, prev, others) {
+    const map = settings.bindings[device];
+    const name = device === 'kb' ? keyName(code) : padName(code);
+    const prevList = device === 'kb' ? (Array.isArray(prev) ? prev : [prev]).filter((c) => c && c !== code) : (prev && prev !== code ? prev : '');
+    const hasPrev = device === 'kb' ? prevList.length > 0 : !!prevList;
+    const done = () => { rebindEndT = performance.now(); closeModal(); changed(); refresh(); };
+    const swap = () => {
+      for (const a of others) {
+        if (device === 'kb') {
+          const rest = (map[a] || []).filter((c) => c !== code);
+          map[a] = [...rest, ...prevList.filter((c) => !rest.includes(c))];
+        } else map[a] = prevList;
+      }
+      done();
+    };
+    const clearOther = () => {
+      for (const a of others) {
+        if (device === 'kb') map[a] = (map[a] || []).filter((c) => c !== code);
+        else map[a] = '';
+      }
+      done();
+    };
+    const label = (a) => ACTION_LABELS[a] || a;
+    const prevName = hasPrev ? (device === 'kb' ? keyList(prevList) : padName(prevList)) : '';
+    const b1 = hasPrev ? btn(`Swap (${prevName} → ${others.map(label).join(', ')})`, swap, { key: 'cf-swap' }) : null;
+    const b2 = btn(`Unbind from ${others.length > 1 ? 'others' : label(others[0])}`, clearOther, { key: 'cf-clear' });
+    const b3 = btn('Keep both', done, { key: 'cf-keep' });
+    modalKind = 'conflict';
+    modal = h('div.tp-modal', h('div.box',
+      h('div.t1', 'Binding conflict'),
+      h('div.t2', name),
+      h('div.t3.static', `is now bound to ${label(action)} and also to ${others.map(label).join(', ')}`),
+      h('div.row', b1, b2, b3)));
+    modal._keep = done;
+    el.appendChild(modal);
+    nav.pageChanged();
   }
   function closeModal() {
+    modalKind = null;
     rebinding = null;
     if (modal) { modal.remove(); modal = null; }
     nav.pageChanged();
   }
   function cancelRebind() {
     rebindEndT = performance.now();
+    if (modalKind === 'conflict' && modal) { modal._keep(); return; }
     const inp = input();
     if (rebinding && inp && inp.cancelRebind) { try { inp.cancelRebind(); } catch (e) { /* ignore */ } }
     closeModal();
@@ -617,7 +687,8 @@ export function createMenus({ api, settings, stats, onOpenChange }) {
     // the key that just finished / cancelled a rebind must not also navigate the menu
     if (performance.now() - rebindEndT < 200) { e.preventDefault(); return; }
     if (modal) {
-      if (e.code === 'Escape' || e.key === 'Escape') { e.preventDefault(); e.stopImmediatePropagation(); cancelRebind(); }
+      if (e.code === 'Escape' || e.key === 'Escape') { e.preventDefault(); e.stopImmediatePropagation(); cancelRebind(); return; }
+      if (modalKind === 'conflict') nav.onKey(e);
       return; // everything else belongs to the rebind capture
     }
     const tgt = e.target;
@@ -660,7 +731,7 @@ export function createMenus({ api, settings, stats, onOpenChange }) {
     update(dt) {
       if (ctx === null) return;
       if (tipEl) { tipT += dt; if (tipT > 7) { tipT = 0; tipIdx++; renderTip(); } }
-      if (!modal) nav.pollGamepad(dt);
+      if (!modal || modalKind === 'conflict') nav.pollGamepad(dt);
     },
     dispose() { removeEventListener('keydown', onKeyDown, true); hide(); },
   };
