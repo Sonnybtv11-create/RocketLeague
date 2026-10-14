@@ -84,7 +84,7 @@ export const CSS = String.raw`
 .tp-fi.chat { background: linear-gradient(90deg, rgba(6,10,22,.35), rgba(20,26,48,.85) 25%); }
 .tp-fi.chat .msg { color: #fff; font-style: italic; }
 .tp-fi.sys .msg { color: var(--gold-l); letter-spacing: 0.08em; }
-@keyframes tp-feed-in { from { opacity: 0; transform: translateX(calc(var(--u) * 4)); } to { opacity: 1; transform: none; } }
+@keyframes tp-feed-in { from { opacity: 0.6; transform: translateX(calc(var(--u) * 4)); } to { opacity: 1; transform: none; } }
 
 /* points pop-ups */
 .tp-pops { position: absolute; right: calc(var(--u) * 30); top: 50%; display: flex; flex-direction: column; align-items: flex-end; gap: calc(var(--u) * 0.5); }
@@ -105,9 +105,9 @@ export const CSS = String.raw`
 .tp-count.go { font-size: calc(var(--u) * 19); font-weight: 800; font-style: italic; color: #fff; letter-spacing: 0.02em;
   text-shadow: 0 0 calc(var(--u) * 2.5) rgba(255, 210, 90, 0.95), 0 0 calc(var(--u) * 0.4) rgba(0,0,0,.6); }
 .tp-count.go.anim { animation: tp-go 1.1s ease-out forwards; }
-@keyframes tp-count { 0% { opacity: 0; transform: translate(-50%, -50%) scale(1.9); } 18% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+@keyframes tp-count { 0% { opacity: 0.65; transform: translate(-50%, -50%) scale(1.6); } 18% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
   100% { opacity: 1; transform: translate(-50%, -50%) scale(0.94); } }
-@keyframes tp-go { 0% { opacity: 0; transform: translate(-50%, -50%) scale(0.6); } 15% { opacity: 1; transform: translate(-50%, -50%) scale(1.08); }
+@keyframes tp-go { 0% { opacity: 0.7; transform: translate(-50%, -50%) scale(0.7); } 15% { opacity: 1; transform: translate(-50%, -50%) scale(1.08); }
   60% { opacity: 1; transform: translate(-50%, -50%) scale(1); } 100% { opacity: 0; transform: translate(-50%, -50%) scale(1.5); } }
 
 /* goal banner */
@@ -121,7 +121,7 @@ export const CSS = String.raw`
   background: rgba(6, 10, 22, 0.8); font-size: calc(var(--u) * 2.6); text-transform: uppercase; letter-spacing: 0.05em; white-space: nowrap; }
 .tp-goal-sub .lbl { color: var(--dim); font-size: 0.7em; letter-spacing: 0.14em; margin-right: 0.4em; }
 .tp-goal-sub .v { font-weight: 700; }
-@keyframes tp-goal-in { from { opacity: 0; transform: scale(1.4); } to { opacity: 1; transform: none; } }
+@keyframes tp-goal-in { from { opacity: 0.7; transform: scale(1.3); } to { opacity: 1; transform: none; } }
 
 /* replay */
 #ui-root .tp-replay { pointer-events: auto; cursor: pointer; }

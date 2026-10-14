@@ -298,12 +298,12 @@ export function createHUD({ api, settings }) {
           const team = lg.team === 1 ? 1 : 0;
           const kmh = Math.round((lg.ballSpeed || 0) * 0.036);
           const hasScorer = lg.scorerId !== undefined && lg.scorerId !== null && lg.scorerId >= 0 && !!lg.scorerName;
-          replayCard.append(
+          replayCard.append(...[
             h('div.hd', hasScorer ? 'GOAL BY' : 'TEAM GOAL'),
             hasScorer ? h('div.bar.' + teamCls(team), h('div.who', lg.scorerName),
               lg.assistName ? h('div.ast', `Assist: ${lg.assistName}`) : null) : null,
             h('div.meta', h('span', `${kmh}`, h('small', 'KM/H')), h('span', TEAM_NAME[team], h('small', 'SCORES')),
-              lg.ownGoal ? h('span', { style: { color: 'var(--gold-l)' } }, 'OWN GOAL') : null));
+              lg.ownGoal ? h('span', { style: { color: 'var(--gold-l)' } }, 'OWN GOAL') : null)].filter(Boolean));
         }
         replaySkip.innerHTML = '';
         replaySkip.append('Press ', h('span.tp-key' + (pad ? '.pad' : ''), keyTxt), ' / click to skip');
