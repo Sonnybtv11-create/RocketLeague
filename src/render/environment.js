@@ -37,7 +37,8 @@ function buildMullions(team) {
   const n = new THREE.Vector3();
   const stations = [];
   for (let s = 600; s < total - 300; s += 1150) stations.push(s);
-  const rows = PROFILE.slice(SPLIT_ROW);
+  // straight vertical lines: crossbar height up to where the ceiling fillet starts
+  const rows = PROFILE.slice(SPLIT_ROW, SPLIT_ROW + 2);
   for (const s0 of stations) {
     const base = pos.length / 3;
     for (const row of rows) {
@@ -141,7 +142,12 @@ export function createEnvironment(ctx) {
     // back faces (seen only from outside the arena) are a plain dark structure
     m.onBeforeCompile = (sh) => {
       sh.fragmentShader = sh.fragmentShader
-        .replace('#include <map_fragment>', '#include <map_fragment>\n if (!gl_FrontFacing) diffuseColor.rgb = vec3(0.10, 0.11, 0.13);')
+        .replace('#include <map_fragment>', `#include <map_fragment>
+          if (!gl_FrontFacing) { // exterior: ribbed structural panels
+            float rib = step(0.86, fract(vMapUv.x * 16.0));
+            float band = step(0.47, fract(vMapUv.y * 2.0)) * step(fract(vMapUv.y * 2.0), 0.53);
+            diffuseColor.rgb = vec3(0.13, 0.14, 0.16) + vec3(0.07) * max(rib, band);
+          }`)
         .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n if (!gl_FrontFacing) totalEmissiveRadiance = vec3(0.0);');
     };
     m.customProgramCacheKey = () => 'tp-lowerwall';
@@ -166,7 +172,7 @@ export function createEnvironment(ctx) {
     }
     const gm = track(vertexEmissive(new THREE.MeshStandardMaterial({
       map: hex, emissiveMap: hex, vertexColors: true, transparent: true,
-      roughness: 0.15, metalness: 0.0, side: THREE.DoubleSide, depthWrite: false,
+      roughness: 0.15, metalness: 0.0, side: THREE.DoubleSide, depthWrite: false, forceSinglePass: true,
     }), 'glass'));
     const glass = new THREE.Mesh(track(merge(parts)), gm);
     glass.renderOrder = 3; glass.name = 'glass';
@@ -255,10 +261,11 @@ export function createEnvironment(ctx) {
   scene.environmentIntensity = 0.6;
 
   // ------------------------------------------------------------ quality
-  let qName = null;
+  // Only touch what changed. The environment map is built lazily a couple of
+  // frames after start-up (keeps PMREM work off the critical start-up path).
+  let envWanted = 128, envDelay = 2, curDetail = -1;
   function setQuality(name) {
     const q = QUALITY[name] || QUALITY.high;
-    qName = name;
     const sm = q.shadowMap || 2048;
     if (sun.shadow.mapSize.x !== sm) {
       sun.shadow.mapSize.set(sm, sm);
@@ -266,15 +273,20 @@ export function createEnvironment(ctx) {
     }
     stadium.setCrowd(q.crowd ?? 1);
     const lvl = q.reflections ?? 1;
-    buildEnv([64, 128, 256][Math.max(0, Math.min(2, lvl))]);
+    envWanted = [64, 128, 256][Math.max(0, Math.min(2, lvl))];
+    if (envDelay <= 0) buildEnv(envWanted);
     const detailLvl = name === 'low' ? 0 : (name === 'medium' ? 1 : 2);
-    stadium.setDetail(detailLvl);
-    pads.setDetail(detailLvl);
-    sky.material.uniforms.uCloudDetail.value = detailLvl === 0 ? 4 : 6;
-    scenery.visible = true;
-    field.map.anisotropy = detailLvl === 0 ? Math.min(4, maxAniso) : maxAniso;
-    field.map.needsUpdate = true;
+    if (detailLvl !== curDetail) {
+      const wasLow = curDetail === 0;
+      curDetail = detailLvl;
+      stadium.setDetail(detailLvl);
+      pads.setDetail(detailLvl);
+      sky.material.uniforms.uCloudDetail.value = detailLvl === 0 ? 4 : 6;
+      const aniso = detailLvl === 0 ? Math.min(4, maxAniso) : maxAniso;
+      if (field.map.anisotropy !== aniso) { field.map.anisotropy = aniso; if (wasLow || detailLvl === 0) field.map.needsUpdate = true; }
+    }
   }
+  field.map.anisotropy = maxAniso;
   setQuality(ctx.qualityName || 'high');
 
   let time = 0;
@@ -284,6 +296,7 @@ export function createEnvironment(ctx) {
       dt = Math.min(dt || 0, 0.1);
       time += dt;
       sky.material.uniforms.uTime.value = time;
+      if (envDelay > 0 && --envDelay === 0) buildEnv(envWanted);
       if (view) pads.update(view, dt);
       stadium.update(view, dt, ctx.camera);
     },

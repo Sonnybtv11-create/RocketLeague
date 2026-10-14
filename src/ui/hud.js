@@ -36,7 +36,7 @@ export function createHUD({ api, settings }) {
   const bugClock = h('div.tp-bug-clock', '5:00');
   const bugTag = h('div.tp-bug-tag.tp-hidden', 'OVERTIME');
   const waitTag = h('div.tp-bug-tag.wait.tp-hidden', 'WAITING FOR THE BALL TO HIT THE GROUND');
-  const bug = h('div.tp-bug', bugBlue, bugClock, bugOrange, bugTag, waitTag);
+  const bug = h('div.tp-bug', h('div.tp-bug-glow.b'), h('div.tp-bug-glow.o'), bugBlue, bugClock, bugOrange, bugTag, waitTag);
   const fpBug = h('div.tp-bug-fp.tp-hidden', 'FREE PLAY');
 
   // ---------------------------------------------------------- boost meter
@@ -103,6 +103,7 @@ export function createHUD({ api, settings }) {
   // ---------------------------------------------------------- state
   let lastCd = 0, lastCdView = -1, lastState = null, countT = 0, goalT = 0, lastPlayerId = -1, lastReplayKey = '', lastDemoFeed = { id: -2, t: -9 };
   let lastDemoBy = null;
+  let bigHoldUntil = -1;
   let now = 0;
   let lastView = null;
 
@@ -134,6 +135,7 @@ export function createHUD({ api, settings }) {
   }
   function restartAnim(node) { node.classList.remove('anim'); void node.offsetWidth; node.classList.add('anim'); }
   function showCount(n) {
+    if (now < bigHoldUntil) return; // e.g. OVERTIME is showing; the countdown follows it
     if (n === lastCd && countT > 0) return;
     lastCd = n;
     count.classList.remove('go');
@@ -142,12 +144,13 @@ export function createHUD({ api, settings }) {
     restartAnim(count);
     countT = 1.05;
   }
-  function showBig(text) {
+  function showBig(text, hold = 0) {
+    bigHoldUntil = hold > 0 ? now + hold : bigHoldUntil;
     count.classList.add('go');
     count.textContent = text;
     setShown(count, true);
     restartAnim(count);
-    countT = 1.15;
+    countT = Math.max(1.15, hold);
   }
   let goShownAt = -9;
   function showGo() {
@@ -164,7 +167,7 @@ export function createHUD({ api, settings }) {
     goalEl.append(
       h('div.tp-goal-band.' + teamCls(team), h('div.tp-goal-title', `${TEAM_NAME[team]} SCORES!`)),
       h('div.tp-goal-sub',
-        h('span', h('span.lbl', 'GOAL'), h('span.v.' + teamCls(scorer ? scorer.team : team), scorer ? scorer.name : '—')),
+        scorer ? h('span', h('span.lbl', 'GOAL'), h('span.v.' + teamCls(scorer.team), scorer.name)) : h('span', h('span.v', 'TEAM GOAL')),
         e.ownGoal ? h('span', h('span.v', { style: { color: 'var(--gold-l)' } }, 'OWN GOAL')) : null,
         assist ? h('span', h('span.lbl', 'ASSIST'), h('span.v.' + teamCls(assist.team), assist.name)) : null,
         h('span', h('span.lbl', 'SPEED'), h('span.v', `${kmh} KM/H`))));
@@ -232,7 +235,7 @@ export function createHUD({ api, settings }) {
         }
         case EV.KICKOFF_COUNTDOWN: if (e.n > 0) showCount(e.n); break;
         case EV.KICKOFF_GO: showGo(); break;
-        case EV.OVERTIME: showBig('OVERTIME'); addFeed('<span class="msg">OVERTIME — NEXT GOAL WINS</span>', 'sys'); break;
+        case EV.OVERTIME: showBig('OVERTIME', 1.6); addFeed('<span class="msg">OVERTIME — NEXT GOAL WINS</span>', 'sys'); break;
         case EV.REPLAY_START: setShown(goalEl, false); goalT = 0; break;
         default: break;
       }
@@ -274,6 +277,7 @@ export function createHUD({ api, settings }) {
     lastCdView = cdv;
     if (countT > 0) { countT -= dt; if (countT <= 0 && !counting) setShown(count, false); }
     if (!counting && countT <= 0) { setShown(count, false); lastCd = 0; }
+    if (counting && countT <= 0 && now >= bigHoldUntil && lastCd !== cdv) showCount(cdv);
 
     // goal banner
     if (goalT > 0) { goalT -= dt; if (goalT <= 0 || replay) { goalT = 0; setShown(goalEl, false); } }
@@ -293,10 +297,11 @@ export function createHUD({ api, settings }) {
         if (lg) {
           const team = lg.team === 1 ? 1 : 0;
           const kmh = Math.round((lg.ballSpeed || 0) * 0.036);
+          const hasScorer = lg.scorerId !== undefined && lg.scorerId !== null && lg.scorerId >= 0 && !!lg.scorerName;
           replayCard.append(
-            h('div.hd', 'GOAL BY'),
-            h('div.bar.' + teamCls(team), h('div.who', lg.scorerName || TEAM_NAME[team]),
-              lg.assistName ? h('div.ast', `Assist: ${lg.assistName}`) : null),
+            h('div.hd', hasScorer ? 'GOAL BY' : 'TEAM GOAL'),
+            hasScorer ? h('div.bar.' + teamCls(team), h('div.who', lg.scorerName),
+              lg.assistName ? h('div.ast', `Assist: ${lg.assistName}`) : null) : null,
             h('div.meta', h('span', `${kmh}`, h('small', 'KM/H')), h('span', TEAM_NAME[team], h('small', 'SCORES')),
               lg.ownGoal ? h('span', { style: { color: 'var(--gold-l)' } }, 'OWN GOAL') : null));
         }

@@ -88,12 +88,14 @@ export function createGoals(ctx, geos) {
     // goal floor (team-lit hex floor)
     const fl = clean(geos.goalFloor[team]);
     scaleUV(fl, (2 * GW) / 380, (GD - Y) / 380);
-    floorParts.push(setEmis(setColor(fl, light.clone().lerp(new THREE.Color(0xffffff), 0.3)), glow, 0.9));
+    floorParts.push(setEmis(setColor(fl, light.clone().lerp(new THREE.Color(0xffffff), 0.3)), glow, team ? 0.55 : 0.9));
 
     // net (side walls, roof, back): transparent diamond mesh, team tint
     const net = clean(geos.goalNet[team]);
     scaleUV(net, 1 / 1.6, 1 / 1.6); // uv in metres -> one diamond pair per 1.6 m
-    netParts.push(setEmis(setColor(net, light), glow, 0.8));
+    // orange glows much brighter than blue at equal intensity: balance so both
+    // goal mouths read as openings at range
+    netParts.push(setEmis(setColor(net, light.clone().multiplyScalar(team ? 0.55 : 0.8)), glow, team ? 0.3 : 0.6));
 
     // outer backing shell behind the net (dark structure, single-sided, faces into the goal)
     const o = 70, D0 = Y + 10, D1 = GD + o;
@@ -105,11 +107,11 @@ export function createGoals(ctx, geos) {
     }
     const roof = new THREE.PlaneGeometry(2 * (GW + o) * S, (D1 - D0) * S); roof.rotateX(Math.PI / 2); roof.translate(0, (GH + o) * S, s * (D0 + D1) * 0.5 * S); shell.push(roof);
     const back = new THREE.PlaneGeometry(2 * (GW + o) * S, (GH + o) * S); back.translate(0, (GH + o) * 0.5 * S, s * D1 * S); shell.push(back);
-    for (const g of shell) shellParts.push(setEmis(setColor(faceTowards(clean(g), centre), new THREE.Color(0x141a26)), dark, 0.35));
+    for (const g of shell) shellParts.push(setEmis(setColor(faceTowards(clean(g), centre), new THREE.Color(0x080a0f)), dark, team ? 0.08 : 0.15));
     // light strips along the back of the shell
     for (const zz of [0.3, 0.62]) {
       const st = new THREE.PlaneGeometry(2 * GW * S, 0.12); st.translate(0, GH * zz * S, s * (D1 - 2) * S);
-      glowParts.push(setColor(faceTowards(clean(st), centre), glow.clone().multiplyScalar(1.4)));
+      glowParts.push(setColor(faceTowards(clean(st), centre), glow.clone().multiplyScalar(team ? 0.7 : 1.1)));
     }
   }
 
@@ -137,8 +139,8 @@ export function createGoals(ctx, geos) {
   // --- nets (transparent)
   const nt = track(makeNetTexture(renderer));
   const netMat = track(vertexEmissive(new THREE.MeshStandardMaterial({
-    map: nt, emissiveMap: nt, vertexColors: true, transparent: true, opacity: 0.85, roughness: 0.6,
-    side: THREE.DoubleSide, depthWrite: false,
+    map: nt, emissiveMap: nt, vertexColors: true, transparent: true, opacity: 0.6, roughness: 0.6,
+    side: THREE.DoubleSide, depthWrite: false, forceSinglePass: true,
   }), 'net'));
   const nets = new THREE.Mesh(track(merge(netParts)), netMat);
   nets.renderOrder = 2; nets.name = 'goalNets';

@@ -112,8 +112,10 @@ function smallBaseGeometry() {
   return new THREE.LatheGeometry(prof, 28);
 }
 function smallGlowGeometry() {
-  const puck = new THREE.CylinderGeometry(0.34, 0.38, 0.14, 24); puck.translate(0, 0.11, 0);
-  return puck;
+  // flat glowing puck (low, slightly bevelled) + thin outer light ring
+  const puck = new THREE.CylinderGeometry(0.36, 0.4, 0.05, 28); puck.translate(0, 0.085, 0);
+  const ring = new THREE.RingGeometry(0.5, 0.58, 28); ring.rotateX(-Math.PI / 2); ring.translate(0, 0.105, 0);
+  return mergeGeometries([puck.toNonIndexed(), ring.toNonIndexed()], false);
 }
 function flameGeometry() {
   // open cone, uv.x around, uv.y up
@@ -130,7 +132,7 @@ export function createPads(ctx) {
   const flameMat = new THREE.ShaderMaterial({
     uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, { uTime: { value: 0 } }]),
     vertexShader: FLAME_VERT, fragmentShader: FLAME_FRAG,
-    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, fog: true,
+    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, forceSinglePass: true, fog: true,
   });
   const orbMat = new THREE.ShaderMaterial({
     uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, { uTime: { value: 0 } }]),
@@ -159,7 +161,6 @@ export function createPads(ctx) {
       bigFlame: mk(flameGeometry(), flameMat, big.length),
       smallBase: mk(smallBaseGeometry(), metal, small.length, true),
       smallGlow: mk(smallGlowGeometry(), glowMat, small.length),
-      smallFlame: mk(flameGeometry(), flameMat, small.length),
     };
     // flames and glow use instanceColor for the on/off state
     for (const k of ['bigGlow', 'smallGlow']) {
@@ -201,25 +202,19 @@ export function createPads(ctx) {
         }
         if (active !== p.active) { meshes.bigGlow.setColorAt(p.slot, active ? FULL : EMPTY); meshes.bigGlow.instanceColor.needsUpdate = true; }
       } else {
-        if (active) {
-          dummy.position.set(p.x, 0, p.z); dummy.rotation.set(0, time * 0.7 + p.phase, 0);
-          const fl = 0.42 + Math.sin(time * 11 + p.phase) * 0.04; dummy.scale.set(0.5, fl, 0.5); dummy.updateMatrix();
-          meshes.smallFlame.setMatrixAt(p.slot, dummy.matrix);
-        } else meshes.smallFlame.setMatrixAt(p.slot, zero);
         if (active !== p.active) { meshes.smallGlow.setColorAt(p.slot, active ? SMALL_FULL : EMPTY); meshes.smallGlow.instanceColor.needsUpdate = true; }
       }
       p.active = active;
     }
     meshes.bigOrb.instanceMatrix.needsUpdate = true;
     meshes.bigFlame.instanceMatrix.needsUpdate = true;
-    meshes.smallFlame.instanceMatrix.needsUpdate = true;
   }
 
   let detail = 2;
   function setDetail(level) { // 0 = low: no flames
     detail = level;
     if (!meshes) return;
-    meshes.bigFlame.visible = meshes.smallFlame.visible = level > 0;
+    meshes.bigFlame.visible = level > 0;
   }
 
   function dispose(keepMaterials) {

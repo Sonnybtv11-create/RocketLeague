@@ -216,6 +216,7 @@ function buildCrowd(path, quality) {
   });
   const mesh = new THREE.Mesh(g, mat);
   mesh.frustumCulled = false;
+  mesh.renderOrder = -1; // draw before the seats (discard kills early-z for later draws on tile GPUs)
   mesh.name = 'crowd';
   return mesh;
 }

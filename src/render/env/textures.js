@@ -53,27 +53,43 @@ export function makeFieldTextures(renderer) {
   // --- turf base: checkerboard mowing squares + team-half tint
   g.setTransform(1, 0, 0, 1, 0, 0);
   toSim();
-  const SQ = 1024;
-  for (let ix = -4; ix < 4; ix++) {
+  const SQ = 1024, OX = SQ / 2; // half-square x offset: no light/dark seam on x = 0
+  for (let ix = -5; ix < 5; ix++) {
     for (let iy = -5; iy < 5; iy++) {
       const light = ((ix + iy) & 1) === 0;
       const team = iy < 0 ? 0 : 1;
       let r = light ? 66 : 50, gg = light ? 118 : 94, b = light ? 53 : 42;
       if (team === 0) { r -= 3; b += 5; } else { r += 5; gg += 1; b -= 3; }
       g.fillStyle = `rgb(${r},${gg},${b})`;
-      g.fillRect(ix * SQ, iy * SQ, SQ, SQ);
+      g.fillRect(ix * SQ + OX, iy * SQ, SQ, SQ);
     }
   }
   // fine mowing stripes inside each square (alternating direction per square)
   g.globalAlpha = 0.025;
-  for (let ix = -4; ix < 4; ix++) for (let iy = -5; iy < 5; iy++) {
+  for (let ix = -5; ix < 5; ix++) for (let iy = -5; iy < 5; iy++) {
     const horiz = ((ix + iy) & 1) === 0;
     for (let k = 0; k < 8; k += 2) {
       g.fillStyle = '#ffffff';
-      if (horiz) g.fillRect(ix * SQ, iy * SQ + k * 128, SQ, 128); else g.fillRect(ix * SQ + k * 128, iy * SQ, 128, SQ);
+      if (horiz) g.fillRect(ix * SQ + OX, iy * SQ + k * 128, SQ, 128); else g.fillRect(ix * SQ + OX + k * 128, iy * SQ, 128, SQ);
     }
   }
   g.globalAlpha = 1;
+  // low/medium-frequency mottling: tiny random canvases scaled up with smoothing
+  // and overlaid (fast 2D-canvas primitives, no per-pixel JS loop)
+  g.setTransform(1, 0, 0, 1, 0, 0);
+  g.imageSmoothingEnabled = true;
+  g.globalCompositeOperation = 'overlay';
+  for (const [mw, mh, alpha] of [[34, 42, 0.22], [150, 186, 0.1]]) {
+    const m = canvas(mw, mh);
+    const im = m.g.createImageData(mw, mh);
+    for (let i = 0; i < mw * mh; i++) { const v = 128 + (R() - 0.5) * 120; im.data[i * 4] = im.data[i * 4 + 1] = im.data[i * 4 + 2] = v; im.data[i * 4 + 3] = 255; }
+    m.g.putImageData(im, 0, 0);
+    g.globalAlpha = alpha;
+    g.drawImage(m.c, 0, 0, W, Hh);
+  }
+  g.globalCompositeOperation = 'source-over';
+  g.globalAlpha = 1;
+  toSim();
 
   const line = (w, col = 'rgba(255,255,255,0.92)') => { g.strokeStyle = col; g.lineWidth = w; g.lineCap = 'butt'; g.lineJoin = 'miter'; };
   const poly = (pts, close) => { g.beginPath(); pts.forEach((p, i) => (i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1]))); if (close) g.closePath(); };
@@ -123,23 +139,25 @@ export function makeFieldTextures(renderer) {
     g.globalAlpha = 1;
   }
 
-  // --- centre disc (half orange / half blue) and radial team stripes
+  // --- centre motif (original): a hexagon split along the halfway line into the
+  // two team colours, ringed by two concentric dashed team-colour rings.
+  const hexPts = (r) => { const p = []; for (let i = 0; i < 6; i++) { const a = i * Math.PI / 3; p.push([r * Math.cos(a), r * Math.sin(a)]); } return p; };
   for (const team of [0, 1]) {
     const s = team === 0 ? -1 : 1;
-    g.fillStyle = TEAM_PAINT[team]; g.globalAlpha = 0.9;
-    g.beginPath(); g.moveTo(330, 0); g.arc(0, 0, 330, 0, s * Math.PI, s < 0); g.closePath(); g.fill();
-    g.globalAlpha = 0.75;
-    const N = 9;
-    for (let i = 0; i < N; i++) {
-      const a0 = (i + 0.5) / N * Math.PI, w = 0.09;
-      const a = a0 * s;
-      g.beginPath();
-      g.arc(0, 0, 720, a - w, a + w, false);
-      g.arc(0, 0, 420, a + w * 1.4, a - w * 1.4, true);
-      g.closePath(); g.fill();
-    }
-    g.globalAlpha = 1;
+    g.save();
+    g.beginPath(); g.rect(-2000, s > 0 ? 0 : -2000, 4000, 2000); g.clip();
+    g.fillStyle = TEAM_PAINT[team]; g.globalAlpha = 0.85 * PAINT_ALPHA[team];
+    poly(hexPts(360), true); g.fill();
+    g.globalAlpha = 0.7 * PAINT_ALPHA[team];
+    g.lineWidth = 44; g.strokeStyle = TEAM_PAINT[team];
+    g.setLineDash([150, 90]);
+    g.beginPath(); g.arc(0, 0, 560, 0, Math.PI * 2); g.stroke();
+    g.lineWidth = 26; g.setLineDash([60, 70]);
+    g.beginPath(); g.arc(0, 0, 720, 0, Math.PI * 2); g.stroke();
+    g.setLineDash([]);
+    g.restore();
   }
+  g.globalAlpha = 1;
 
   // --- white markings
   // boundary line: ring at u = RF + 70 (follows the octagon) incl. goal line
@@ -156,8 +174,7 @@ export function makeFieldTextures(renderer) {
   line(36);
   poly([[-X + RF + 70, 0], [X - RF - 70, 0]]); g.stroke();
   g.beginPath(); g.arc(0, 0, 1000, 0, Math.PI * 2); g.stroke();
-  line(20); g.beginPath(); g.arc(0, 0, 335, 0, Math.PI * 2); g.stroke();
-  line(14, 'rgba(255,255,255,0.85)'); poly([[-335, 0], [335, 0]]); g.stroke();
+  line(20); poly(hexPts(375), true); g.stroke();
   for (const s of [-1, 1]) {
     line(32);
     // penalty box
@@ -187,28 +204,6 @@ export function makeFieldTextures(renderer) {
     line(18, 'rgba(255,214,90,0.7)'); g.beginPath(); g.arc(p[0], p[1], 260, 0, Math.PI * 2); g.stroke();
   }
 
-  // --- per-pixel grass noise + low-frequency mottling
-  g.setTransform(1, 0, 0, 1, 0, 0);
-  const img = g.getImageData(0, 0, W, Hh);
-  const d = img.data;
-  // low-frequency mottle grid
-  const MG = 64, mw = Math.ceil(W / MG) + 2, mh = Math.ceil(Hh / MG) + 2;
-  const mot = new Float32Array(mw * mh);
-  for (let i = 0; i < mot.length; i++) mot[i] = R() - 0.5;
-  for (let y = 0; y < Hh; y++) {
-    const fy = y / MG, iy = fy | 0, ty = fy - iy;
-    for (let x = 0; x < W; x++) {
-      const fx = x / MG, ix = fx | 0, tx = fx - ix;
-      const m00 = mot[iy * mw + ix], m10 = mot[iy * mw + ix + 1], m01 = mot[(iy + 1) * mw + ix], m11 = mot[(iy + 1) * mw + ix + 1];
-      const m = (m00 * (1 - tx) + m10 * tx) * (1 - ty) + (m01 * (1 - tx) + m11 * tx) * ty;
-      const n = (R() - 0.5) * 10 + m * 14;
-      const i = (y * W + x) * 4;
-      d[i] = Math.max(0, Math.min(255, d[i] + n * 0.8));
-      d[i + 1] = Math.max(0, Math.min(255, d[i + 1] + n));
-      d[i + 2] = Math.max(0, Math.min(255, d[i + 2] + n * 0.6));
-    }
-  }
-  g.putImageData(img, 0, 0);
   const map = finish(new THREE.CanvasTexture(c), renderer);
   return { map };
 }

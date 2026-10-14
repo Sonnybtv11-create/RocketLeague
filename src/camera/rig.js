@@ -108,7 +108,7 @@ export function pushOut(sdf, p, clearance = CLEARANCE) {
 export function createCarRig() {
   const s = {
     init: false, lastCarPos: v3(), pivotLag: v3(), heading: v3(0, 1, 0), up: cp(WORLD_UP),
-    ballBlend: 0, pitchExtra: 0, lookYaw: 0, boomScale: 1, lastPose: null,
+    ballBlend: 0, pitchExtra: 0, lookYaw: 0, boomScale: 1, lastPose: null, surfLock: 0, raise: 0,
   };
 
   function reset() { s.init = false; }
@@ -149,7 +149,21 @@ export function createCarRig() {
 
     // ---------------------------------------------------------------- frame up
     const carCamUp = norm(lerpV(WORLD_UP, cup, wallW));
-    const upTarget = b > 0 ? slerpDir(carCamUp, WORLD_UP, b) : carCamUp;
+    // Ball cam normally uses a world-up frame. On walls / the ceiling that frame swings the
+    // boom into the surface (camera collapses into the car), so when the world-up ball-cam
+    // boom would keep < ~60% of its length we lock the ball cam to the surface frame instead
+    // (it then orbits about the surface normal, like car cam on walls).
+    let lockT = 0;
+    if (b > 0 && ball && wallW > 0.01 && arena && arena.sdf) {
+      const hb = planarNorm(sub(ball.pos, cpos), WORLD_UP);
+      const camW = rigPos(cpos, hb, WORLD_UP, D, H, 0);
+      const offW = sub(camW, cpos), lw = len(offW);
+      const fr = clearanceLength(arena.sdf, arena.raycast, cpos, mul(offW, 1 / lw), lw) / lw;
+      lockT = smoothstep(0.75, 0.55, fr) * smoothstep(0.01, 0.3, wallW);
+    }
+    s.surfLock = teleport ? lockT : s.surfLock + (lockT - s.surfLock) * expK(lockT > s.surfLock ? 8 : 2.5, dt);
+    const worldW = b * (1 - s.surfLock);
+    const upTarget = worldW > 0 ? slerpDir(carCamUp, WORLD_UP, worldW) : carCamUp;
     if (teleport) s.up = upTarget;
     else s.up = norm(slerpDir(s.up, upTarget, expK(onSurface ? 9 : 3.2, dt)));
     const up = s.up;
@@ -232,10 +246,28 @@ export function createCarRig() {
     }
     s.pitchExtra = teleport ? pitchTarget : s.pitchExtra + (pitchTarget - s.pitchExtra) * expK(6, dt);
     const orbit = Math.min(s.pitchExtra, orbitMax);
-    const viewPitch = angle + s.pitchExtra;
+    const viewPitchBase = angle + s.pitchExtra;
+
+    // ---------------------------------------------------------------- boom raise
+    // If the boom would still collapse (backing into the net / a corner, surface-locked ball
+    // cam under the crossbar...), swing it up over the car instead of pulling it into the car:
+    // the whole rig pitches down by `raise`, so the car keeps its place on screen.
+    let raiseT = 0;
+    if (arena && arena.sdf) {
+      let best = -1, bestR = 0;
+      for (let r = 0; r <= 80 * DEG + 1e-9; r += 10 * DEG) {
+        const pr = rigPos(pivot, heading, up, D, H, orbit - r);
+        const o = sub(pr, cpos), lo = len(o) || 1;
+        const fr = clearanceLength(arena.sdf, arena.raycast, cpos, mul(o, 1 / lo), lo) / lo;
+        if (fr > best + 0.02) { best = fr; bestR = r; }
+        if (fr >= 0.85) break;
+      }
+      raiseT = bestR;
+    }
+    s.raise = teleport ? raiseT : s.raise + (raiseT - s.raise) * expK(raiseT > s.raise ? 10 : 2.5, dt);
 
     // ---------------------------------------------------------------- position + collision
-    const ideal = rigPos(pivot, heading, up, D, H, orbit);
+    const ideal = rigPos(pivot, heading, up, D, H, orbit - s.raise);
     const origin = cpos;
     const off = sub(ideal, origin);
     const offLen = len(off) || boomL;
@@ -248,6 +280,7 @@ export function createCarRig() {
     let pos = add(origin, mul(dirC, offLen * s.boomScale));
     if (arena && arena.sdf) pos = pushOut(arena.sdf, pos);
 
+    const viewPitch = viewPitchBase - s.raise;
     const dir = norm(add(mul(heading, Math.cos(viewPitch)), mul(up, Math.sin(viewPitch))));
     const camUp = norm(sub(mul(up, Math.cos(viewPitch)), mul(heading, Math.sin(viewPitch))));
     s.init = true;
