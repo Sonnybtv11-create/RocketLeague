@@ -37,5 +37,26 @@ KEY CONSTANTS (see src/sim/const.js in the repository)
   brake 3500, coast 525; jump 291.67 + 1458.33 hold (0.025-0.2 s); dodge 500 (2.5x back,
   1.9x side); flip torque 260/224 for 0.65 s; air torque (130,95,400)*2pi/65536*1000.
 
-VALUES THAT COULD NOT BE VERIFIED AGAINST THE REAL GAME (see the repository notes)
-  __UNVERIFIED__
+VERIFICATION
+  * The physics was compared tick-by-tick against a compiled RocketSim library on identical
+    arena geometry: ball hits (1400/2300 uu/s -> 1925/3043 vs 1923/3037), bumps, jump heights
+    (89.2 / 231.8 / 488.3 uu), ball bounces/rolling and flip impulses match to <0.5%.
+  * In-game self-tests (F3 -> Run self-tests): 30 checks covering the spec's phase 1-5 numbers.
+
+VALUES THAT COULD NOT BE VERIFIED AGAINST THE REAL GAME
+  * Ball speed from a 1400 uu/s straight hit: spec says ~2500-2800 [verify]; RocketSim's model
+    (which we follow) gives ~1925 uu/s.
+  * Arena curvature: floor/ceiling transition radius 256, vertical corner rounding 200 uu, and
+    the goal interior shape are approximations (no ripped collision meshes are used).
+  * Points table uses the current published values (goal 100, assist 50, save 50, epic save 75,
+    shot 10, clear 20, centre 10; demo / aerial hit / first touch award 0 points) instead of the
+    spec's [verify] list; legacy values are kept in src/game/match/rules.js.
+  * Clock: waits for the first touch after a kickoff (per RLBot docs) but starts anyway after
+    5 s without a touch (the exact fallback time is a guess).
+  * Goal blast strength (radius 1500, up to 2000 uu/s), 3 s celebration, replay length
+    (6 s before + 1.25 s after), assist window (5 s) and shot/save/epic-save thresholds.
+  * Camera defaults are the spec's (FOV 110, distance 270, height 100, angle -4, stiffness 0.45,
+    swivel 5, transition 1.2); stock game defaults differ (FOV 90, angle -3). Stiffness and
+    ball-cam framing are modelled from community descriptions.
+  * Deliberate deviation: a demolition does not slow the attacker (RocketSim resolves that
+    contact; the real game lets the attacker pass through).
