@@ -40,17 +40,19 @@ const browser = await chromium.launch({
   args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--autoplay-policy=no-user-gesture-required'],
 });
 const page = await browser.newPage({ viewport: { width: W, height: H } });
+page.setDefaultTimeout(240000);
+page.setDefaultNavigationTimeout(240000);
 const logs = [];
 page.on('console', (m) => logs.push(`[${m.type()}] ${m.text()}`));
 page.on('pageerror', (e) => logs.push(`[pageerror] ${e.message}\n${e.stack || ''}`));
 await page.goto(url, { waitUntil: 'load' });
-try { await page.waitForFunction(() => window.__ready === true, null, { timeout: 30000 }); } catch { logs.push('[shot] __ready timeout'); }
+try { await page.waitForFunction(() => window.__ready === true, null, { timeout: 240000 }); } catch { logs.push('[shot] __ready timeout'); }
 if (opt.eval) { try { const r = await page.evaluate(opt.eval); if (r !== undefined) logs.push('[eval] ' + JSON.stringify(r)); } catch (e) { logs.push('[eval error] ' + e.message); } }
 await page.waitForTimeout(WAIT);
 if (opt.eval2) { try { const r = await page.evaluate(opt.eval2); if (r !== undefined) logs.push('[eval2] ' + JSON.stringify(r)); } catch (e) { logs.push('[eval2 error] ' + e.message); } }
 if (opt.wait2) await page.waitForTimeout(Number(opt.wait2));
 mkdirSync(dirname(out), { recursive: true });
-await page.screenshot({ path: out });
+await page.screenshot({ path: out, timeout: 240000 });
 const fps = await page.evaluate(() => (window.__game && window.__game.fps) || null).catch(() => null);
 console.log(logs.filter((l) => !l.includes('GPU stall')).slice(0, 60).join('\n'));
 console.log(`saved ${out}`);
