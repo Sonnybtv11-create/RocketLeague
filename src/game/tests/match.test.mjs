@@ -1,6 +1,7 @@
 // Match flow / stats / replay tests. Run: node src/game/tests/run.mjs
 import * as H from './harness.mjs';
 import { createReplayBuffer } from '../replay.js';
+import { interpolateFrames } from '../view.js';
 import * as R from '../match/rules.js';
 
 const { EV, K, check } = H;
@@ -152,22 +153,69 @@ export function testReplaySkip() {
 }
 
 // replay buffer unit test
+// deep equality for frames / views (Vec3, RotMat, plain objects, arrays)
+function deepEq(a, b, path = '') {
+  if (a === b) return null;
+  if (typeof a === 'number' && typeof b === 'number') return Object.is(a, b) || a === b ? null : `${path}: ${a} != ${b}`;
+  if (a && b && typeof a === 'object' && typeof b === 'object') {
+    if (a.m instanceof Float64Array || b.m instanceof Float64Array) {
+      for (let i = 0; i < 9; i++) if (a.m[i] !== b.m[i]) return `${path}.m[${i}]: ${a.m[i]} != ${b.m[i]}`;
+      return null;
+    }
+    if (Array.isArray(a) !== Array.isArray(b)) return `${path}: array mismatch`;
+    const ka = Object.keys(a), kb = Object.keys(b);
+    if (ka.length !== kb.length || ka.some((k) => !(k in b))) return `${path}: keys ${ka.join(',')} vs ${kb.join(',')}`;
+    for (const k of ka) { const r = deepEq(a[k], b[k], `${path}.${k}`); if (r) return r; }
+    return null;
+  }
+  return `${path}: ${a} != ${b}`;
+}
+
 export function testReplayBuffer() {
+  // record a real 3v3 world driven by ball-chasers, keep the original captureFrame() objects
+  const g = H.setup({ blue: 3, orange: 3, seed: 4 });
+  H.skipCountdown(g);
+  const rng = (() => { let s = 9; return () => ((s = (s * 16807) % 2147483647) / 2147483647); })();
   const rb = createReplayBuffer(R.REPLAY_BUFFER_SEC);
-  const mk = (tick) => ({ tick, time: tick / 120, ball: { pos: new H.Vec3(0, tick, 93), vel: new H.Vec3(0, 120, 0), angVel: new H.Vec3(), rot: { m: new Float64Array([1, 0, 0, 0, 1, 0, 0, 0, 1]), clone() { return this; } } }, cars: [], pads: [] });
-  for (let t = 1; t <= 3000; t++) rb.record(mk(t));
-  check('buffer: ring keeps capacity frames (>= 8 s)', rb.size === rb.capacity && rb.capacity >= 8 * 120 && rb.latestTick() === 3000);
-  const r = rb.range(2000, 2100);
-  check('buffer: range returns contiguous frames', r.length === 101 && r[0].tick === 2000 && r[100].tick === 2100);
+  const orig = [];
+  const bot = (car, world, match) => H.chaser(car, world, match, rng);
+  for (let i = 0; i < 2000; i++) { H.tick(g, bot); orig.push(g.frame); rb.record(g.frame); if (orig.length > rb.capacity + 5) orig.shift(); g.events.length = 0; }
+  const last = orig[orig.length - 1].tick;
+  check('buffer: ring keeps capacity frames (>= 8 s)', rb.size === rb.capacity && rb.capacity >= 8 * 120 && rb.latestTick() === last);
+  const byTick = new Map(orig.map((f) => [f.tick, f]));
+  // exact reconstruction of every stored frame
+  let firstErr = null;
+  for (let i = 0; i < rb.size && !firstErr; i += 7) { const f = rb.frameAt(i); firstErr = deepEq(f, byTick.get(f.tick), `frame@${f.tick}`); }
+  check('buffer: reconstructed frames are identical to captureFrame()', !firstErr, firstErr || '');
+  const r = rb.range(last - 100, last);
+  check('buffer: range returns contiguous frames', r.length === 101 && r[0].tick === last - 100 && r[100].tick === last);
+  // playback view == interpolateFrames(original a, original b, alpha)
   const pb = rb.startPlayback(6);
   check('buffer: playback of 6 s has 721 frames, 6.0 s', pb && pb.frameCount === 721 && Math.abs(pb.duration - 6) < 1e-9);
-  const res = pb.update(0.5 + 0.5 / 120);
-  check('buffer: playback interpolates between ticks', res && Math.abs(res.view.ball.pos.y - (3000 - 720 + 60.5)) < 1e-6, `${res && res.view.ball.pos.y}`);
+  const t0 = last - 720;
+  let viewErr = null, nCmp = 0, tt = 0;
+  for (let k = 0; k < 400 && !viewErr; k++) {
+    const dt = 1 / 144;
+    const res = pb.update(dt); tt += dt;
+    if (!res) break;
+    const fi = pb.time * 120, i = Math.floor(fi);
+    const a = byTick.get(t0 + i), b = byTick.get(t0 + Math.min(i + 1, 720));
+    const ref = interpolateFrames(a, b, i + 1 <= 720 ? fi - i : 1); ref.isReplay = true;
+    viewErr = deepEq(res.view, ref, `view@${pb.time.toFixed(4)}`); nCmp++;
+  }
+  check('buffer: playback views identical to live interpolateFrames()', !viewErr && nCmp === 400, viewErr || `${nCmp} views`);
+  // views must not alias the reused scratch frames
+  const v1 = pb.update(1 / 144).view; const snap = JSON.stringify([v1.ball.angVel, v1.pads[3], v1.cars[2].angVel, v1.cars[2].controls]);
+  for (let k = 0; k < 30; k++) pb.update(1 / 60);
+  check('buffer: earlier views are not mutated by later updates', JSON.stringify([v1.ball.angVel, v1.pads[3], v1.cars[2].angVel, v1.cars[2].controls]) === snap);
   pb.skip();
   check('buffer: skip ends playback', pb.update(0.01) === null);
   const pb2 = rb.startPlayback(1);
   let n = 0; while (pb2.update(1 / 60)) n++;
   check('buffer: 1 s playback lasts 60 frames at 60 fps', n === 60, `${n}`);
+  const perSec = rb.bytesPerFrame * 120;
+  check('buffer: preallocated storage, < 3 KB per tick for 3v3', rb.bytesPerFrame < 3072 && rb.bytes === rb.bytesPerFrame * rb.capacity,
+    `${rb.bytesPerFrame} B/tick, ${(perSec / 1024).toFixed(0)} KB per buffered second, ${(rb.bytes / 1048576).toFixed(2)} MB total`);
 }
 
 // ===================================================================== zero-second rule
