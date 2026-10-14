@@ -102,7 +102,7 @@ export const CSS = String.raw`
   color: var(--gold-l); -webkit-text-stroke: calc(var(--u) * 0.12) rgba(60, 30, 0, 0.55);
   text-shadow: 0 0 calc(var(--u) * 2.2) rgba(255, 190, 60, 0.8), 0 calc(var(--u) * 0.3) calc(var(--u) * 0.8) rgba(0,0,0,.65); }
 .tp-count.anim { animation: tp-count 1s ease-out forwards; }
-.tp-count.go { font-size: calc(var(--u) * 19); font-weight: 800; font-style: italic; color: #fff; letter-spacing: 0.02em;
+.tp-count.go { font-size: calc(var(--u) * 19); font-weight: 800; font-style: italic; color: #fff; letter-spacing: 0.02em; -webkit-text-stroke: calc(var(--u) * 0.18) rgba(50, 25, 0, 0.7);
   text-shadow: 0 0 calc(var(--u) * 2.5) rgba(255, 210, 90, 0.95), 0 0 calc(var(--u) * 0.4) rgba(0,0,0,.6); }
 .tp-count.go.anim { animation: tp-go 1.1s ease-out forwards; }
 @keyframes tp-count { 0% { opacity: 0.65; transform: translate(-50%, -50%) scale(1.6); } 18% { opacity: 1; transform: translate(-50%, -50%) scale(1); }

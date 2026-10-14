@@ -20,7 +20,7 @@ const ACTION_LABELS = {
   throttle: 'Throttle', reverse: 'Reverse / brake', steerLeft: 'Steer left', steerRight: 'Steer right',
   pitchUp: 'Air pitch up (nose up)', pitchDown: 'Air pitch down', yawLeft: 'Air yaw left', yawRight: 'Air yaw right',
   jump: 'Jump', boost: 'Boost', powerslide: 'Powerslide / free air roll', airRollLeft: 'Air roll left', airRollRight: 'Air roll right',
-  ballCam: 'Ball cam', resetBall: 'Reset ball (free play)', scoreboard: 'Scoreboard', pause: 'Pause',
+  freeLook: 'Free look (hold)', ballCam: 'Ball cam', resetBall: 'Reset ball (free play)', scoreboard: 'Scoreboard', pause: 'Pause',
   steerAxis: 'Steer / yaw (stick axis)', pitchAxis: 'Pitch (stick axis)', lookX: 'Free look X (axis)', lookY: 'Free look Y (axis)',
 };
 
@@ -355,7 +355,7 @@ export function createMenus({ api, settings, stats, onOpenChange }) {
       const panel = h('div.tp-panel.tp-scroll', { style: { left: 'calc(var(--u) * 4)', top: 'calc(var(--u) * 12.5)', width: 'min(calc(var(--u) * 140), calc(100% - var(--u) * 8))', bottom: 'calc(var(--u) * 8)', padding: 'calc(var(--u) * 2.4) calc(var(--u) * 3)' }, 'data-nav': '', 'data-key': 'help-scroll' });
       const kb = settings.bindings.kb, pad = settings.bindings.pad;
       const kt = h('table.tp-ktable');
-      const KB_ROWS = ['throttle', 'reverse', 'steerLeft', 'steerRight', 'jump', 'boost', 'powerslide', 'airRollLeft', 'airRollRight', 'pitchUp', 'pitchDown', 'ballCam', 'scoreboard', 'resetBall', 'pause'];
+      const KB_ROWS = ['throttle', 'reverse', 'steerLeft', 'steerRight', 'jump', 'boost', 'powerslide', 'airRollLeft', 'airRollRight', 'pitchUp', 'pitchDown', 'ballCam', 'freeLook', 'scoreboard', 'resetBall', 'pause'];
       for (const a of KB_ROWS) {
         const keys = (kb[a] || []).map((k) => h('span.tp-key', keyName(k)));
         kt.appendChild(h('tr', h('td', ACTION_LABELS[a] || a), h('td', keys.length ? keys : '—')));
