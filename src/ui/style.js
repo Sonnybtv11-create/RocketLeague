@@ -391,6 +391,16 @@ export const CSS = String.raw`
 .tp-lan-slot .step b { color: #fff; }
 .tp-lan-slot .act { display: flex; gap: calc(var(--u) * 1); margin-top: calc(var(--u) * 0.8); }
 .tp-lan-slot .act .tp-btn { flex: 1; }
+.tp-gamecode { text-align: center; padding: calc(var(--u) * 1.6) calc(var(--u) * 2); margin-bottom: calc(var(--u) * 2.4); background: rgba(0, 0, 0, 0.35);
+  border: calc(var(--u) * 0.2) solid rgba(255, 201, 74, 0.45); }
+.tp-gamecode .lbl { font-size: calc(var(--u) * 1.5); letter-spacing: 0.24em; color: var(--dim); text-transform: uppercase; }
+.tp-gamecode .num { font-size: calc(var(--u) * 7); font-weight: 900; font-style: italic; letter-spacing: 0.12em; color: #ffe29a; line-height: 1.15; font-variant-numeric: tabular-nums; user-select: text; -webkit-user-select: text; }
+.tp-gamecode .num.wait { color: var(--dim); }
+.tp-gamecode .sub { font-size: calc(var(--u) * 1.6); color: var(--dim); line-height: 1.45; }
+.tp-gamecode .sub b { color: #fff; }
+.tp-gamecode .act { display: flex; justify-content: center; margin: calc(var(--u) * 0.8) 0; }
+.tp-codein { height: calc(var(--u) * 8); text-align: center; font-size: calc(var(--u) * 5); font-weight: 800; letter-spacing: 0.3em; font-variant-numeric: tabular-nums; }
+.tp-codein.long { font-size: calc(var(--u) * 1.6); letter-spacing: 0; text-align: left; }
 .tp-note { font-size: calc(var(--u) * 1.6); color: var(--dim); line-height: 1.5; margin-bottom: calc(var(--u) * 2); }
 .tp-note b { color: #fff; }
 .tp-note.warn { color: #ffcf7a; }

@@ -1,6 +1,7 @@
-// LAN play end-to-end: two headless browser windows connect via the copy/paste codes,
-// the host starts a 1v1 with no bots and the joiner drives its car with the keyboard.
-// Usage: node tools/e2e-lan.mjs [--shots]   (serves index.html; run tools/assemble.mjs first)
+// LAN play end-to-end: two headless browsers connect with the 6-digit game code (through the
+// public relay; needs internet) or, with --long, the offline copy/paste codes. The host starts a
+// 1v1 with no bots and the joiner drives its car with the keyboard.
+// Usage: node tools/e2e-lan.mjs [--long] [--shots]   (serves index.html; run tools/assemble.mjs first)
 import { createServer } from 'node:http';
 import { readFileSync, existsSync, statSync, mkdirSync } from 'node:fs';
 import { extname, join as pjoin, resolve } from 'node:path';
@@ -10,6 +11,7 @@ const require = createRequire(import.meta.url);
 let chromium;
 try { ({ chromium } = require('playwright')); } catch { ({ chromium } = require('/opt/node-tools/node_modules/playwright')); }
 const shots = process.argv.includes('--shots');
+const longCodes = process.argv.includes('--long');
 const root = resolve('.');
 const server = createServer((req, res) => {
   let p = decodeURIComponent(req.url.split('?')[0]);
@@ -49,29 +51,40 @@ await host.evaluate(() => { window.__api.getSettings().game.playerName = 'Hosty'
 await join.evaluate(() => { window.__api.getSettings().game.playerName = 'Joiny'; });
 await host.click('text=LAN Play');
 await host.click('text=Host a game');
-await host.click('text=Invite a player');
-await host.waitForFunction(() => window.__api.lanState().slots.some((s) => s.status === 'waiting'));
-const invite = await host.evaluate(() => window.__api.lanState().slots[0].code);
-check(/^TP1[zp]\./.test(invite), `invite code (${invite.length} chars, ${Date.now() - t0} ms)`);
-if (shots) { mkdirSync('shots', { recursive: true }); await host.screenshot({ path: 'shots/lan-host-invite.png' }); }
-
-// joiner: paste the invite through the UI
-await join.click('text=LAN Play');
-await join.click('text=Join a game');
-await join.fill('textarea.tp-code', invite);
-await join.click('button:has-text("Join")');
-await join.waitForFunction(() => { const s = window.__api.lanState(); return s.client && s.client.status === 'waiting'; });
-const reply = await join.evaluate(() => window.__api.lanState().client.replyCode);
-check(/^TP1[zp]\./.test(reply), `reply code (${reply.length} chars)`);
-if (shots) await join.screenshot({ path: 'shots/lan-join-reply.png' });
-
-// host: paste the reply and connect
-await host.fill('textarea[data-key="rep-1"]', reply);
-await host.click('button:has-text("Connect")');
-await host.waitForFunction(() => window.__api.lanState().slots[0].status === 'connected', null, { timeout: 30000 }).catch(async (e) => {
-  const st = async (pg) => pg.evaluate(() => { const n = window.__game.net; const pc = n.peer ? n.peer.pc : n.slots[0].peer.pc; return { s: window.__api.lanState(), ice: pc.iceConnectionState, conn: pc.connectionState, sig: pc.signalingState }; });
-  console.log('host', JSON.stringify(await st(host)).slice(0, 600));
-  console.log('join', JSON.stringify(await st(join)).slice(0, 600));
+if (longCodes) {
+  await host.click('text=Invite with a long code');
+  await host.waitForFunction(() => window.__api.lanState().slots.some((s) => s.status === 'waiting'));
+  const invite = await host.evaluate(() => window.__api.lanState().slots[0].code);
+  check(/^TP1[zp]\./.test(invite), `long invite code (${invite.length} chars)`);
+  await join.click('text=LAN Play');
+  await join.click('text=Join a game');
+  await join.fill('input.tp-codein', invite);
+  await join.click('button:has-text("Join")');
+  await join.waitForFunction(() => { const s = window.__api.lanState(); return s.client && s.client.status === 'waiting'; });
+  const reply = await join.evaluate(() => window.__api.lanState().client.replyCode);
+  check(/^TP1[zp]\./.test(reply), `reply code (${reply.length} chars)`);
+  await host.fill('textarea[data-key="rep-1"]', reply);
+  await host.click('button:has-text("Connect")');
+} else {
+  await host.waitForFunction(() => window.__api.lanState().relayStatus !== 'opening' && window.__api.lanState().relayStatus !== 'off', null, { timeout: 20000 });
+  const st = await host.evaluate(() => window.__api.lanState());
+  check(/^\d{6}$/.test(st.code), `game code "${st.code}" ${st.relayError || ''} (${Date.now() - t0} ms)`);
+  if (shots) { mkdirSync('shots', { recursive: true }); await host.screenshot({ path: 'shots/lan-host-code.png' }); }
+  await join.click('text=LAN Play');
+  await join.click('text=Join a game');
+  // a wrong code first: should say no game was found
+  const wrong = String((Number(st.code) + 1) % 900000 + 100000);
+  await join.fill('input.tp-codein', wrong);
+  await join.click('button:has-text("Join")');
+  await join.waitForFunction(() => { const s = window.__api.lanState(); return s.client && s.client.status === 'idle' && s.client.error; }, null, { timeout: 30000 });
+  const err = await join.evaluate(() => window.__api.lanState().client.error);
+  check(/No game found/.test(err), `wrong code: "${err}"`);
+  await join.fill('input.tp-codein', st.code);
+  await join.click('button:has-text("Join")');
+}
+await host.waitForFunction(() => window.__api.lanState().slots.some((s) => s.status === 'connected'), null, { timeout: 30000 }).catch(async (e) => {
+  console.log('host', JSON.stringify(await host.evaluate(() => window.__api.lanState())).slice(0, 600));
+  console.log('join', JSON.stringify(await join.evaluate(() => window.__api.lanState())).slice(0, 600));
   throw e;
 });
 await join.waitForFunction(() => { const s = window.__api.lanState(); return s.client && s.client.status === 'connected' && s.client.lobby; }, null, { timeout: 20000 });

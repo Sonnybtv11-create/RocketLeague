@@ -12845,6 +12845,16 @@ var CSS = String.raw`
 .tp-lan-slot .step b { color: #fff; }
 .tp-lan-slot .act { display: flex; gap: calc(var(--u) * 1); margin-top: calc(var(--u) * 0.8); }
 .tp-lan-slot .act .tp-btn { flex: 1; }
+.tp-gamecode { text-align: center; padding: calc(var(--u) * 1.6) calc(var(--u) * 2); margin-bottom: calc(var(--u) * 2.4); background: rgba(0, 0, 0, 0.35);
+  border: calc(var(--u) * 0.2) solid rgba(255, 201, 74, 0.45); }
+.tp-gamecode .lbl { font-size: calc(var(--u) * 1.5); letter-spacing: 0.24em; color: var(--dim); text-transform: uppercase; }
+.tp-gamecode .num { font-size: calc(var(--u) * 7); font-weight: 900; font-style: italic; letter-spacing: 0.12em; color: #ffe29a; line-height: 1.15; font-variant-numeric: tabular-nums; user-select: text; -webkit-user-select: text; }
+.tp-gamecode .num.wait { color: var(--dim); }
+.tp-gamecode .sub { font-size: calc(var(--u) * 1.6); color: var(--dim); line-height: 1.45; }
+.tp-gamecode .sub b { color: #fff; }
+.tp-gamecode .act { display: flex; justify-content: center; margin: calc(var(--u) * 0.8) 0; }
+.tp-codein { height: calc(var(--u) * 8); text-align: center; font-size: calc(var(--u) * 5); font-weight: 800; letter-spacing: 0.3em; font-variant-numeric: tabular-nums; }
+.tp-codein.long { font-size: calc(var(--u) * 1.6); letter-spacing: 0; text-align: left; }
 .tp-note { font-size: calc(var(--u) * 1.6); color: var(--dim); line-height: 1.5; margin-bottom: calc(var(--u) * 2); }
 .tp-note b { color: #fff; }
 .tp-note.warn { color: #ffcf7a; }
@@ -14334,7 +14344,9 @@ function createMenus({ api: api2, settings: settings2, stats: stats2, onOpenChan
           "Play with friends on the ",
           h("b", "same Wi-Fi or network"),
           ". Open this same TURBO PITCH file on each computer (Chrome works best). ",
-          "One computer hosts and runs the match; everyone else joins. You connect by swapping two codes — send them any way you like (chat, email, AirDrop)."
+          "One computer hosts and gets a ",
+          h("b", "6-digit game code"),
+          "; everyone else joins by typing it in."
         ),
         h(
           "div.tp-nav",
@@ -14342,23 +14354,47 @@ function createMenus({ api: api2, settings: settings2, stats: stats2, onOpenChan
           btn("Host a game", () => {
             api2.lanHost();
             push("lanhost");
-          }, { sub: "Run the match on this computer", key: "lan-host" }),
-          btn("Join a game", () => push("lanjoin"), { sub: "Paste a code from the host", key: "lan-join" })
+          }, { sub: "Get a game code", key: "lan-host" }),
+          btn("Join a game", () => push("lanjoin"), { sub: "Type the host’s code", key: "lan-join" })
         )
       );
       p.append(panel, footer());
     },
     lanhost(p) {
-      const st = api2.lanState();
-      if (st.role !== "host") api2.lanHost();
+      let st = api2.lanState();
+      if (st.role !== "host") {
+        api2.lanHost();
+        st = api2.lanState();
+      }
       const last2 = settings2.game.lastLan || {};
       const cfg = lanCfg || (lanCfg = { teamSize: last2.teamSize || 2, bots: last2.noBots ? false : true, difficulty: last2.difficulty || "pro", durationSec: last2.durationSec || 300 });
-      const slots = api2.lanState().slots;
+      const slots = st.slots;
       const live = slots.filter((s2) => s2.status !== "left");
       api2.lanSetInfo(`${cfg.teamSize}v${cfg.teamSize} · ${cfg.bots ? "bots fill empty spots" : "no bots"} · ${Math.round(cfg.durationSec / 60)} min`);
       p.append(h("div.tp-shade-r"), title("Host", "LAN lobby"));
       const panel = h("div.tp-panel.tp-scroll", { style: { right: "calc(var(--u) * 3)", top: "calc(var(--u) * 13)", width: "min(calc(var(--u) * 78), 50vw)", maxHeight: "calc(100% - var(--u) * 21)", padding: "calc(var(--u) * 2.2) calc(var(--u) * 2.8)" } });
       const teamSeg = (team, onPick, key) => seg([[0, "Blue"], [1, "Orange"]], team, onPick, { key, orangeFor: 1, swatch: { 0: TEAM_COLORS[0].css, 1: TEAM_COLORS[1].css } });
+      const codeCard = h("div.tp-gamecode");
+      if (st.relayStatus === "online" && st.code) {
+        codeCard.append(
+          h("div.lbl", "Game code"),
+          h("div.num", `${st.code.slice(0, 3)} ${st.code.slice(3)}`),
+          h("div.sub", "On the other computers: ", h("b", "LAN Play › Join a game"), ", then type this code.")
+        );
+      } else if (st.relayStatus === "offline") {
+        codeCard.append(
+          h("div.lbl", "Game code"),
+          h("div.tp-note.err", { style: { margin: "calc(var(--u) * 0.6) 0" } }, st.relayError || "No game code."),
+          h("div.act", btn("Try again", async () => {
+            await api2.lanRetryCode();
+            refresh();
+          }, { key: "code-retry", cls: "primary" })),
+          h("div.sub", "No internet? Use “Invite with a long code” below instead.")
+        );
+      } else {
+        codeCard.append(h("div.lbl", "Game code"), h("div.num.wait", "··· ···"), h("div.sub", "Getting a code…"));
+      }
+      panel.appendChild(codeCard);
       const list = h("div");
       const myTeam = settings2.game.team === 1 ? 1 : 0;
       list.appendChild(h(
@@ -14369,9 +14405,10 @@ function createMenus({ api: api2, settings: settings2, stats: stats2, onOpenChan
         }, "team-host"))
       ));
       for (const s2 of slots) {
-        const [label, cls] = STATUS[s2.status] || [s2.status, ""];
+        let [label, cls] = STATUS[s2.status] || [s2.status, ""];
+        if (!s2.manual && s2.status === "connecting") label = "Joining…";
         const card = h("div.tp-lan-slot" + (s2.team ? ".t1" : ""));
-        const name = s2.status === "connected" ? s2.name : `Invite ${s2.id}`;
+        const name = s2.status === "connected" || !s2.manual ? s2.name : `Invite ${s2.id}`;
         card.appendChild(h(
           "div.top",
           h("div.nm", name),
@@ -14386,9 +14423,9 @@ function createMenus({ api: api2, settings: settings2, stats: stats2, onOpenChan
             refresh();
           }, { key: "rm-" + s2.id })
         ));
-        if (s2.status === "waiting" || s2.status === "connecting" || s2.status === "error" && s2.code) {
+        if (s2.manual && (s2.status === "waiting" || s2.status === "connecting" || s2.status === "error" && s2.code)) {
           card.append(
-            h("div.step", h("b", "1. "), "Send this invite code to the player who is joining:"),
+            h("div.step", h("b", "1. "), "Send this long code to the player who is joining (they paste it in Join a game):"),
             codeBox(s2.code, { readonly: true, key: "inv-" + s2.id }),
             h("div.act", copyBtn(s2.code, "copy-" + s2.id)),
             h("div.step", h("b", "2. "), "Paste the reply code they send back, then press Connect:"),
@@ -14405,24 +14442,7 @@ function createMenus({ api: api2, settings: settings2, stats: stats2, onOpenChan
         if (s2.error) card.appendChild(h("div.tp-note.err", { style: { margin: "calc(var(--u) * 0.8) 0 0" } }, s2.error));
         list.appendChild(card);
       }
-      panel.append(group(
-        `Players (${1 + live.filter((s2) => s2.status === "connected").length})`,
-        list,
-        btn(
-          "Invite a player",
-          async () => {
-            if (lanBusy.inv) return;
-            lanBusy.inv = true;
-            try {
-              await api2.lanInvite();
-            } finally {
-              lanBusy.inv = false;
-            }
-            refresh();
-          },
-          { key: "invite" }
-        )
-      ));
+      panel.append(group(`Players (${1 + live.filter((s2) => s2.status === "connected").length})`, list));
       panel.append(
         group("Team size", seg([[1, "1v1"], [2, "2v2"], [3, "3v3"]], cfg.teamSize, (v) => {
           cfg.teamSize = v;
@@ -14453,7 +14473,22 @@ function createMenus({ api: api2, settings: settings2, stats: stats2, onOpenChan
             opponentDifficulty: cfg.difficulty,
             durationSec: cfg.durationSec
           });
-        }, { cls: "primary", key: "lan-start", sub: live.some((s2) => s2.status !== "connected") ? "Players still connecting will miss this match" : "" })
+        }, { cls: "primary", key: "lan-start", sub: live.some((s2) => s2.status !== "connected") ? "Players still joining will miss this match" : "" }),
+        h("div", { style: { height: "calc(var(--u) * 1.6)" } }),
+        btn(
+          "Invite with a long code",
+          async () => {
+            if (lanBusy.inv) return;
+            lanBusy.inv = true;
+            try {
+              await api2.lanInvite();
+            } finally {
+              lanBusy.inv = false;
+            }
+            refresh();
+          },
+          { key: "invite", sub: "No internet" }
+        )
       );
       p.append(panel, footer());
     },
@@ -14463,28 +14498,48 @@ function createMenus({ api: api2, settings: settings2, stats: stats2, onOpenChan
       p.append(h("div.tp-shade-r"), title("Join", "LAN game"));
       const panel = h("div.tp-panel.tp-scroll", { style: { right: "calc(var(--u) * 3)", top: "calc(var(--u) * 13)", width: "min(calc(var(--u) * 70), 46vw)", maxHeight: "calc(100% - var(--u) * 21)", padding: "calc(var(--u) * 2.4) calc(var(--u) * 2.8)" } });
       const status = c ? c.status : "idle";
+      const go = async () => {
+        if (lanBusy.join) return;
+        lanBusy.join = true;
+        try {
+          await api2.lanJoin(lanDrafts.join || "");
+        } finally {
+          lanBusy.join = false;
+        }
+        refresh();
+      };
       if (!c || status === "idle" || status === "creating") {
+        const long = /^\s*TP1/i.test(lanDrafts.join || "");
+        const inp = h("input.tp-input.tp-codein", { type: "text", inputmode: "numeric", autocomplete: "off", spellcheck: "false", placeholder: "000000", "data-nav": "", "data-key": "join-code" });
+        inp.value = lanDrafts.join || "";
+        inp.addEventListener("input", () => {
+          lanDrafts.join = inp.value;
+          inp.classList.toggle("long", /^\s*TP1/i.test(inp.value));
+        });
+        inp.addEventListener("keydown", (e) => {
+          e.stopPropagation();
+          if (e.key === "Enter") go();
+          else if (e.key === "Escape") inp.blur();
+        });
+        if (long) inp.classList.add("long");
         panel.append(
-          h("div.tp-note", h("b", "1. "), "On the host computer choose ", h("b", "LAN Play › Host a game › Invite a player"), ", then paste the invite code here:"),
-          codeBox(lanDrafts.join || "", { key: "join-code", placeholder: "TP1…", onInput: (v) => {
-            lanDrafts.join = v;
-          } }),
-          h("div", { style: { height: "calc(var(--u) * 1.2)" } }),
-          btn(status === "creating" ? "Making reply code…" : "Join", async () => {
-            if (lanBusy.join) return;
-            lanBusy.join = true;
-            try {
-              await api2.lanJoin(lanDrafts.join || "");
-            } finally {
-              lanBusy.join = false;
-            }
-            refresh();
-          }, { cls: "primary", key: "join-go" })
+          h("div.tp-note", "Type the ", h("b", "6-digit game code"), " shown on the host’s screen:"),
+          inp,
+          h("div", { style: { height: "calc(var(--u) * 1.4)" } }),
+          btn(status === "creating" ? "Making reply code…" : "Join", go, { cls: "primary", key: "join-go" })
         );
         if (c && c.error) panel.appendChild(h("div.tp-note.err", { style: { marginTop: "calc(var(--u) * 1.4)" } }, c.error));
+        panel.appendChild(h("div.tp-note", { style: { marginTop: "calc(var(--u) * 2)" } }, "No internet? The host can use “Invite with a long code” — paste that code in the box above instead."));
+      } else if (status === "finding" || status === "connecting") {
+        panel.append(h(
+          "div.tp-gamecode",
+          h("div.lbl", "Game code"),
+          h("div.num", String(lanDrafts.join || "").replace(/\D/g, "").replace(/^(\d{3})(\d{3})$/, "$1 $2")),
+          h("div.sub", status === "finding" ? "Looking for the game…" : "Found it — connecting…")
+        ));
       } else if (status === "waiting") {
         panel.append(
-          h("div.tp-note", h("b", "2. "), "Send this reply code back to the host. They paste it and press ", h("b", "Connect"), "."),
+          h("div.tp-note", "Send this reply code back to the host. They paste it and press ", h("b", "Connect"), "."),
           codeBox(c.replyCode, { readonly: true, key: "reply-code" }),
           h("div", { style: { display: "flex", marginTop: "calc(var(--u) * 1)" } }, copyBtn(c.replyCode, "copy-reply")),
           h("div.tp-note", { style: { marginTop: "calc(var(--u) * 2)" } }, "Waiting for the host to connect…")
@@ -18711,7 +18766,7 @@ function webrtcSupported() {
   return typeof RTCPeerConnection !== "undefined";
 }
 var Peer = class {
-  constructor(role) {
+  constructor(role, { offerer = role === "host" } = {}) {
     this.role = role;
     this.pc = new RTCPeerConnection({ iceServers: ICE });
     this.rel = null;
@@ -18722,7 +18777,12 @@ var Peer = class {
     this.onClose = null;
     this.onMessage = null;
     this.onFast = null;
-    if (role === "host") {
+    this.onCandidate = null;
+    this._pending = [];
+    this.pc.onicecandidate = (e) => {
+      if (e.candidate && this.onCandidate) this.onCandidate(e.candidate.toJSON());
+    };
+    if (offerer) {
       this._attach(this.pc.createDataChannel("rel", { ordered: true }));
       this._attach(this.pc.createDataChannel("fast", { ordered: false, maxRetransmits: 0 }));
     } else {
@@ -18780,6 +18840,31 @@ var Peer = class {
     if (desc.type !== "answer") throw new Error("That’s an invite code. Paste the reply code from the player who is joining.");
     await this.pc.setRemoteDescription(desc);
   }
+  // ---- trickle signalling (6-digit codes)
+  async makeOffer() {
+    await this.pc.setLocalDescription(await this.pc.createOffer());
+    return { type: "offer", sdp: this.pc.localDescription.sdp };
+  }
+  async takeOffer(desc) {
+    await this.pc.setRemoteDescription(desc);
+    this._flush();
+    await this.pc.setLocalDescription(await this.pc.createAnswer());
+    return { type: "answer", sdp: this.pc.localDescription.sdp };
+  }
+  async takeAnswer(desc) {
+    await this.pc.setRemoteDescription(desc);
+    this._flush();
+  }
+  addCandidate(c) {
+    if (!c) return;
+    if (!this.pc.remoteDescription) this._pending.push(c);
+    else this.pc.addIceCandidate(c).catch(() => {
+    });
+  }
+  _flush() {
+    for (const c of this._pending.splice(0)) this.pc.addIceCandidate(c).catch(() => {
+    });
+  }
   send(msg) {
     if (this.rel && this.rel.readyState === "open") this.rel.send(JSON.stringify(msg));
   }
@@ -18802,6 +18887,91 @@ var Peer = class {
     this._closed();
   }
 };
+
+// src/net/relay.js
+var SERVER = "wss://0.peerjs.com:443/peerjs?key=peerjs";
+var HOST_PREFIX = "turbopitch-v1-";
+var UNREACHABLE = "Couldn’t reach the matchmaking service. Game codes need an internet connection to connect (the game itself runs over your network).";
+var wrapOffer = (connectionId, sdp, metadata) => ({ sdp, type: "data", connectionId, label: connectionId, reliable: true, serialization: "binary", metadata, browser: "chrome" });
+var wrapAnswer = (connectionId, sdp) => ({ sdp, type: "data", connectionId, browser: "chrome" });
+var wrapCandidate = (connectionId, candidate) => ({ candidate, type: "data", connectionId });
+function randomGameCode() {
+  return String(1e5 + Math.floor(Math.random() * 9e5));
+}
+var hostIdFor = (code) => HOST_PREFIX + code;
+function openRelay(id, { timeoutMs = 1e4 } = {}) {
+  return new Promise((resolve, reject) => {
+    const token = Math.random().toString(36).slice(2, 12);
+    let ws;
+    try {
+      ws = new WebSocket(`${SERVER}&id=${encodeURIComponent(id)}&token=${token}&version=1.5.4`);
+    } catch (e) {
+      reject(new Error(UNREACHABLE));
+      return;
+    }
+    let opened = false;
+    const r = {
+      id,
+      closed: false,
+      onMessage: null,
+      onClose: null,
+      send(type, dst, payload) {
+        if (ws.readyState === 1) ws.send(JSON.stringify({ type, dst, payload }));
+      },
+      close() {
+        if (r.closed) return;
+        r.closed = true;
+        clearInterval(hb);
+        clearTimeout(to);
+        try {
+          ws.close();
+        } catch (e) {
+        }
+      }
+    };
+    const fail = (err) => {
+      if (!opened) {
+        opened = true;
+        r.close();
+        reject(err);
+      }
+    };
+    const to = setTimeout(() => fail(new Error(UNREACHABLE)), timeoutMs);
+    const hb = setInterval(() => {
+      if (ws.readyState === 1) ws.send('{"type":"HEARTBEAT"}');
+    }, 5e3);
+    ws.onmessage = (e) => {
+      let m;
+      try {
+        m = JSON.parse(e.data);
+      } catch (err) {
+        return;
+      }
+      if (m.type === "OPEN") {
+        if (!opened) {
+          opened = true;
+          clearTimeout(to);
+          resolve(r);
+        }
+      } else if (m.type === "ID-TAKEN") fail(Object.assign(new Error("That game code is in use."), { taken: true }));
+      else if (m.type === "ERROR" && !opened) fail(new Error(UNREACHABLE));
+      else if (m.type !== "HEARTBEAT" && r.onMessage) r.onMessage(m);
+    };
+    ws.onerror = () => {
+    };
+    ws.onclose = () => {
+      clearInterval(hb);
+      if (!opened) {
+        fail(new Error(UNREACHABLE));
+        return;
+      }
+      if (!r.closed) {
+        r.closed = true;
+        r.onClose && r.onClose();
+      }
+    };
+  });
+}
 
 // src/net/codec.js
 init_math();
@@ -18985,6 +19155,8 @@ init_math();
 init_contracts();
 var MAX_QUEUE = 10;
 var RENDER_DELAY = 5;
+var CONNECT_TIMEOUT_MS = 15e3;
+var NO_LINK = "Couldn’t connect to the other computer. Make sure both are on the same Wi-Fi / network.";
 var NET_PROTOCOL = 1;
 var isVec = (v) => v && typeof v === "object" && !Array.isArray(v) && typeof v.x === "number" && typeof v.y === "number" && typeof v.z === "number" && Object.keys(v).length === 3;
 function createNetHost({ onChange, onLeave }) {
@@ -19025,11 +19197,101 @@ function createNetHost({ onChange, onLeave }) {
       host.sendLobby();
     };
   }
+  let relay = null;
+  async function onOffer(src, p) {
+    if (slots.some((x) => x.remoteId === src) || !p.sdp) return;
+    const meta = p.metadata || {};
+    const s2 = {
+      id: nextId++,
+      peer: new Peer("host", { offerer: false }),
+      status: "connecting",
+      team: autoTeam(),
+      name: String(meta.name || "Player").slice(0, 16),
+      bodyId: "vector",
+      accent: "#e8e8e8",
+      carId: -1,
+      queue: [],
+      last: makeControls(),
+      code: "",
+      remoteId: src
+    };
+    slots.push(s2);
+    wire(s2);
+    const r = relay, cid = p.connectionId;
+    s2.peer.onCandidate = (c) => r.send("CANDIDATE", src, wrapCandidate(cid, c));
+    changed();
+    try {
+      r.send("ANSWER", src, wrapAnswer(cid, await s2.peer.takeOffer(p.sdp)));
+    } catch (e) {
+      s2.status = "error";
+      s2.error = e.message;
+      changed();
+    }
+    setTimeout(() => {
+      if (s2.status !== "connecting") return;
+      s2.status = "left";
+      s2.peer.close();
+      const i = slots.indexOf(s2);
+      if (i >= 0) slots.splice(i, 1);
+      changed();
+    }, CONNECT_TIMEOUT_MS);
+  }
+  function onRelay(m) {
+    const p = m.payload || {};
+    if (m.type === "OFFER") {
+      onOffer(m.src, p);
+      return;
+    }
+    const s2 = slots.find((x) => x.remoteId === m.src);
+    if (s2 && m.type === "CANDIDATE") s2.peer.addCandidate(p.candidate);
+  }
   const host = {
     role: "host",
     slots,
     lobbyInfo: null,
     // {mode text} shown to joiners
+    code: "",
+    // 6-digit game code
+    relayStatus: "off",
+    // off | opening | online | offline
+    relayError: "",
+    // register a fresh 6-digit game code on the relay (retries on the rare clash)
+    async openLobby() {
+      if (relay && !relay.closed) return host.code;
+      host.relayStatus = "opening";
+      host.relayError = "";
+      changed();
+      for (let attempt = 0; attempt < 6; attempt++) {
+        const code = randomGameCode();
+        try {
+          relay = await openRelay(hostIdFor(code));
+          if (host.closed) {
+            relay.close();
+            return "";
+          }
+          relay.onMessage = onRelay;
+          relay.onClose = () => {
+            host.relayStatus = "offline";
+            host.relayError = "Lost the connection to the matchmaking service.";
+            changed();
+          };
+          host.code = code;
+          host.relayStatus = "online";
+          changed();
+          return code;
+        } catch (e) {
+          if (e.taken) continue;
+          host.relayStatus = "offline";
+          host.relayError = e.message;
+          changed();
+          return "";
+        }
+      }
+      host.relayStatus = "offline";
+      host.relayError = "Couldn’t get a free game code. Try again.";
+      changed();
+      return "";
+    },
     async invite() {
       const s2 = {
         id: nextId++,
@@ -19042,7 +19304,8 @@ function createNetHost({ onChange, onLeave }) {
         carId: -1,
         queue: [],
         last: makeControls(),
-        code: ""
+        code: "",
+        manual: true
       };
       slots.push(s2);
       wire(s2);
@@ -19113,6 +19376,12 @@ function createNetHost({ onChange, onLeave }) {
       return { ...s2.last };
     },
     close(reason = "The host left the game.") {
+      host.closed = true;
+      if (relay) {
+        relay.close();
+        relay = null;
+      }
+      host.relayStatus = "off";
       for (const s2 of slots) {
         if (s2.status === "connected") s2.peer.send({ t: "bye", reason });
         s2.status = "left";
@@ -19124,17 +19393,34 @@ function createNetHost({ onChange, onLeave }) {
   return host;
 }
 function createNetClient({ onChange, onStart, onEvents, onLeave }) {
-  const peer = new Peer("join");
+  let peer = new Peer("join");
   let roster = null, padsStatic = null;
   let snaps = [];
   let lastRecv = 0;
   let replay = null, replayAt = -1e9;
   let pendingInputs = [];
+  let relay = null;
+  const done = () => {
+    if (relay) {
+      relay.close();
+      relay = null;
+    }
+  };
+  const fail = (msg) => {
+    done();
+    if (client.status === "connected" || client.status === "playing") return;
+    client.status = "idle";
+    client.error = msg;
+    peer.close();
+    onChange && onChange();
+  };
   const client = {
     role: "client",
-    peer,
+    get peer() {
+      return peer;
+    },
     status: "idle",
-    // idle | creating | waiting | connected | playing | closed
+    // idle | finding | connecting (game code) | creating | waiting (long code) | connected | playing | closed
     error: "",
     reason: "",
     lobby: null,
@@ -19143,6 +19429,59 @@ function createNetClient({ onChange, onStart, onEvents, onLeave }) {
     you: -1,
     // my car id once a match starts
     replyCode: "",
+    // 6-digit game code: find the host through the relay, then connect directly
+    async joinCode(code, profile) {
+      client.status = "finding";
+      client.error = "";
+      onChange && onChange();
+      const hostId = hostIdFor(code);
+      const notFound = `No game found with code ${code}. Check the number, and that the host still has the LAN lobby open.`;
+      try {
+        relay = await openRelay(`${hostIdFor("j")}-${Math.random().toString(36).slice(2, 10)}`);
+      } catch (e) {
+        fail(e.message);
+        return;
+      }
+      if (client.status !== "finding") {
+        done();
+        return;
+      }
+      peer = new Peer("join", { offerer: true });
+      wirePeer();
+      const cid = "dc_" + Math.random().toString(36).slice(2, 12);
+      peer.onOpen = () => {
+        done();
+        client.status = "connected";
+        peer.send({ t: "hello", v: NET_PROTOCOL, name: profile.name, bodyId: profile.bodyId, accent: profile.accent });
+        onChange && onChange();
+      };
+      peer.onCandidate = (c) => relay && relay.send("CANDIDATE", hostId, wrapCandidate(cid, c));
+      relay.onMessage = (m) => {
+        if (m.src !== hostId) return;
+        const p = m.payload || {};
+        if (m.type === "EXPIRE" || m.type === "LEAVE") {
+          if (client.status === "finding") fail(notFound);
+        } else if (m.type === "ANSWER" && p.sdp) {
+          client.status = "connecting";
+          onChange && onChange();
+          peer.takeAnswer(p.sdp).catch((e) => fail(e.message));
+        } else if (m.type === "CANDIDATE") peer.addCandidate(p.candidate);
+      };
+      relay.onClose = () => {
+        if (client.status === "finding" || client.status === "connecting") fail("Lost the connection to the matchmaking service.");
+      };
+      try {
+        relay.send("OFFER", hostId, wrapOffer(cid, await peer.makeOffer(), { v: NET_PROTOCOL, name: profile.name }));
+      } catch (e) {
+        fail(e.message);
+        return;
+      }
+      setTimeout(() => {
+        if (client.status === "finding") fail(notFound);
+        else if (client.status === "connecting") fail(NO_LINK);
+      }, CONNECT_TIMEOUT_MS);
+    },
+    // offline fallback: long copy/paste code
     async join(code, profile) {
       client.status = "creating";
       client.error = "";
@@ -19201,6 +19540,7 @@ function createNetClient({ onChange, onStart, onEvents, onLeave }) {
       return { view: interpolateFrames(a, b, t), hint: null };
     },
     close() {
+      done();
       try {
         peer.send({ t: "bye" });
       } catch (e) {
@@ -19209,50 +19549,53 @@ function createNetClient({ onChange, onStart, onEvents, onLeave }) {
       client.status = "closed";
     }
   };
-  peer.onMessage = (m) => {
-    if (m.t === "lobby") {
-      client.lobby = m;
+  function wirePeer() {
+    peer.onMessage = (m) => {
+      if (m.t === "lobby") {
+        client.lobby = m;
+        onChange && onChange();
+      } else if (m.t === "start") {
+        client.you = m.you;
+        client.status = "playing";
+        snaps = [];
+        replay = null;
+        onStart && onStart(m);
+      } else if (m.t === "mv") client.matchView = m.v;
+      else if (m.t === "ev") {
+        for (const e of m.e) for (const k in e) if (isVec(e[k])) e[k] = new Vec3(e[k].x, e[k].y, e[k].z);
+        onEvents && onEvents(m.e);
+      } else if (m.t === "bye") {
+        client.reason = m.reason || "The host ended the game.";
+        peer.close();
+      }
+    };
+    peer.onFast = (buf) => {
+      if (!roster) return;
+      const { frame: frame2, hint } = decodeFrame(buf, roster, padsStatic);
+      const now2 = performance.now();
+      if (hint) {
+        replay = { frame: frame2, hint };
+        replayAt = now2;
+        return;
+      }
+      if (snaps.length && frame2.tick <= snaps[snaps.length - 1].tick) {
+        if (frame2.tick < snaps[snaps.length - 1].tick - 240) snaps = [];
+        else return;
+      }
+      snaps.push(frame2);
+      if (snaps.length > 40) snaps.shift();
+      lastRecv = now2;
+    };
+    peer.onClose = () => {
+      if (client.status === "closed" || client.status === "idle") return;
+      const wasPlaying = client.status === "playing" || client.status === "connected";
+      client.status = "closed";
+      if (!client.reason) client.reason = wasPlaying ? "Lost the connection to the host." : "The connection failed. Both computers must be on the same network.";
+      onLeave && onLeave(client.reason);
       onChange && onChange();
-    } else if (m.t === "start") {
-      client.you = m.you;
-      client.status = "playing";
-      snaps = [];
-      replay = null;
-      onStart && onStart(m);
-    } else if (m.t === "mv") client.matchView = m.v;
-    else if (m.t === "ev") {
-      for (const e of m.e) for (const k in e) if (isVec(e[k])) e[k] = new Vec3(e[k].x, e[k].y, e[k].z);
-      onEvents && onEvents(m.e);
-    } else if (m.t === "bye") {
-      client.reason = m.reason || "The host ended the game.";
-      peer.close();
-    }
-  };
-  peer.onFast = (buf) => {
-    if (!roster) return;
-    const { frame: frame2, hint } = decodeFrame(buf, roster, padsStatic);
-    const now2 = performance.now();
-    if (hint) {
-      replay = { frame: frame2, hint };
-      replayAt = now2;
-      return;
-    }
-    if (snaps.length && frame2.tick <= snaps[snaps.length - 1].tick) {
-      if (frame2.tick < snaps[snaps.length - 1].tick - 240) snaps = [];
-      else return;
-    }
-    snaps.push(frame2);
-    if (snaps.length > 40) snaps.shift();
-    lastRecv = now2;
-  };
-  peer.onClose = () => {
-    if (client.status === "closed") return;
-    const wasPlaying = client.status === "playing" || client.status === "connected";
-    client.status = "closed";
-    if (!client.reason) client.reason = wasPlaying ? "Lost the connection to the host." : "The connection failed. Both computers must be on the same network.";
-    onLeave && onLeave(client.reason);
-    onChange && onChange();
-  };
+    };
+  }
+  wirePeer();
   return client;
 }
 
@@ -19698,13 +20041,20 @@ var api = {
     return {
       role: n ? n.role : null,
       notice: game.lanNotice || "",
-      slots: n && n.role === "host" ? n.slots.map((s2) => ({ id: s2.id, status: s2.status, team: s2.team, name: s2.name, code: s2.code, error: s2.error || "" })) : [],
+      slots: n && n.role === "host" ? n.slots.map((s2) => ({ id: s2.id, status: s2.status, team: s2.team, name: s2.name, code: s2.code, error: s2.error || "", manual: !!s2.manual })) : [],
+      code: n && n.role === "host" ? n.code : "",
+      relayStatus: n && n.role === "host" ? n.relayStatus : "off",
+      relayError: n && n.role === "host" ? n.relayError : "",
       client: n && n.role === "client" ? { status: n.status, error: n.error, reason: n.reason, lobby: n.lobby, replyCode: n.replyCode } : null
     };
   },
   lanInvite() {
     const h2 = lanHost();
     return h2.invite();
+  },
+  lanRetryCode() {
+    const h2 = lanHost();
+    return h2.openLobby();
   },
   lanAcceptReply(id, code) {
     return game.net && game.net.role === "host" ? game.net.acceptReply(id, code) : null;
@@ -19747,7 +20097,15 @@ var api = {
     game.lanNotice = "";
     const client = createNetClient({ onChange: lanChanged, onStart: clientStart, onEvents: (e) => frameEvents.push(...e), onLeave: clientLeft });
     game.net = client;
-    return client.join(code, { name: settings.game.playerName || "Player", bodyId: settings.game.carBody, accent: settings.game.accent });
+    const profile = { name: settings.game.playerName || "Player", bodyId: settings.game.carBody, accent: settings.game.accent };
+    const digits = String(code || "").replace(/\D/g, "");
+    if (/^\s*[\d\s-]+\s*$/.test(String(code || "")) && digits.length === 6) return client.joinCode(digits, profile);
+    if (/^\s*[\d\s-]*\s*$/.test(String(code || ""))) {
+      client.error = "Game codes are 6 digits — check the number on the host’s screen.";
+      lanChanged();
+      return "";
+    }
+    return client.join(code, profile);
   },
   lanLeave() {
     if (!game.lan) lanClose();
@@ -19761,6 +20119,7 @@ function lanHost() {
   n.hostName = settings.game.playerName || "Host";
   n.hostTeam = settings.game.team || 0;
   game.net = n;
+  n.openLobby();
   return n;
 }
 window.__api = api;

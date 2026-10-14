@@ -414,40 +414,55 @@ export function createMenus({ api, settings, stats, onOpenChange }) {
       if (api.lanSupported && !api.lanSupported()) panel.appendChild(h('div.tp-note.err', 'This browser can’t do network play. Use Chrome, Edge or Firefox.'));
       panel.append(
         h('div.tp-note', 'Play with friends on the ', h('b', 'same Wi-Fi or network'), '. Open this same TURBO PITCH file on each computer (Chrome works best). ',
-          'One computer hosts and runs the match; everyone else joins. You connect by swapping two codes — send them any way you like (chat, email, AirDrop).'),
+          'One computer hosts and gets a ', h('b', '6-digit game code'), '; everyone else joins by typing it in.'),
         h('div.tp-nav', { style: { position: 'static', width: '100%' } },
-          btn('Host a game', () => { api.lanHost(); push('lanhost'); }, { sub: 'Run the match on this computer', key: 'lan-host' }),
-          btn('Join a game', () => push('lanjoin'), { sub: 'Paste a code from the host', key: 'lan-join' })),
+          btn('Host a game', () => { api.lanHost(); push('lanhost'); }, { sub: 'Get a game code', key: 'lan-host' }),
+          btn('Join a game', () => push('lanjoin'), { sub: 'Type the host’s code', key: 'lan-join' })),
       );
       p.append(panel, footer());
     },
 
     lanhost(p) {
-      const st = api.lanState();
-      if (st.role !== 'host') api.lanHost();
+      let st = api.lanState();
+      if (st.role !== 'host') { api.lanHost(); st = api.lanState(); }
       const last = settings.game.lastLan || {};
       const cfg = lanCfg || (lanCfg = { teamSize: last.teamSize || 2, bots: last.noBots ? false : true, difficulty: last.difficulty || 'pro', durationSec: last.durationSec || 300 });
-      const slots = api.lanState().slots;
+      const slots = st.slots;
       const live = slots.filter((s) => s.status !== 'left');
       api.lanSetInfo(`${cfg.teamSize}v${cfg.teamSize} · ${cfg.bots ? 'bots fill empty spots' : 'no bots'} · ${Math.round(cfg.durationSec / 60)} min`);
       p.append(h('div.tp-shade-r'), title('Host', 'LAN lobby'));
       const panel = h('div.tp-panel.tp-scroll', { style: { right: 'calc(var(--u) * 3)', top: 'calc(var(--u) * 13)', width: 'min(calc(var(--u) * 78), 50vw)', maxHeight: 'calc(100% - var(--u) * 21)', padding: 'calc(var(--u) * 2.2) calc(var(--u) * 2.8)' } });
       const teamSeg = (team, onPick, key) => seg([[0, 'Blue'], [1, 'Orange']], team, onPick, { key, orangeFor: 1, swatch: { 0: TEAM_COLORS[0].css, 1: TEAM_COLORS[1].css } });
 
+      // game code
+      const codeCard = h('div.tp-gamecode');
+      if (st.relayStatus === 'online' && st.code) {
+        codeCard.append(h('div.lbl', 'Game code'), h('div.num', `${st.code.slice(0, 3)} ${st.code.slice(3)}`),
+          h('div.sub', 'On the other computers: ', h('b', 'LAN Play › Join a game'), ', then type this code.'));
+      } else if (st.relayStatus === 'offline') {
+        codeCard.append(h('div.lbl', 'Game code'), h('div.tp-note.err', { style: { margin: 'calc(var(--u) * 0.6) 0' } }, st.relayError || 'No game code.'),
+          h('div.act', btn('Try again', async () => { await api.lanRetryCode(); refresh(); }, { key: 'code-retry', cls: 'primary' })),
+          h('div.sub', 'No internet? Use “Invite with a long code” below instead.'));
+      } else {
+        codeCard.append(h('div.lbl', 'Game code'), h('div.num.wait', '··· ···'), h('div.sub', 'Getting a code…'));
+      }
+      panel.appendChild(codeCard);
+
       const list = h('div');
       const myTeam = settings.game.team === 1 ? 1 : 0;
       list.appendChild(h('div.tp-lan-slot' + (myTeam ? '.t1' : ''),
         h('div.top', h('div.nm', `${settings.game.playerName || 'Player'} (you, host)`), teamSeg(myTeam, (v) => { api.lanSetTeam('host', v); refresh(); }, 'team-host'))));
       for (const s of slots) {
-        const [label, cls] = STATUS[s.status] || [s.status, ''];
+        let [label, cls] = STATUS[s.status] || [s.status, ''];
+        if (!s.manual && s.status === 'connecting') label = 'Joining…';
         const card = h('div.tp-lan-slot' + (s.team ? '.t1' : ''));
-        const name = s.status === 'connected' ? s.name : `Invite ${s.id}`;
+        const name = s.status === 'connected' || !s.manual ? s.name : `Invite ${s.id}`;
         card.appendChild(h('div.top', h('div.nm', name), h('div.st' + (cls ? '.' + cls : ''), label),
           s.status === 'connected' ? teamSeg(s.team, (v) => { api.lanSetTeam(s.id, v); refresh(); }, 'team-' + s.id) : null,
           btn(s.status === 'connected' ? 'Kick' : 'Cancel', () => { api.lanRemove(s.id); delete lanDrafts[s.id]; refresh(); }, { key: 'rm-' + s.id })));
-        if (s.status === 'waiting' || s.status === 'connecting' || (s.status === 'error' && s.code)) {
+        if (s.manual && (s.status === 'waiting' || s.status === 'connecting' || (s.status === 'error' && s.code))) {
           card.append(
-            h('div.step', h('b', '1. '), 'Send this invite code to the player who is joining:'),
+            h('div.step', h('b', '1. '), 'Send this long code to the player who is joining (they paste it in Join a game):'),
             codeBox(s.code, { readonly: true, key: 'inv-' + s.id }),
             h('div.act', copyBtn(s.code, 'copy-' + s.id)),
             h('div.step', h('b', '2. '), 'Paste the reply code they send back, then press Connect:'),
@@ -461,9 +476,7 @@ export function createMenus({ api, settings, stats, onOpenChange }) {
         if (s.error) card.appendChild(h('div.tp-note.err', { style: { margin: 'calc(var(--u) * 0.8) 0 0' } }, s.error));
         list.appendChild(card);
       }
-      panel.append(group(`Players (${1 + live.filter((s) => s.status === 'connected').length})`, list,
-        btn('Invite a player', async () => { if (lanBusy.inv) return; lanBusy.inv = true; try { await api.lanInvite(); } finally { lanBusy.inv = false; } refresh(); },
-          { key: 'invite' })));
+      panel.append(group(`Players (${1 + live.filter((s) => s.status === 'connected').length})`, list));
       panel.append(
         group('Team size', seg([[1, '1v1'], [2, '2v2'], [3, '3v3']], cfg.teamSize, (v) => { cfg.teamSize = v; refresh(); }, { key: 'lan-size' })),
         group('Empty spots', seg([[true, 'Bots'], [false, 'Leave empty']], cfg.bots, (v) => { cfg.bots = v; refresh(); }, { key: 'lan-bots' })));
@@ -473,7 +486,10 @@ export function createMenus({ api, settings, stats, onOpenChange }) {
         btn('Start match', () => {
           api.lanStart({ teamSize: cfg.teamSize, blueSize: cfg.teamSize, orangeSize: cfg.teamSize, noBots: !cfg.bots, difficulty: cfg.difficulty,
             teammateDifficulty: cfg.difficulty, opponentDifficulty: cfg.difficulty, durationSec: cfg.durationSec });
-        }, { cls: 'primary', key: 'lan-start', sub: live.some((s) => s.status !== 'connected') ? 'Players still connecting will miss this match' : '' }));
+        }, { cls: 'primary', key: 'lan-start', sub: live.some((s) => s.status !== 'connected') ? 'Players still joining will miss this match' : '' }),
+        h('div', { style: { height: 'calc(var(--u) * 1.6)' } }),
+        btn('Invite with a long code', async () => { if (lanBusy.inv) return; lanBusy.inv = true; try { await api.lanInvite(); } finally { lanBusy.inv = false; } refresh(); },
+          { key: 'invite', sub: 'No internet' }));
       p.append(panel, footer());
     },
 
@@ -483,21 +499,32 @@ export function createMenus({ api, settings, stats, onOpenChange }) {
       p.append(h('div.tp-shade-r'), title('Join', 'LAN game'));
       const panel = h('div.tp-panel.tp-scroll', { style: { right: 'calc(var(--u) * 3)', top: 'calc(var(--u) * 13)', width: 'min(calc(var(--u) * 70), 46vw)', maxHeight: 'calc(100% - var(--u) * 21)', padding: 'calc(var(--u) * 2.4) calc(var(--u) * 2.8)' } });
       const status = c ? c.status : 'idle';
+      const go = async () => {
+        if (lanBusy.join) return;
+        lanBusy.join = true;
+        try { await api.lanJoin(lanDrafts.join || ''); } finally { lanBusy.join = false; }
+        refresh();
+      };
       if (!c || status === 'idle' || status === 'creating') {
+        const long = /^\s*TP1/i.test(lanDrafts.join || '');
+        const inp = h('input.tp-input.tp-codein', { type: 'text', inputmode: 'numeric', autocomplete: 'off', spellcheck: 'false', placeholder: '000000', 'data-nav': '', 'data-key': 'join-code' });
+        inp.value = lanDrafts.join || '';
+        inp.addEventListener('input', () => { lanDrafts.join = inp.value; inp.classList.toggle('long', /^\s*TP1/i.test(inp.value)); });
+        inp.addEventListener('keydown', (e) => { e.stopPropagation(); if (e.key === 'Enter') go(); else if (e.key === 'Escape') inp.blur(); });
+        if (long) inp.classList.add('long');
         panel.append(
-          h('div.tp-note', h('b', '1. '), 'On the host computer choose ', h('b', 'LAN Play › Host a game › Invite a player'), ', then paste the invite code here:'),
-          codeBox(lanDrafts.join || '', { key: 'join-code', placeholder: 'TP1…', onInput: (v) => { lanDrafts.join = v; } }),
-          h('div', { style: { height: 'calc(var(--u) * 1.2)' } }),
-          btn(status === 'creating' ? 'Making reply code…' : 'Join', async () => {
-            if (lanBusy.join) return;
-            lanBusy.join = true;
-            try { await api.lanJoin(lanDrafts.join || ''); } finally { lanBusy.join = false; }
-            refresh();
-          }, { cls: 'primary', key: 'join-go' }));
+          h('div.tp-note', 'Type the ', h('b', '6-digit game code'), ' shown on the host’s screen:'),
+          inp,
+          h('div', { style: { height: 'calc(var(--u) * 1.4)' } }),
+          btn(status === 'creating' ? 'Making reply code…' : 'Join', go, { cls: 'primary', key: 'join-go' }));
         if (c && c.error) panel.appendChild(h('div.tp-note.err', { style: { marginTop: 'calc(var(--u) * 1.4)' } }, c.error));
+        panel.appendChild(h('div.tp-note', { style: { marginTop: 'calc(var(--u) * 2)' } }, 'No internet? The host can use “Invite with a long code” — paste that code in the box above instead.'));
+      } else if (status === 'finding' || status === 'connecting') {
+        panel.append(h('div.tp-gamecode', h('div.lbl', 'Game code'), h('div.num', String(lanDrafts.join || '').replace(/\D/g, '').replace(/^(\d{3})(\d{3})$/, '$1 $2')),
+          h('div.sub', status === 'finding' ? 'Looking for the game…' : 'Found it — connecting…')));
       } else if (status === 'waiting') {
         panel.append(
-          h('div.tp-note', h('b', '2. '), 'Send this reply code back to the host. They paste it and press ', h('b', 'Connect'), '.'),
+          h('div.tp-note', 'Send this reply code back to the host. They paste it and press ', h('b', 'Connect'), '.'),
           codeBox(c.replyCode, { readonly: true, key: 'reply-code' }),
           h('div', { style: { display: 'flex', marginTop: 'calc(var(--u) * 1)' } }, copyBtn(c.replyCode, 'copy-reply')),
           h('div.tp-note', { style: { marginTop: 'calc(var(--u) * 2)' } }, 'Waiting for the host to connect…'));
@@ -519,7 +546,6 @@ export function createMenus({ api, settings, stats, onOpenChange }) {
       }
       p.append(panel, footer());
     },
-
     pause(p) {
       const game = api.getGame ? api.getGame() : null;
       const fp = api.isFreePlay ? api.isFreePlay() : false;

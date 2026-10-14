@@ -345,11 +345,13 @@ const api = {
     const n = game.net;
     return {
       role: n ? n.role : null, notice: game.lanNotice || '',
-      slots: n && n.role === 'host' ? n.slots.map((s) => ({ id: s.id, status: s.status, team: s.team, name: s.name, code: s.code, error: s.error || '' })) : [],
+      slots: n && n.role === 'host' ? n.slots.map((s) => ({ id: s.id, status: s.status, team: s.team, name: s.name, code: s.code, error: s.error || '', manual: !!s.manual })) : [],
+      code: n && n.role === 'host' ? n.code : '', relayStatus: n && n.role === 'host' ? n.relayStatus : 'off', relayError: n && n.role === 'host' ? n.relayError : '',
       client: n && n.role === 'client' ? { status: n.status, error: n.error, reason: n.reason, lobby: n.lobby, replyCode: n.replyCode } : null,
     };
   },
   lanInvite() { const h = lanHost(); return h.invite(); },
+  lanRetryCode() { const h = lanHost(); return h.openLobby(); },
   lanAcceptReply(id, code) { return game.net && game.net.role === 'host' ? game.net.acceptReply(id, code) : null; },
   lanSetTeam(id, team) {
     const n = game.net;
@@ -372,7 +374,12 @@ const api = {
     game.lanNotice = '';
     const client = createNetClient({ onChange: lanChanged, onStart: clientStart, onEvents: (e) => frameEvents.push(...e), onLeave: clientLeft });
     game.net = client;
-    return client.join(code, { name: settings.game.playerName || 'Player', bodyId: settings.game.carBody, accent: settings.game.accent });
+    const profile = { name: settings.game.playerName || 'Player', bodyId: settings.game.carBody, accent: settings.game.accent };
+    const digits = String(code || '').replace(/\D/g, '');
+    // 6-digit game code (normal) or a long copy/paste code (offline fallback)
+    if (/^\s*[\d\s-]+\s*$/.test(String(code || '')) && digits.length === 6) return client.joinCode(digits, profile);
+    if (/^\s*[\d\s-]*\s*$/.test(String(code || ''))) { client.error = 'Game codes are 6 digits — check the number on the host’s screen.'; lanChanged(); return ''; }
+    return client.join(code, profile);
   },
   lanLeave() { if (!game.lan) lanClose(); },
 };
@@ -384,6 +391,7 @@ function lanHost() {
   n.hostName = settings.game.playerName || 'Host';
   n.hostTeam = settings.game.team || 0;
   game.net = n;
+  n.openLobby();
   return n;
 }
 window.__api = api; // debug / automation hook

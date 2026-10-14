@@ -1,9 +1,12 @@
-// LAN multiplayer transport: WebRTC data channels with copy/paste "connection codes"
-// instead of a signalling server (lead-owned).
-//
-// Host side, per joiner:  peer = new Peer('host'); code = await peer.createInvite();
-//                         ... joiner sends back a reply code ... await peer.acceptReply(reply)
-// Joiner side:            peer = new Peer('join'); reply = await peer.acceptInvite(code)
+// LAN multiplayer transport: WebRTC data channels between the computers (lead-owned).
+// Two ways to set a connection up:
+//  * 6-digit game code (relay.js): offer / answer / ICE candidates pass through a public relay;
+//    the joiner makes the offer (new Peer('join', { offerer: true })):
+//      join: desc = await peer.makeOffer() ... await peer.takeAnswer(desc); peer.addCandidate(c)
+//      host: desc = await peer.takeOffer(offer) (new Peer('host', { offerer: false }))
+//  * offline fallback, copy/paste "long codes" holding the whole session description:
+//      host: code = await peer.createInvite(); ... await peer.acceptReply(reply)
+//      join: reply = await peer.acceptInvite(code)
 // Two channels: 'rel' (reliable, ordered: lobby, inputs, events, match info) and
 // 'fast' (unordered, no retransmits: world snapshots).
 
@@ -69,13 +72,15 @@ export function webrtcSupported() { return typeof RTCPeerConnection !== 'undefin
 
 // ---- peer ------------------------------------------------------------------------
 export class Peer {
-  constructor(role) {
+  constructor(role, { offerer = role === 'host' } = {}) {
     this.role = role;
     this.pc = new RTCPeerConnection({ iceServers: ICE });
     this.rel = null; this.fast = null;
     this.open = false; this.closed = false;
     this.onOpen = null; this.onClose = null; this.onMessage = null; this.onFast = null;
-    if (role === 'host') {
+    this.onCandidate = null; this._pending = [];
+    this.pc.onicecandidate = (e) => { if (e.candidate && this.onCandidate) this.onCandidate(e.candidate.toJSON()); };
+    if (offerer) {
       this._attach(this.pc.createDataChannel('rel', { ordered: true }));
       this._attach(this.pc.createDataChannel('fast', { ordered: false, maxRetransmits: 0 }));
     } else {
@@ -126,6 +131,28 @@ export class Peer {
     if (desc.type !== 'answer') throw new Error('That’s an invite code. Paste the reply code from the player who is joining.');
     await this.pc.setRemoteDescription(desc);
   }
+  // ---- trickle signalling (6-digit codes)
+  async makeOffer() {
+    await this.pc.setLocalDescription(await this.pc.createOffer());
+    return { type: 'offer', sdp: this.pc.localDescription.sdp };
+  }
+  async takeOffer(desc) {
+    await this.pc.setRemoteDescription(desc);
+    this._flush();
+    await this.pc.setLocalDescription(await this.pc.createAnswer());
+    return { type: 'answer', sdp: this.pc.localDescription.sdp };
+  }
+  async takeAnswer(desc) {
+    await this.pc.setRemoteDescription(desc);
+    this._flush();
+  }
+  addCandidate(c) {
+    if (!c) return;
+    if (!this.pc.remoteDescription) this._pending.push(c);
+    else this.pc.addIceCandidate(c).catch(() => {});
+  }
+  _flush() { for (const c of this._pending.splice(0)) this.pc.addIceCandidate(c).catch(() => {}); }
+
   send(msg) { if (this.rel && this.rel.readyState === 'open') this.rel.send(JSON.stringify(msg)); }
   sendFast(buf) { if (this.fast && this.fast.readyState === 'open' && this.fast.bufferedAmount < 1 << 20) this.fast.send(buf); }
   close() {
