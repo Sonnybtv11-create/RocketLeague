@@ -9,6 +9,8 @@ import {
 } from './util.js';
 
 export const BOOST_ACC_AIR = 1058.33;
+// approach turning-circle scale (radius = turnRadius(speed) * APPROACH_R)
+export const APPROACH_R = 1.7;
 
 // turning curvature of a car vs speed (RL table) -> turn radius
 const CURV = [[0, 0.0069], [500, 0.00398], [1000, 0.00235], [1500, 0.001375], [1750, 0.0011], [2300, 0.00088]];
@@ -36,11 +38,52 @@ export function speedForRadius(R) {
   return 2300;
 }
 
+// Arrive at C=(cx,cy) heading along (sdx,sdy): straight line to the tangent
+// point of a turning circle of radius r that ends at C with that heading
+// (Dubins-like "line + arc"). Returns {tx, ty} steering target and the path
+// length (out object reused).
+const _ap = { tx: 0, ty: 0, len: 0, arc: 0 };
+export function approachPath(px, py, cx, cy, sdx, sdy, r) {
+  const rx = px - cx, ry = py - cy;
+  // side of the final line the car is on (math orientation: left = +)
+  const side = sdx * ry - sdy * rx >= 0 ? 1 : -1;
+  // circle centre
+  const ox = cx - sdy * r * side, oy = cy + sdx * r * side;
+  const dx = px - ox, dy = py - oy;
+  const d = Math.hypot(dx, dy);
+  const direct = Math.hypot(rx, ry);
+  // ahead of C along the shot line and nearly aligned: go straight
+  if (d <= r * 1.02) {
+    _ap.tx = cx; _ap.ty = cy; _ap.len = direct * 1.15; _ap.arc = 0; return _ap;
+  }
+  const phi = Math.atan2(dy, dx), alpha = Math.acos(r / d);
+  const ta = phi + side * alpha;
+  const tx = ox + r * Math.cos(ta), ty = oy + r * Math.sin(ta);
+  // arc from T to C in the travel direction (side=+1: CCW)
+  const ca = Math.atan2(cy - oy, cx - ox);
+  let arc = (ca - ta) * side;
+  while (arc < 0) arc += 2 * Math.PI;
+  while (arc > 2 * Math.PI) arc -= 2 * Math.PI;
+  const straight = Math.hypot(tx - px, ty - py);
+  _ap.len = straight + arc * r;
+  _ap.arc = arc;
+  if (straight > r * 0.35) { _ap.tx = tx; _ap.ty = ty; } else {
+    // on the circle: aim a little further along it (or at C)
+    const ang = Math.atan2(py - oy, px - ox);
+    let rem = (ca - ang) * side; while (rem < 0) rem += 2 * Math.PI; while (rem > 2 * Math.PI) rem -= 2 * Math.PI;
+    if (rem < 0.7 || rem > 2 * Math.PI - 0.3) { _ap.tx = cx; _ap.ty = cy; } else {
+      const a2 = ang + side * 0.7;
+      _ap.tx = ox + r * Math.cos(a2); _ap.ty = oy + r * Math.sin(a2);
+    }
+  }
+  return _ap;
+}
+
 // --------------------------------------------------------------------- shot
 // Direction (2D unit) in which to hit a ball at b, for a car at (cx, cy) on team
 // with attack sign s (+1 attacks +y). Returns {x, y, kind} kind: 'shot'|'clear'|'cut'|'centre'
 const _shot = { x: 0, y: 1, kind: 'shot' };
-export function shotDirection(bx, by, cx, cy, s, maxCut = 1.25) {
+export function shotDirection(bx, by, cx, cy, s, maxCut = 1.25, hx = 0, hy = 0, budget = 10) {
   const oppY = FIELD_Y * s;
   // aim point inside the opponent goal (posts inset by 200)
   const tx = clamp(bx, -GOAL_HW + 220, GOAL_HW - 220) * 0.7;
@@ -52,20 +95,29 @@ export function shotDirection(bx, by, cx, cy, s, maxCut = 1.25) {
   // approach direction (car -> ball)
   let px = bx - cx, py = by - cy;
   const pl = Math.hypot(px, py) || 1; px /= pl; py /= pl;
-  let cut = Math.atan2(px * ay - py * ax, px * ax + py * ay);
-  if (Math.abs(cut) > maxCut) {
-    // can't redirect that much: in our half prefer a clear away from our goal
+  const hasH = hx !== 0 || hy !== 0;
+  // a direction is playable if it is within maxCut of the approach line and we
+  // can still turn our heading onto it in the distance left (budget, rad)
+  const ang = (x1, y1, x2, y2) => Math.atan2(x1 * y2 - y1 * x2, x1 * x2 + y1 * y2);
+  const ok = (dx, dy) => Math.abs(ang(px, py, dx, dy)) <= maxCut && (!hasH || Math.abs(ang(hx, hy, dx, dy)) <= budget);
+  if (!ok(ax, ay)) {
+    // in our half prefer a clear away from our goal
     const ownY = -FIELD_Y * s;
     let clx = bx * 0.6, cly = by - ownY;
     const cll = Math.hypot(clx, cly) || 1; clx /= cll; cly /= cll;
-    const cutC = Math.atan2(px * cly - py * clx, px * clx + py * cly);
-    if (by * s < 1500 && Math.abs(cutC) < Math.abs(cut)) { ax = clx; ay = cly; cut = cutC; kind = 'clear'; }
-    if (Math.abs(cut) > maxCut) {
-      // best reachable: approach rotated toward the wanted direction by maxCut
-      const a = sign(cut) * maxCut;
-      const c = Math.cos(a), sn = Math.sin(a);
-      ax = px * c - py * sn; ay = px * sn + py * c;
-      kind = 'cut';
+    if (by * s < 0 && ok(clx, cly)) { ax = clx; ay = cly; kind = 'clear'; } else {
+      // best reachable: approach line rotated toward the wanted direction
+      const cut = ang(px, py, ax, ay);
+      let a = sign(cut) * Math.min(Math.abs(cut), maxCut);
+      let dx = px * Math.cos(a) - py * Math.sin(a), dy = px * Math.sin(a) + py * Math.cos(a);
+      if (hasH) {
+        const hc = ang(hx, hy, dx, dy);
+        if (Math.abs(hc) > budget) {
+          const b2 = sign(hc) * budget;
+          dx = hx * Math.cos(b2) - hy * Math.sin(b2); dy = hx * Math.sin(b2) + hy * Math.cos(b2);
+        }
+      }
+      ax = dx; ay = dy; kind = 'cut';
     }
   }
   // never aim at our own goal when near it: deflect toward the nearest side wall
@@ -211,6 +263,15 @@ export function findIntercept(bot, car, traj, out) {
   out.found = false;
   const m = car.body.rot.m;
   const rTurn = turnRadius(Math.max(600, car.body.vel.x * m[0] + car.body.vel.y * m[3] + car.body.vel.z * m[6]));
+  // current heading: velocity direction when moving, else the nose
+  const vh = Math.hypot(car.body.vel.x, car.body.vel.y);
+  let hx = vh > 400 ? car.body.vel.x / vh : m[0], hy = vh > 400 ? car.body.vel.y / vh : m[3];
+  const hl = Math.hypot(hx, hy) || 1; hx /= hl; hy /= hl;
+  const vfwd = car.body.vel.x * m[0] + car.body.vel.y * m[3] + car.body.vel.z * m[6];
+  const rAppr = turnRadius(clamp(Math.max(vfwd, 1000), 900, 1700)) * APPROACH_R;
+  const noWait = bot.threat >= 0;
+  let cutCand = null, cutWait = 0;
+  const aerialSlack = bot.aerialSlack();
   const n = traj.n;
   const stride = 2; // slices are 2 ticks apart -> every 4 ticks
   for (let i = 1; i < n; i += stride) {
@@ -225,23 +286,41 @@ export function findIntercept(bot, car, traj, out) {
     if (kind === 'high' && sk.wall && bz < 1700 && arenaSDF(bx, by, bz) < 230 && Math.abs(by) < FIELD_Y - 300) kind = 'wall';
     // how far we can redirect the ball depends on the room we have to curve in
     const dB = Math.hypot(bx - p.x, by - p.y);
-    const sd = shotDirection(bx, by, p.x, p.y, s, sk.maxCut * clamp((dB - 200) / (2.2 * rTurn), 0.25, 1));
+    const sd = shotDirection(bx, by, p.x, p.y, s, sk.maxCut, hx, hy, (dB - 150) / rTurn + 0.4);
     const sdx = sd.x, sdy = sd.y;
     if (kind === 'ground' || kind === 'jump' || kind === 'dbl') {
       const off = kind === 'ground' ? 150 : 110;
       const cx = bx - sdx * off, cy = by - sdy * off;
       const extra = airPenalty + (kind === 'jump' ? 0.05 : kind === 'dbl' ? 0.12 : 0);
+      if (cutCand && t > cutCand.t + cutWait) break;
       const slack = groundSlack(car, cx, cy, sdx, sdy, t, boost * sk.boostUse, extra);
       if (slack >= -20) {
-        if (aerialCand && aerialCand.t + bot.aerialSlack() < t) break;
-        return setOut(out, i, t, bx, by, bz, kind, sdx, sdy, sd.kind, traj);
+        if (aerialCand && aerialCand.t + aerialSlack < t) break;
+        if (sd.kind !== 'cut' || noWait) {
+          if (!cutCand) return setOut(out, i, t, bx, by, bz, kind, sdx, sdy, sd.kind, traj);
+        } else if (!cutCand) {
+          // only a deflection is possible this early: look for a proper shot a bit later
+          cutCand = { i, t, bx, by, bz, kind, sdx, sdy, sk: sd.kind };
+          const oe = bot.co ? bot.co.oppEta[bot.team] : 6;
+          cutWait = (by * s < -1000 || oe < t + 0.6) ? 0.15 : 0.9;
+        }
+      }
+      if (cutCand) {
+        // a full shot (attack direction) via a curved line+arc approach
+        const att = shotDirection(bx, by, p.x, p.y, s, 10, 0, 0, 10);
+        const ax = bx - att.x * off, ay = by - att.y * off;
+        const ap = approachPath(p.x, p.y, ax, ay, att.x, att.y, rAppr);
+        const tt = t - extra - 0.25;
+        if (tt > 0 && driveDist(Math.max(vfwd, 0), tt, boost * sk.boostUse) >= ap.len) {
+          return setOut(out, i, t, bx, by, bz, kind, att.x, att.y, att.kind, traj);
+        }
       }
     } else if (kind === 'wall') {
       // drive along the wall surface: path = floor distance to the wall foot + climb
       const climb = bz - 100;
       const slack = groundSlack(car, bx, by, sdx, sdy, t, boost * sk.boostUse, airPenalty + 0.25) - climb;
       if (slack >= 0) {
-        if (aerialCand && aerialCand.t + bot.aerialSlack() < t) break;
+        if (aerialCand && aerialCand.t + aerialSlack < t) break;
         return setOut(out, i, t, bx, by, bz, 'wall', sdx, sdy, sd.kind, traj);
       }
     }
@@ -256,6 +335,10 @@ export function findIntercept(bot, car, traj, out) {
         if (bot.stats) bot.stats.aerialOptions = (bot.stats.aerialOptions || 0) + 1;
       }
     }
+  }
+  if (cutCand && !(aerialCand && aerialCand.t + aerialSlack < cutCand.t)) {
+    const a = cutCand;
+    return setOut(out, a.i, a.t, a.bx, a.by, a.bz, a.kind, a.sdx, a.sdy, a.sk, traj);
   }
   if (aerialCand) {
     const a = aerialCand;

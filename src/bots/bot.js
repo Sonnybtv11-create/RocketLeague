@@ -19,11 +19,10 @@ import { makeControls } from '../contracts.js';
 import { getTrajectory, TrajView } from './predict.js';
 import { tables, jumpTimeTo } from './tables.js';
 import {
-  clamp, clamp1, sign, vnorm, vsub, dist, dist2D, carFwd, carUp, localTarget, steerPD, clampToField,
-  FIELD_X, FIELD_Y, GOAL_HW,
+  clamp, clamp1, dist, carFwd, carUp, localTarget, steerPD, clampToField, FIELD_Y, GOAL_HW,
 } from './util.js';
 import { Flip, HalfFlip, JumpShot, Aerial, Unstuck, recover, autoFlipInput } from './mechanics.js';
-import { coordinator, kickoffTakers, findIntercept, goalThreat, speedForRadius } from './strategy.js';
+import { coordinator, kickoffTakers, findIntercept, goalThreat, speedForRadius, approachPath, turnRadius, APPROACH_R } from './strategy.js';
 import { Kickoff } from './kickoff.js';
 import { QuickChat } from './chat.js';
 
@@ -37,7 +36,7 @@ export const SKILLS = {
   },
   pro: {
     name: 'pro', delay: 24, aimNoise: 0.1, posNoise: 40, jumpShots: true, doubleJumps: true, aerials: true,
-    aerialAcc: 1058 * 0.5, aerialMaxZ: 1100, aerialDouble: false, dodgeShots: 0.85, speedFlips: false, halfFlip: false,
+    aerialAcc: 1058 * 0.62, aerialMaxZ: 1200, aerialDouble: false, dodgeShots: 0.85, speedFlips: false, halfFlip: false,
     frontFlipSpeed: true, demos: false, wall: false, pads: true, boostUse: 0.9, boostMinDist: 900, maxCut: 1.15,
     rotation: 'basic', kickoff: 'boostflip', groundSpeed: 1500, handbrakeAngle: 1.8, jumpDodge: true, throttleCap: 1, reverse: true,
     shadow: true, maxSpeedFrac: 1,
@@ -52,6 +51,8 @@ export const SKILLS = {
 };
 
 let botCount = 0;
+const DEBUG_STUCK = typeof process !== 'undefined' && process.env && process.env.DEBUG_STUCK;
+
 
 class Bot {
   constructor({ difficulty = 'pro', carId, team, rng }) {
@@ -200,7 +201,9 @@ class Bot {
   }
   aerialSlack() {
     const oe = this.co ? this.co.oppEta[this.team] : 6;
-    return oe > (this.icpt.found ? this.icpt.t : 3) + 1 ? 0.9 : 0.25;
+    // how much earlier an aerial must be than a ground/jump touch to be worth it
+    const pro = this.skill.name !== 'allstar';
+    return oe > 2.5 ? (pro ? 0.9 : 0.6) : (pro ? 0.4 : 0.15);
   }
 
   // ---------------------------------------------------------------- intercept
@@ -297,12 +300,12 @@ class Bot {
     const off = kind === 'ground' ? 150 : 105;
     const cx = b.x - sdx * off, cy = b.y - sdy * off;
     const d = Math.hypot(cx - p.x, cy - p.y);
-    let ux = (cx - p.x) / (d || 1), uy = (cy - p.y) / (d || 1);
-    const misal = Math.acos(clamp(ux * sdx + uy * sdy, -1, 1));
-    const offDist = clamp(d * 0.45, 0, 1400) * clamp(misal / 1.2, 0, 1);
-    let ax = cx - sdx * offDist, ay = cy - sdy * offDist;
-    const A = clampToField({ x: ax, y: ay, z: 0 }, 120);
-    const pathLen = Math.hypot(A.x - p.x, A.y - p.y) + offDist;
+    // line + arc approach: arrive at C heading along the shot direction
+    const vf0 = Math.max(car.forwardSpeed, 0);
+    const r = turnRadius(clamp(Math.max(vf0, 1000), 900, 1700)) * APPROACH_R;
+    const ap = approachPath(p.x, p.y, cx, cy, sdx, sdy, r);
+    const A = clampToField({ x: ap.tx, y: ap.ty, z: 0 }, 120);
+    const pathLen = ap.len;
     const needed = pathLen / Math.max(remT, 0.02);
     let desired = needed;
     if (kind === 'ground') desired = Math.max(desired, urgent ? 2300 : d > 250 ? sk.groundSpeed : 900);
@@ -465,7 +468,7 @@ class Bot {
       const loc = localTarget(car, ball);
       c.steer = steerPD(car, Math.atan2(loc.y, loc.x));
       c.throttle = 0.4;
-      this.settledTick = world.tick;
+      if (car.isOnGround && car.body.rot.m[8] > 0.9) this.settledTick = world.tick;
       const db = dist(p, ball);
       if (this.skill.jumpShots && db < 500 && ball.z > 150 && car.isOnGround) {
         this.maneuver = new JumpShot(world.tick + 30, ball.z > 350 && this.skill.doubleJumps, false);
@@ -485,10 +488,11 @@ class Bot {
       this.driveTo(car, c, T.x, T.y, 0, { speed, boost: d > 2000, flipOk: true, halfFlipOk: true });
       return;
     }
-    // close: turn to face the play
+    // close: turn to face the play (holding position on purpose)
+    if (car.isOnGround && car.body.rot.m[8] > 0.9) this.settledTick = world.tick;
     const loc = localTarget(car, face);
     const ang = Math.atan2(loc.y, loc.x);
-    if (Math.abs(ang) < 0.5) { c.throttle = car.forwardSpeed > 100 ? -0.3 : 0; c.steer = steerPD(car, ang); this.settledTick = world.tick; return; }
+    if (Math.abs(ang) < 0.5) { c.throttle = car.forwardSpeed > 100 ? -0.3 : 0; c.steer = steerPD(car, ang); return; }
     c.throttle = car.forwardSpeed < 400 ? 0.6 : 0.1;
     c.steer = ang > 0 ? 1 : -1;
     if (Math.abs(ang) > 2 && car.forwardSpeed > 250) c.handbrake = true;
@@ -573,6 +577,14 @@ class Bot {
   driveTo(car, c, tx, ty, tz, o) {
     const sk = this.skill;
     if (sk.posNoise) { tx += Math.sin(this.world.tick * 0.013 + this.carId) * sk.posNoise; ty += Math.cos(this.world.tick * 0.011 + this.carId * 3) * sk.posNoise; }
+    // inside a goal with a target outside it: leave through the goal mouth first
+    const pp = car.body.pos;
+    if (Math.abs(pp.y) > FIELD_Y - 60 && (Math.abs(tx) > GOAL_HW - 250 || Math.abs(ty) < Math.abs(pp.y) - 200)) {
+      const gy = Math.sign(pp.y);
+      if (Math.abs(tx) > GOAL_HW - 250 || Math.abs(pp.x) > GOAL_HW - 250) {
+        tx = clamp(tx, -GOAL_HW + 350, GOAL_HW - 350) * 0.5; ty = gy * (FIELD_Y - 500); tz = 0;
+      }
+    }
     const loc = localTarget(car, { x: tx, y: ty, z: tz });
     const ang = Math.atan2(loc.y, loc.x);
     const p = car.body.pos;
@@ -653,12 +665,13 @@ class Bot {
     const settled = world.tick - (this.settledTick || -1e9) < 90;
     if (d < 90 && !settled) {
       h.length = 0;
-      this.escape(car, false, 0);
+      this.escape(car, false, 0, 'watchdog');
     }
   }
 
-  escape(car, wasReversing, steer) {
+  escape(car, wasReversing, steer, why = 'push') {
     this.stats.unstucks++;
+    if (DEBUG_STUCK) console.log('escape', why, this.skill.name, this.mode, this.maneuver && this.maneuver.name, car.body.pos.x | 0, car.body.pos.y | 0, car.body.pos.z | 0, 'up', car.body.rot.m[8].toFixed(2), 'wheels', car.numWheelsInContact, 'v', Math.hypot(car.body.vel.x, car.body.vel.y) | 0);
     const lvl = this.stuckLevel = ((this.stuckLevel || 0) + 1) % 3;
     const onWheels = car.isOnGround && car.body.rot.m[8] > 0.5;
     if (lvl === 1 && onWheels && !wasReversing) this.maneuver = new Unstuck(steer >= 0 ? -1 : 1, 70);

@@ -4,8 +4,11 @@
 //   'diag' (0/1)  'off' (2/3 off-centre)  'back' (4 back centre)
 // Taker routines by difficulty:
 //   allstar: speed-flip (diagonal dodge cancelled while boosting) then a dodge
-//            into the ball;   pro: boost + front flip + dodge into the ball;
-//   rookie:  boost straight at the ball.
+//            into the ball ('speedflip');
+//   pro:     full boost straight at the ball + dodge into it ('boostflip');
+//            ('flip' = early front flip variant, kept for experiments: it is
+//            slower in this sim because the car can't boost while flipping)
+//   rookie:  boost straight at the ball, dodges into it only sometimes.
 // Non-takers: grab the nearest own-half corner boost (second man) or go to net.
 // The speed-flip parameters were found by a search in the real sim (blue, left
 // side of the field from the team's view); other spawns are mirrored.

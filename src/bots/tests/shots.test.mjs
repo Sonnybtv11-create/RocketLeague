@@ -10,6 +10,7 @@ import { createBot } from '../bot.js';
 const diff = process.argv[2] || 'allstar', N = +(process.argv[3] || 60), seed = +(process.argv[4] || 7);
 const rng = makeRng(seed);
 const pred = new BallPredictor();
+const angErr = [];
 const kinds = { still: [0, 0, 0, 0], rollingIn: [0, 0, 0, 0], crossing: [0, 0, 0, 0], bouncing: [0, 0, 0, 0] };
 for (let k = 0; k < N; k++) {
   const kind = Object.keys(kinds)[k % 4];
@@ -25,8 +26,9 @@ for (let k = 0; k < N; k++) {
   if (kind === 'crossing') world.ball.body.vel.set((bx > 0 ? -1 : 1) * (500 + rng() * 700), (rng() - 0.5) * 400, 0);
   if (kind === 'bouncing') { world.ball.body.pos.z = 400 + rng() * 500; world.ball.body.vel.set((rng() - 0.5) * 600, (rng() - 0.5) * 600, 300); }
   world.lastTouch = { carId: -1, team: -1, tick: -1 };
-  let t = -1;
+  let t = -1, sd = null;
   for (let i = 0; i < 6 * 120 && t < 0; i++) {
+    if (bot.icpt.found) sd = { x: bot.icpt.sdx, y: bot.icpt.sdy };
     car.controls = bot.tick(world, { state: 'playing' }, 1 / 120);
     world.step();
     if (world.lastTouch.carId === car.id) t = (i + 1) / 120;
@@ -44,8 +46,14 @@ for (let k = 0; k < N; k++) {
     // let the hit finish (extra impulse lands next tick) then predict 4 s
     world.step();
     const b = world.ball.body;
+    if (sd) {
+      const err = Math.abs(Math.atan2(sd.x * b.vel.y - sd.y * b.vel.x, sd.x * b.vel.x + sd.y * b.vel.y));
+      angErr.push(err);
+    }
     const path = pred.predict({ pos: b.pos, vel: b.vel, angVel: b.angVel }, 4, 2);
-    if (path.some((s) => s.pos.y > 5120 + 91 && Math.abs(s.pos.x) < 893)) r[3]++;
+    const on = path.some((s) => s.pos.y > 5120 + 91 && Math.abs(s.pos.x) < 893);
+    if (on) r[3]++;
+    if (process.env.MISSES && kind === process.env.MISSES && !on) console.log(`miss k${k} ball0(${bx | 0},${by | 0}) car0(${cx | 0},${cy | 0}) hitAt(${b.pos.x | 0},${b.pos.y | 0}) vel(${b.vel.x | 0},${b.vel.y | 0},${b.vel.z | 0}) sd(${sd ? sd.x.toFixed(2) + ',' + sd.y.toFixed(2) : '-'}) ${bot.icpt.shotKind} ${bot.icpt.kind} lastManeuver ${bot.maneuver ? bot.maneuver.name : '-'}`);
   }
 }
 console.log(`${diff}: shooting drills (${N})`);
@@ -54,4 +62,5 @@ for (const [k, r] of Object.entries(kinds)) {
   console.log(`  ${k.padEnd(10)} touched ${r[1]}/${r[0]}  mean time ${(r[2] / Math.max(1, r[1])).toFixed(2)} s  on target ${r[3]}/${r[1]}`);
   tot = tot.map((v, i) => v + r[i]);
 }
+console.log(`  direction error vs intended: mean ${(angErr.reduce((a, b) => a + b, 0) / angErr.length * 57.3).toFixed(1)}°, within 20°: ${(100 * angErr.filter((e) => e < 0.35).length / angErr.length).toFixed(0)}%`);
 console.log(`  total      touched ${tot[1]}/${tot[0]}  on target ${(100 * tot[3] / Math.max(1, tot[1])).toFixed(0)}%`);
