@@ -198,7 +198,7 @@ const api = {
   getStats() { return stats; },
   async runSelfTests(onLine) {
     const mod = await import('./tests/selftest.js');
-    return mod.runAll(null, onLine || console.log);
+    return mod.runAllAsync(null, onLine || console.log);
   },
   setPreviewCar(bodyId, accent, team) {
     settings.game.carBody = bodyId; if (accent) settings.game.accent = accent; if (team !== undefined) settings.game.team = team;

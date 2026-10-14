@@ -428,13 +428,43 @@ T(5, 'Ball prediction matches the live sim', () => {
   return { pass: err < 1, detail: `error after 3 s: ${err.toFixed(3)} uu` };
 });
 
-export function runAll(filterPhase = null, log = console.log) {
+// ---------------------------------------------------------------- Render convention
+T(6, 'Render mirror: right is screen-right, blue goal behind blue kickoff', async () => {
+  const THREE = await import('three');
+  const { simToThree, simRotToQuat } = await import('../render/util.js');
+  const w = mkWorld(1); const car = w.cars[0];
+  car.setSpawn(-256, -3840, 17, Math.PI / 2); // blue kickoff (faces +Y)
+  for (let i = 0; i < 30; i++) w.step();
+  const cam = new THREE.PerspectiveCamera(80, 16 / 9, 0.1, 1000);
+  const f = car.forward;
+  simToThree({ x: car.pos.x - f.x * 270, y: car.pos.y - f.y * 270, z: car.pos.z + 100 }, cam.position);
+  cam.up.set(0, 1, 0);
+  cam.lookAt(simToThree(car.pos));
+  cam.updateMatrixWorld(); cam.updateProjectionMatrix();
+  const proj = (p) => simToThree(p).project(cam);
+  const right = proj(car.pos.add(car.right.mul(100)));
+  const left = proj(car.pos.sub(car.right.mul(100)));
+  const blueGoal = proj({ x: 0, y: -5120, z: 300 });
+  const orangeGoal = proj({ x: 0, y: 5120, z: 300 });
+  // model-space +Z (right) must map to sim right
+  const q = simRotToQuat(car.rot);
+  const mz = new THREE.Vector3(0, 0, 1).applyQuaternion(q);
+  const simR = simToThree(car.right.mul(100)).normalize();
+  // steering right for 1 s must move the car to screen-right
+  const p0 = proj(car.pos);
+  for (let i = 0; i < 120; i++) { car.controls = ctl({ throttle: 1, steer: 1 }); w.step(); }
+  const p1 = proj(car.pos);
+  const ok = right.x > left.x && orangeGoal.z < 1 && blueGoal.z > 1 && mz.dot(simR) > 0.999 && p1.x > p0.x;
+  return { pass: ok, detail: `right ${right.x.toFixed(2)} > left ${left.x.toFixed(2)}; orange goal in front (ndc z ${orangeGoal.z.toFixed(2)}), blue goal behind (${blueGoal.z.toFixed(2)}); model +Z·right ${mz.dot(simR).toFixed(3)}; steer-right moved screen x ${p0.x.toFixed(2)}→${p1.x.toFixed(2)}` };
+});
+
+export async function runAllAsync(filterPhase = null, log = console.log) {
   const results = [];
   for (const t of TESTS) {
     if (filterPhase && t.phase !== filterPhase) continue;
     let r;
     const t0 = (typeof performance !== 'undefined' ? performance.now() : Date.now());
-    try { r = t.fn(); } catch (e) { r = { pass: false, detail: 'EXCEPTION ' + (e && e.stack || e) }; }
+    try { r = await t.fn(); } catch (e) { r = { pass: false, detail: 'EXCEPTION ' + (e && e.stack || e) }; }
     const ms = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - t0;
     results.push({ phase: t.phase, name: t.name, ...r, ms });
     log(`${r.pass ? 'PASS' : 'FAIL'}  [P${t.phase}] ${t.name} — ${r.detail} (${ms.toFixed(0)} ms)`);
@@ -443,3 +473,5 @@ export function runAll(filterPhase = null, log = console.log) {
   log(`${passed}/${results.length} passed`);
   return results;
 }
+
+export const runAll = runAllAsync;

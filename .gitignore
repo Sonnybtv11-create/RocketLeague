@@ -2,3 +2,4 @@ node_modules/
 /refs/
 /shots/
 *.log
+.claude/
