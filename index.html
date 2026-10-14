@@ -1,0 +1,3977 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TURBO PITCH</title>
+<!--
+TURBO PITCH — header to be completed in the final pass.
+
+-->
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #05070d; }
+  #game-canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; outline: none; }
+  #ui-root { position: fixed; inset: 0; pointer-events: none; user-select: none; -webkit-user-select: none; }
+  #ui-root * { box-sizing: border-box; }
+  #boot-error { position: fixed; left: 16px; bottom: 16px; color: #f88; font: 13px monospace; white-space: pre-wrap; z-index: 99; }
+</style>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.186.1/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.186.1/examples/jsm/"
+  }
+}
+</script>
+</head>
+<body>
+<canvas id="game-canvas" tabindex="0"></canvas>
+<div id="ui-root"></div>
+<div id="boot-error"></div>
+<script>
+  window.addEventListener('error', (e) => { const el = document.getElementById('boot-error'); if (el) el.textContent += (e.message || e) + '\n'; });
+  window.addEventListener('unhandledrejection', (e) => { const el = document.getElementById('boot-error'); if (el) el.textContent += 'Promise: ' + (e.reason && (e.reason.stack || e.reason.message) || e.reason) + '\n'; });
+</script>
+<script type="module">
+var __defProp = Object.defineProperty;
+var __getOwnPropNames = Object.getOwnPropertyNames;
+var __esm = (fn, res) => function __init() {
+  return fn && (res = (0, fn[__getOwnPropNames(fn)[0]])(fn = 0)), res;
+};
+var __export = (target, all) => {
+  for (var name in all)
+    __defProp(target, name, { get: all[name], enumerable: true });
+};
+
+// src/sim/math.js
+function rotMatFromYPR(yaw, pitch = 0, roll = 0) {
+  const eulerX = -roll, eulerY = -pitch, eulerZ = yaw;
+  const ci = Math.cos(eulerX), cj = Math.cos(eulerY), ch = Math.cos(eulerZ);
+  const si = Math.sin(eulerX), sj = Math.sin(eulerY), sh = Math.sin(eulerZ);
+  const cc = ci * ch, cs = ci * sh, sc = si * ch, ss = si * sh;
+  return new RotMat([
+    cj * ch,
+    sj * sc - cs,
+    sj * cc + ss,
+    cj * sh,
+    sj * ss + cc,
+    sj * cs - sc,
+    -sj,
+    cj * si,
+    cj * ci
+  ]);
+}
+function yprFromRotMat(rm) {
+  const m = rm.m;
+  const yaw = Math.atan2(m[3], m[0]);
+  const pitch = Math.asin(clamp(-m[6], -1, 1));
+  const roll = Math.atan2(m[7], m[8]);
+  return { yaw, pitch: -pitch, roll: -roll };
+}
+function integrateRotation(rm, w, dt) {
+  const ang = Math.sqrt(w.x * w.x + w.y * w.y + w.z * w.z);
+  if (ang < 1e-12) return rm;
+  const ax = w.x / ang, ay = w.y / ang, az = w.z / ang;
+  const th = ang * dt;
+  const c = Math.cos(th), s = Math.sin(th), t = 1 - c;
+  const r = new RotMat([
+    t * ax * ax + c,
+    t * ax * ay - s * az,
+    t * ax * az + s * ay,
+    t * ax * ay + s * az,
+    t * ay * ay + c,
+    t * ay * az - s * ax,
+    t * ax * az - s * ay,
+    t * ay * az + s * ax,
+    t * az * az + c
+  ]);
+  const out = r.mul(rm);
+  out.orthonormalize();
+  return out;
+}
+var Vec3, RotMat, Curve, clamp, sgn;
+var init_math = __esm({
+  "src/sim/math.js"() {
+    Vec3 = class _Vec3 {
+      constructor(x = 0, y = 0, z = 0) {
+        this.x = x;
+        this.y = y;
+        this.z = z;
+      }
+      static from(o) {
+        return new _Vec3(o.x, o.y, o.z);
+      }
+      clone() {
+        return new _Vec3(this.x, this.y, this.z);
+      }
+      set(x, y, z) {
+        this.x = x;
+        this.y = y;
+        this.z = z;
+        return this;
+      }
+      copy(o) {
+        this.x = o.x;
+        this.y = o.y;
+        this.z = o.z;
+        return this;
+      }
+      add(o) {
+        return new _Vec3(this.x + o.x, this.y + o.y, this.z + o.z);
+      }
+      sub(o) {
+        return new _Vec3(this.x - o.x, this.y - o.y, this.z - o.z);
+      }
+      mul(s) {
+        return new _Vec3(this.x * s, this.y * s, this.z * s);
+      }
+      mulV(o) {
+        return new _Vec3(this.x * o.x, this.y * o.y, this.z * o.z);
+      }
+      neg() {
+        return new _Vec3(-this.x, -this.y, -this.z);
+      }
+      dot(o) {
+        return this.x * o.x + this.y * o.y + this.z * o.z;
+      }
+      cross(o) {
+        return new _Vec3(
+          this.y * o.z - this.z * o.y,
+          this.z * o.x - this.x * o.z,
+          this.x * o.y - this.y * o.x
+        );
+      }
+      len() {
+        return Math.sqrt(this.x * this.x + this.y * this.y + this.z * this.z);
+      }
+      len2() {
+        return this.x * this.x + this.y * this.y + this.z * this.z;
+      }
+      len2D() {
+        return Math.sqrt(this.x * this.x + this.y * this.y);
+      }
+      normalized() {
+        const l = this.len();
+        return l > 1e-12 ? new _Vec3(this.x / l, this.y / l, this.z / l) : new _Vec3();
+      }
+      dist(o) {
+        const dx = this.x - o.x, dy = this.y - o.y, dz = this.z - o.z;
+        return Math.sqrt(dx * dx + dy * dy + dz * dz);
+      }
+      dist2D(o) {
+        const dx = this.x - o.x, dy = this.y - o.y;
+        return Math.sqrt(dx * dx + dy * dy);
+      }
+      isZero() {
+        return this.x === 0 && this.y === 0 && this.z === 0;
+      }
+      addSelf(o) {
+        this.x += o.x;
+        this.y += o.y;
+        this.z += o.z;
+        return this;
+      }
+      subSelf(o) {
+        this.x -= o.x;
+        this.y -= o.y;
+        this.z -= o.z;
+        return this;
+      }
+      addScaledSelf(o, s) {
+        this.x += o.x * s;
+        this.y += o.y * s;
+        this.z += o.z * s;
+        return this;
+      }
+      mulSelf(s) {
+        this.x *= s;
+        this.y *= s;
+        this.z *= s;
+        return this;
+      }
+      to2D() {
+        return new _Vec3(this.x, this.y, 0);
+      }
+    };
+    RotMat = class _RotMat {
+      constructor(m) {
+        this.m = m ? Float64Array.from(m) : new Float64Array([1, 0, 0, 0, 1, 0, 0, 0, 1]);
+      }
+      clone() {
+        return new _RotMat(this.m);
+      }
+      copy(o) {
+        this.m.set(o.m);
+        return this;
+      }
+      get forward() {
+        const m = this.m;
+        return new Vec3(m[0], m[3], m[6]);
+      }
+      get right() {
+        const m = this.m;
+        return new Vec3(m[1], m[4], m[7]);
+      }
+      get up() {
+        const m = this.m;
+        return new Vec3(m[2], m[5], m[8]);
+      }
+      col(i) {
+        const m = this.m;
+        return new Vec3(m[i], m[3 + i], m[6 + i]);
+      }
+      // world = R * local
+      mulVec(v) {
+        const m = this.m;
+        return new Vec3(
+          m[0] * v.x + m[1] * v.y + m[2] * v.z,
+          m[3] * v.x + m[4] * v.y + m[5] * v.z,
+          m[6] * v.x + m[7] * v.y + m[8] * v.z
+        );
+      }
+      // local = R^T * world
+      mulVecT(v) {
+        const m = this.m;
+        return new Vec3(
+          m[0] * v.x + m[3] * v.y + m[6] * v.z,
+          m[1] * v.x + m[4] * v.y + m[7] * v.z,
+          m[2] * v.x + m[5] * v.y + m[8] * v.z
+        );
+      }
+      mul(o) {
+        const a = this.m, b = o.m, r = new Float64Array(9);
+        for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++)
+          r[i * 3 + j] = a[i * 3] * b[j] + a[i * 3 + 1] * b[3 + j] + a[i * 3 + 2] * b[6 + j];
+        return new _RotMat(r);
+      }
+      transpose() {
+        const m = this.m;
+        return new _RotMat([m[0], m[3], m[6], m[1], m[4], m[7], m[2], m[5], m[8]]);
+      }
+      static fromAxes(fwd, right, up) {
+        return new _RotMat([fwd.x, right.x, up.x, fwd.y, right.y, up.y, fwd.z, right.z, up.z]);
+      }
+      // Re-orthonormalize (Gram-Schmidt on forward/right, up = f x r)
+      orthonormalize() {
+        let f = this.forward.normalized();
+        let r = this.right;
+        r = r.sub(f.mul(f.dot(r))).normalized();
+        const u = f.cross(r);
+        this.m.set([f.x, r.x, u.x, f.y, r.y, u.y, f.z, r.z, u.z]);
+        return this;
+      }
+    };
+    Curve = class {
+      constructor(points) {
+        this.p = points;
+      }
+      get(x) {
+        const p = this.p;
+        if (p.length === 0) return 1;
+        if (x <= p[0][0]) return p[0][1];
+        for (let i = 1; i < p.length; i++) {
+          if (x < p[i][0]) {
+            const [x0, y0] = p[i - 1], [x1, y1] = p[i];
+            return y0 + (y1 - y0) * ((x - x0) / (x1 - x0));
+          }
+        }
+        return p[p.length - 1][1];
+      }
+    };
+    clamp = (v, a, b) => v < a ? a : v > b ? b : v;
+    sgn = (v) => v > 0 ? 1 : v < 0 ? -1 : 0;
+  }
+});
+
+// src/contracts.js
+function makeControls() {
+  return {
+    throttle: 0,
+    // -1..1
+    steer: 0,
+    // -1..1  (+ = right)
+    pitch: 0,
+    // -1..1  (+ = nose up; stick back)
+    yaw: 0,
+    // -1..1  (+ = right)
+    roll: 0,
+    // -1..1  (+ = roll right)
+    jump: false,
+    boost: false,
+    handbrake: false,
+    // not sim inputs, but carried through for UI/camera:
+    ballCam: false
+  };
+}
+var UU_TO_M, ARENA, TEAM, TEAM_COLORS, CAR_BODIES, EV, QUALITY, GAME_TITLE;
+var init_contracts = __esm({
+  "src/contracts.js"() {
+    UU_TO_M = 0.01;
+    ARENA = Object.freeze({
+      EXTENT_X: 4096,
+      // side walls at x = ±4096
+      EXTENT_Y: 5120,
+      // back walls (goal line) at y = ±5120
+      HEIGHT: 2044,
+      // ceiling
+      GOAL_DEPTH_Y: 6e3,
+      // back of the net at y = ±6000 (depth 880)
+      GOAL_HALF_WIDTH: 892.755,
+      GOAL_HEIGHT: 642.775,
+      CORNER_CATHETUS: 1152,
+      // 45° corner walls cut 1152 off each axis
+      FLOOR_FILLET: 256,
+      // curved floor->wall transition radius
+      CEIL_FILLET: 256,
+      // curved wall->ceiling transition radius
+      CORNER_ROUND: 200,
+      // rounding of the vertical edges of the octagon
+      GOAL_SCORE_Y: 5124.25
+      // goal when |ball.y| > GOAL_SCORE_Y + ball radius
+    });
+    TEAM = Object.freeze({ BLUE: 0, ORANGE: 1 });
+    TEAM_COLORS = Object.freeze({
+      0: { primary: 2059263, light: 7317759, dark: 666234, glow: 2788607, css: "#2f7bff", name: "BLUE" },
+      1: { primary: 16742932, light: 16756839, dark: 8007680, glow: 16747039, css: "#ff8a1f", name: "ORANGE" }
+    });
+    CAR_BODIES = [
+      { id: "vector", name: "Vector", hitbox: "OCTANE" },
+      { id: "lancer", name: "Lancer", hitbox: "DOMINUS" },
+      { id: "stingray", name: "Stingray", hitbox: "PLANK" },
+      { id: "arrowhead", name: "Arrowhead", hitbox: "BREAKOUT" },
+      { id: "nomad", name: "Nomad", hitbox: "HYBRID" },
+      { id: "bulwark", name: "Bulwark", hitbox: "MERC" }
+    ];
+    EV = Object.freeze({
+      BALL_HIT: "ballHit",
+      // {carId, impulse (uu/s delta-v on ball), pos, ballVel}
+      BALL_BOUNCE: "ballBounce",
+      // {pos, normal, speed}  (ball vs world)
+      CAR_BUMP: "carBump",
+      // {attackerId, victimId, pos, speed}
+      DEMO: "demo",
+      // {attackerId, victimId, pos}
+      RESPAWN: "respawn",
+      // {carId}
+      JUMP: "jump",
+      // {carId}
+      DOUBLE_JUMP: "doubleJump",
+      // {carId}
+      DODGE: "dodge",
+      // {carId, dir:{x,y}}
+      LAND: "land",
+      // {carId, speed (vertical impact speed), pos}
+      WALL_SCRAPE: "wallScrape",
+      // {carId, pos, speed}
+      SUPERSONIC_START: "supersonicStart",
+      // {carId}
+      BOOST_START: "boostStart",
+      // {carId}
+      BOOST_END: "boostEnd",
+      // {carId}
+      PAD_PICKUP: "padPickup",
+      // {carId, padIndex, isBig, pos}
+      GOAL: "goal",
+      // {team (scoring team), scorerId, assistId, pos, ballSpeed}
+      KICKOFF_COUNTDOWN: "kickoffCountdown",
+      // {n: 3|2|1}
+      KICKOFF_GO: "kickoffGo",
+      // {}
+      MATCH_END: "matchEnd",
+      // {winner}
+      OVERTIME: "overtime",
+      // {}
+      STAT: "stat",
+      // {carId, kind: 'goal'|'assist'|'save'|'epicSave'|'shot'|'demo'|'clear'|'centre'|'aerialHit'|'firstTouch', points}
+      QUICK_CHAT: "quickChat",
+      // {carId, text}
+      REPLAY_START: "replayStart",
+      // {}
+      REPLAY_END: "replayEnd"
+      // {}
+    });
+    QUALITY = Object.freeze({
+      low: { name: "Low", shadowMap: 1024, particles: 0.35, renderScale: 0.75, bloom: false, ssao: false, crowd: 0.25, reflections: 0, antialias: false },
+      medium: { name: "Medium", shadowMap: 2048, particles: 0.6, renderScale: 1, bloom: true, ssao: false, crowd: 0.5, reflections: 1, antialias: true },
+      high: { name: "High", shadowMap: 2048, particles: 1, renderScale: 1, bloom: true, ssao: false, crowd: 1, reflections: 1, antialias: true },
+      ultra: { name: "Ultra", shadowMap: 4096, particles: 1.5, renderScale: 1, bloom: true, ssao: true, crowd: 1, reflections: 2, antialias: true }
+    });
+    GAME_TITLE = "TURBO PITCH";
+  }
+});
+
+// src/sim/arena.js
+function footprintDist(ax, ay, backTerm) {
+  const dS = X - ax;
+  const dB = backTerm === null ? Y - ay : backTerm;
+  const dC = (DIAG - ax - ay) / SQ2;
+  if (backTerm !== null) {
+    return Math.min(dS, dB, dC);
+  }
+  if (dS >= RC && dB >= RC && dC >= RC) return Math.min(dS, dB, dC);
+  const vS = ax - EX, vB = ay - EY, vC = (ax + ay - ED) / SQ2;
+  let best = Infinity;
+  if (vS > 0) {
+    const py = ay;
+    if (py <= EY && EX + py <= ED + 1e-9) best = Math.min(best, vS);
+  }
+  if (vB > 0) {
+    const px = ax;
+    if (px <= EX && px + EY <= ED + 1e-9) best = Math.min(best, vB);
+  }
+  if (vC > 0) {
+    const px = ax - vC / SQ2, py = ay - vC / SQ2;
+    if (px <= EX + 1e-9 && py <= EY + 1e-9) best = Math.min(best, vC);
+  }
+  if (best === Infinity) {
+    const da = Math.hypot(ax - VA[0], ay - VA[1]);
+    const db = Math.hypot(ax - VB[0], ay - VB[1]);
+    best = Math.min(da, db);
+  }
+  return RC - best;
+}
+function profileDist(u, z) {
+  if (u < RF && z < RF) return RF - Math.hypot(RF - u, RF - z);
+  const zc = H - z;
+  if (u < RCG && zc < RCG) return RCG - Math.hypot(RCG - u, RCG - zc);
+  return Math.min(u, z, zc);
+}
+function arenaSDF(x, y, z) {
+  const ax = Math.abs(x), ay = Math.abs(y);
+  if (ay <= Y) {
+    if (ax < GW && z < GH) {
+      const w = Y - ay;
+      const pd = profileDist(w, z);
+      const dx2 = GW - ax;
+      const endFace = pd < 0 ? dx2 : Math.sqrt(dx2 * dx2 + pd * pd);
+      const dz2 = GH - z;
+      const above = Math.sqrt(w * w + dz2 * dz2);
+      const others = profileDist(Math.min(X - ax, (DIAG - ax - ay) / SQ2), z);
+      return Math.min(z, endFace, above, others);
+    }
+    return profileDist(footprintDist(ax, ay, null), z);
+  }
+  if (ax < GW && z < GH) {
+    return Math.min(GW - ax, GH - z, z, GD - ay);
+  }
+  const toArena = ay - Y;
+  const dx = Math.max(ax - GW, 0), dz = Math.max(z - GH, 0);
+  const toGoal = Math.hypot(dx, dz);
+  return -Math.min(toArena, toGoal) - 1e-3;
+}
+function arenaNormal(x, y, z, out) {
+  const nx = arenaSDF(x + NEPS, y, z) - arenaSDF(x - NEPS, y, z);
+  const ny = arenaSDF(x, y + NEPS, z) - arenaSDF(x, y - NEPS, z);
+  const nz = arenaSDF(x, y, z + NEPS) - arenaSDF(x, y, z - NEPS);
+  const l = Math.sqrt(nx * nx + ny * ny + nz * nz) || 1;
+  out.x = nx / l;
+  out.y = ny / l;
+  out.z = nz / l;
+  return out;
+}
+function arenaRaycast(ox, oy, oz, dx, dy, dz, maxLen, outNormal) {
+  let t = 0;
+  let d = arenaSDF(ox, oy, oz);
+  if (d <= 0) {
+    if (outNormal) arenaNormal(ox, oy, oz, outNormal);
+    return 0;
+  }
+  for (let i = 0; i < 64; i++) {
+    if (d < 0.02) break;
+    t += Math.max(d * 0.95, 0.05);
+    if (t > maxLen) return -1;
+    d = arenaSDF(ox + dx * t, oy + dy * t, oz + dz * t);
+    if (d < 0) {
+      let lo = t - Math.max(d * 0.95, 0.05) - 2, hi = t;
+      if (lo < 0) lo = 0;
+      for (let k = 0; k < 16; k++) {
+        const mid = (lo + hi) * 0.5;
+        if (arenaSDF(ox + dx * mid, oy + dy * mid, oz + dz * mid) > 0) lo = mid;
+        else hi = mid;
+      }
+      t = hi;
+      break;
+    }
+  }
+  if (t > maxLen) return -1;
+  if (outNormal) arenaNormal(ox + dx * t, oy + dy * t, oz + dz * t, outNormal);
+  return t;
+}
+function arenaProfile(stepsPerArc = 12) {
+  const pts = [];
+  for (let i = 0; i <= stepsPerArc; i++) {
+    const a = -Math.PI / 2 - i / stepsPerArc * (Math.PI / 2);
+    pts.push({ u: RF + RF * Math.cos(a), z: RF + RF * Math.sin(a) });
+  }
+  for (let i = 0; i <= stepsPerArc; i++) {
+    const a = Math.PI + i / stepsPerArc * (Math.PI / 2);
+    pts.push({ u: RCG + RCG * Math.cos(a), z: H - RCG - RCG * Math.sin(a) });
+  }
+  return pts;
+}
+function arenaRing(u, cornerSegs = 8) {
+  const r = Math.max(RC - u, 0);
+  const ex = X - u - r, ey = Y - u - r, ed = DIAG - (u + r) * SQ2;
+  const A = [ex, ed - ex], B = [ed - ey, ey];
+  const quad = [];
+  quad.push([ex + r, 0]);
+  for (let i = 0; i <= cornerSegs; i++) {
+    const a = i / cornerSegs * (Math.PI / 4);
+    quad.push([A[0] + r * Math.cos(a), A[1] + r * Math.sin(a)]);
+  }
+  for (let i = 0; i <= cornerSegs; i++) {
+    const a = Math.PI / 4 + i / cornerSegs * (Math.PI / 4);
+    quad.push([B[0] + r * Math.cos(a), B[1] + r * Math.sin(a)]);
+  }
+  quad.push([0, ey + r]);
+  const ring = [];
+  for (const p of quad) ring.push([p[0], p[1]]);
+  for (let i = quad.length - 2; i >= 1; i--) ring.push([-quad[i][0], quad[i][1]]);
+  for (let i = 0; i < quad.length; i++) ring.push([-quad[i][0], -quad[i][1]]);
+  for (let i = quad.length - 2; i >= 1; i--) ring.push([quad[i][0], -quad[i][1]]);
+  const out = [];
+  for (const p of ring) {
+    const q = out[out.length - 1];
+    if (!q || Math.hypot(p[0] - q[0], p[1] - q[1]) > 1e-6) out.push(p);
+  }
+  return out;
+}
+var X, Y, H, C, RF, RCG, RC, GW, GH, GD, SQ2, DIAG, EX, EY, ED, VA, VB, NEPS, ARENA_PARAMS;
+var init_arena = __esm({
+  "src/sim/arena.js"() {
+    init_contracts();
+    X = ARENA.EXTENT_X;
+    Y = ARENA.EXTENT_Y;
+    H = ARENA.HEIGHT;
+    C = ARENA.CORNER_CATHETUS;
+    RF = ARENA.FLOOR_FILLET;
+    RCG = ARENA.CEIL_FILLET;
+    RC = ARENA.CORNER_ROUND;
+    GW = ARENA.GOAL_HALF_WIDTH;
+    GH = ARENA.GOAL_HEIGHT;
+    GD = ARENA.GOAL_DEPTH_Y;
+    SQ2 = Math.SQRT2;
+    DIAG = X + Y - C;
+    EX = X - RC;
+    EY = Y - RC;
+    ED = DIAG - RC * SQ2;
+    VA = [EX, ED - EX];
+    VB = [ED - EY, EY];
+    NEPS = 0.5;
+    ARENA_PARAMS = { X, Y, H, C, RF, RCG, RC, GW, GH, GD, DIAG };
+  }
+});
+
+// src/sim/const.js
+var TICK_RATE, TICK_TIME, GRAVITY_Z, CAR_MASS, BALL_MASS, CARBALL_FRICTION, CARBALL_RESTITUTION, CARWORLD_FRICTION, CARWORLD_RESTITUTION, CARCAR_FRICTION, CARCAR_RESTITUTION, BALL_RADIUS, BALL_REST_Z, BALL_WORLD_MARGIN, BALL_MAX_SPEED, BALL_MAX_ANG_SPEED, BALL_DRAG, BALL_FRICTION, BALL_RESTITUTION, BALL_KICKOFF_Z, CAR_MAX_SPEED, CAR_MAX_ANG_SPEED, SUPERSONIC_START_SPEED, SUPERSONIC_MAINTAIN_MIN_SPEED, SUPERSONIC_MAINTAIN_MAX_TIME, BOOST_MAX, BOOST_USED_PER_SECOND, BOOST_MIN_TIME, BOOST_ACCEL_GROUND, BOOST_ACCEL_AIR, BOOST_SPAWN_AMOUNT, POWERSLIDE_RISE_RATE, POWERSLIDE_FALL_RATE, THROTTLE_TORQUE_AMOUNT, BRAKE_TORQUE_AMOUNT, STOPPING_FORWARD_VEL, COASTING_BRAKE_FACTOR, BRAKING_NO_THROTTLE_SPEED_THRESH, THROTTLE_DEADZONE, THROTTLE_AIR_ACCEL, JUMP_ACCEL, JUMP_IMMEDIATE_FORCE, JUMP_MIN_TIME, JUMP_RESET_TIME_PAD, JUMP_MAX_TIME, JUMP_PRE_MIN_ACCEL_SCALE, DOUBLEJUMP_MAX_DELAY, FLIP_Z_DAMP_120, FLIP_Z_DAMP_START, FLIP_Z_DAMP_END, FLIP_TORQUE_TIME, FLIP_PITCHLOCK_EXTRA_TIME, FLIP_INITIAL_VEL_SCALE, FLIP_TORQUE_X, FLIP_TORQUE_Y, FLIP_FORWARD_IMPULSE_MAX_SPEED_SCALE, FLIP_SIDE_IMPULSE_MAX_SPEED_SCALE, FLIP_BACKWARD_IMPULSE_MAX_SPEED_SCALE, FLIP_BACKWARD_IMPULSE_SCALE_X, SOCCAR_GOAL_SCORE_BASE_THRESHOLD_Y, CAR_TORQUE_SCALE, CAR_AIR_CONTROL_TORQUE, CAR_AIR_CONTROL_DAMPING, CAR_AUTOFLIP_IMPULSE, CAR_AUTOFLIP_TORQUE, CAR_AUTOFLIP_TIME, CAR_AUTOFLIP_NORMZ_THRESH, CAR_AUTOFLIP_ROLL_THRESH, CAR_AUTOROLL_FORCE, CAR_AUTOROLL_TORQUE, BALL_CAR_EXTRA_IMPULSE_Z_SCALE, BALL_CAR_EXTRA_IMPULSE_FORWARD_SCALE, BALL_CAR_EXTRA_IMPULSE_MAXDELTAVEL_UU, CAR_SPAWN_REST_Z, CAR_RESPAWN_Z, BUMP_COOLDOWN_TIME, BUMP_MIN_FORWARD_DIST, DEMO_RESPAWN_TIME, SUSPENSION_FORCE_SCALE_FRONT, SUSPENSION_FORCE_SCALE_BACK, SUSPENSION_STIFFNESS, WHEELS_DAMPING_COMPRESSION, WHEELS_DAMPING_RELAXATION, MAX_SUSPENSION_TRAVEL, SUSPENSION_SUBTRACTION, ROLLING_FRICTION_SCALE_MAGIC, SOLVER_ITERATIONS, SOLVER_ERP, SOLVER_ERP2, RESTITUTION_VEL_THRESHOLD, PAD, PAD_LOCS_BIG, PAD_LOCS_SMALL, CAR_SPAWN_LOCATIONS, CAR_RESPAWN_LOCATIONS, STEER_ANGLE_FROM_SPEED_CURVE, POWERSLIDE_STEER_ANGLE_FROM_SPEED_CURVE, DRIVE_SPEED_TORQUE_FACTOR_CURVE, NON_STICKY_FRICTION_FACTOR_CURVE, LAT_FRICTION_CURVE, LONG_FRICTION_CURVE, HANDBRAKE_LAT_FRICTION_FACTOR_CURVE, HANDBRAKE_LONG_FRICTION_FACTOR_CURVE, BALL_CAR_EXTRA_IMPULSE_FACTOR_CURVE, BUMP_VEL_AMOUNT_GROUND_CURVE, BUMP_VEL_AMOUNT_AIR_CURVE, BUMP_UPWARD_VEL_AMOUNT_CURVE;
+var init_const = __esm({
+  "src/sim/const.js"() {
+    init_math();
+    TICK_RATE = 120;
+    TICK_TIME = 1 / TICK_RATE;
+    GRAVITY_Z = -650;
+    CAR_MASS = 180;
+    BALL_MASS = CAR_MASS / 6;
+    CARBALL_FRICTION = 2;
+    CARBALL_RESTITUTION = 0;
+    CARWORLD_FRICTION = 0.3;
+    CARWORLD_RESTITUTION = 0.3;
+    CARCAR_FRICTION = 0.09;
+    CARCAR_RESTITUTION = 0.1;
+    BALL_RADIUS = 91.25;
+    BALL_REST_Z = 93.15;
+    BALL_WORLD_MARGIN = BALL_REST_Z - BALL_RADIUS;
+    BALL_MAX_SPEED = 6e3;
+    BALL_MAX_ANG_SPEED = 6;
+    BALL_DRAG = 0.03;
+    BALL_FRICTION = 0.35;
+    BALL_RESTITUTION = 0.6;
+    BALL_KICKOFF_Z = 92.75;
+    CAR_MAX_SPEED = 2300;
+    CAR_MAX_ANG_SPEED = 5.5;
+    SUPERSONIC_START_SPEED = 2200;
+    SUPERSONIC_MAINTAIN_MIN_SPEED = 2100;
+    SUPERSONIC_MAINTAIN_MAX_TIME = 1;
+    BOOST_MAX = 100;
+    BOOST_USED_PER_SECOND = BOOST_MAX / 3;
+    BOOST_MIN_TIME = 0.1;
+    BOOST_ACCEL_GROUND = 2975 / 3;
+    BOOST_ACCEL_AIR = 3175 / 3;
+    BOOST_SPAWN_AMOUNT = BOOST_MAX / 3;
+    POWERSLIDE_RISE_RATE = 5;
+    POWERSLIDE_FALL_RATE = 2;
+    THROTTLE_TORQUE_AMOUNT = CAR_MASS * 400;
+    BRAKE_TORQUE_AMOUNT = CAR_MASS * (14.25 + 1 / 3);
+    STOPPING_FORWARD_VEL = 25;
+    COASTING_BRAKE_FACTOR = 0.15;
+    BRAKING_NO_THROTTLE_SPEED_THRESH = 0.01;
+    THROTTLE_DEADZONE = 1e-3;
+    THROTTLE_AIR_ACCEL = 200 / 3;
+    JUMP_ACCEL = 4375 / 3;
+    JUMP_IMMEDIATE_FORCE = 875 / 3;
+    JUMP_MIN_TIME = 0.025;
+    JUMP_RESET_TIME_PAD = 1 / 40;
+    JUMP_MAX_TIME = 0.2;
+    JUMP_PRE_MIN_ACCEL_SCALE = 0.62;
+    DOUBLEJUMP_MAX_DELAY = 1.25;
+    FLIP_Z_DAMP_120 = 0.35;
+    FLIP_Z_DAMP_START = 0.15;
+    FLIP_Z_DAMP_END = 0.21;
+    FLIP_TORQUE_TIME = 0.65;
+    FLIP_PITCHLOCK_EXTRA_TIME = 0.3;
+    FLIP_INITIAL_VEL_SCALE = 500;
+    FLIP_TORQUE_X = 260;
+    FLIP_TORQUE_Y = 224;
+    FLIP_FORWARD_IMPULSE_MAX_SPEED_SCALE = 1;
+    FLIP_SIDE_IMPULSE_MAX_SPEED_SCALE = 1.9;
+    FLIP_BACKWARD_IMPULSE_MAX_SPEED_SCALE = 2.5;
+    FLIP_BACKWARD_IMPULSE_SCALE_X = 16 / 15;
+    SOCCAR_GOAL_SCORE_BASE_THRESHOLD_Y = 5124.25;
+    CAR_TORQUE_SCALE = 2 * Math.PI / (1 << 16) * 1e3;
+    CAR_AIR_CONTROL_TORQUE = { pitch: 130, yaw: 95, roll: 400 };
+    CAR_AIR_CONTROL_DAMPING = { pitch: 30, yaw: 20, roll: 50 };
+    CAR_AUTOFLIP_IMPULSE = 200;
+    CAR_AUTOFLIP_TORQUE = 50;
+    CAR_AUTOFLIP_TIME = 0.4;
+    CAR_AUTOFLIP_NORMZ_THRESH = Math.SQRT1_2;
+    CAR_AUTOFLIP_ROLL_THRESH = 2.8;
+    CAR_AUTOROLL_FORCE = 100;
+    CAR_AUTOROLL_TORQUE = 80;
+    BALL_CAR_EXTRA_IMPULSE_Z_SCALE = 0.35;
+    BALL_CAR_EXTRA_IMPULSE_FORWARD_SCALE = 0.65;
+    BALL_CAR_EXTRA_IMPULSE_MAXDELTAVEL_UU = 4600;
+    CAR_SPAWN_REST_Z = 17;
+    CAR_RESPAWN_Z = 36;
+    BUMP_COOLDOWN_TIME = 0.25;
+    BUMP_MIN_FORWARD_DIST = 64.5;
+    DEMO_RESPAWN_TIME = 3;
+    SUSPENSION_FORCE_SCALE_FRONT = 36 - 1 / 4;
+    SUSPENSION_FORCE_SCALE_BACK = 54 + 1 / 4 + 1.5 / 100;
+    SUSPENSION_STIFFNESS = 500;
+    WHEELS_DAMPING_COMPRESSION = 25;
+    WHEELS_DAMPING_RELAXATION = 40;
+    MAX_SUSPENSION_TRAVEL = 12;
+    SUSPENSION_SUBTRACTION = 0.05 * 50;
+    ROLLING_FRICTION_SCALE_MAGIC = 113.73963;
+    SOLVER_ITERATIONS = 10;
+    SOLVER_ERP = 0.2;
+    SOLVER_ERP2 = 0.8;
+    RESTITUTION_VEL_THRESHOLD = 0.2 * 50;
+    PAD = {
+      CYL_HEIGHT: 95,
+      CYL_RAD_BIG: 208,
+      CYL_RAD_SMALL: 144,
+      BOX_HEIGHT: 64,
+      BOX_RAD_BIG: 160,
+      BOX_RAD_SMALL: 120,
+      COOLDOWN_BIG: 10,
+      COOLDOWN_SMALL: 4,
+      BOOST_AMOUNT_BIG: 100,
+      BOOST_AMOUNT_SMALL: 12
+    };
+    PAD_LOCS_BIG = [
+      [-3584, 0, 73],
+      [3584, 0, 73],
+      [-3072, 4096, 73],
+      [3072, 4096, 73],
+      [-3072, -4096, 73],
+      [3072, -4096, 73]
+    ];
+    PAD_LOCS_SMALL = [
+      [0, -4240, 70],
+      [-1792, -4184, 70],
+      [1792, -4184, 70],
+      [-940, -3308, 70],
+      [940, -3308, 70],
+      [0, -2816, 70],
+      [-3584, -2484, 70],
+      [3584, -2484, 70],
+      [-1788, -2300, 70],
+      [1788, -2300, 70],
+      [-2048, -1036, 70],
+      [0, -1024, 70],
+      [2048, -1036, 70],
+      [-1024, 0, 70],
+      [1024, 0, 70],
+      [-2048, 1036, 70],
+      [0, 1024, 70],
+      [2048, 1036, 70],
+      [-1788, 2300, 70],
+      [1788, 2300, 70],
+      [-3584, 2484, 70],
+      [3584, 2484, 70],
+      [0, 2816, 70],
+      [-940, 3308, 70],
+      [940, 3308, 70],
+      [-1792, 4184, 70],
+      [1792, 4184, 70],
+      [0, 4240, 70]
+    ];
+    CAR_SPAWN_LOCATIONS = [
+      { x: -2048, y: -2560, yaw: Math.PI / 4 },
+      { x: 2048, y: -2560, yaw: Math.PI / 4 * 3 },
+      { x: -256, y: -3840, yaw: Math.PI / 2 },
+      { x: 256, y: -3840, yaw: Math.PI / 2 },
+      { x: 0, y: -4608, yaw: Math.PI / 2 }
+    ];
+    CAR_RESPAWN_LOCATIONS = [
+      { x: -2304, y: -4608, yaw: Math.PI / 2 },
+      { x: -2688, y: -4608, yaw: Math.PI / 2 },
+      { x: 2304, y: -4608, yaw: Math.PI / 2 },
+      { x: 2688, y: -4608, yaw: Math.PI / 2 }
+    ];
+    STEER_ANGLE_FROM_SPEED_CURVE = new Curve([[0, 0.53356], [500, 0.3193], [1e3, 0.18203], [1500, 0.1057], [1750, 0.08507], [3e3, 0.03454]]);
+    POWERSLIDE_STEER_ANGLE_FROM_SPEED_CURVE = new Curve([[0, 0.39235], [2500, 0.1261]]);
+    DRIVE_SPEED_TORQUE_FACTOR_CURVE = new Curve([[0, 1], [1400, 0.1], [1410, 0]]);
+    NON_STICKY_FRICTION_FACTOR_CURVE = new Curve([[0, 0.1], [0.7075, 0.5], [1, 1]]);
+    LAT_FRICTION_CURVE = new Curve([[0, 1], [1, 0.2]]);
+    LONG_FRICTION_CURVE = new Curve([]);
+    HANDBRAKE_LAT_FRICTION_FACTOR_CURVE = new Curve([[0, 0.1]]);
+    HANDBRAKE_LONG_FRICTION_FACTOR_CURVE = new Curve([[0, 0.5], [1, 0.9]]);
+    BALL_CAR_EXTRA_IMPULSE_FACTOR_CURVE = new Curve([[0, 0.65], [500, 0.65], [2300, 0.55], [4600, 0.3]]);
+    BUMP_VEL_AMOUNT_GROUND_CURVE = new Curve([[0, 5 / 6], [1400, 1100], [2200, 1530]]);
+    BUMP_VEL_AMOUNT_AIR_CURVE = new Curve([[0, 5 / 6], [1400, 1390], [2200, 1945]]);
+    BUMP_UPWARD_VEL_AMOUNT_CURVE = new Curve([[0, 2 / 6], [1400, 278], [2200, 417]]);
+  }
+});
+
+// src/sim/physics.js
+function ballWorldContact(ball, radius, worldRadius, margin) {
+  const p = ball.pos;
+  const d = arenaSDF(p.x, p.y, p.z);
+  const depth = d - worldRadius;
+  if (depth > margin) return null;
+  arenaNormal(p.x, p.y, p.z, _n);
+  const n = new Vec3(_n.x, _n.y, _n.z);
+  const pA = p.sub(n.mul(radius));
+  return { n, depth, pA };
+}
+function carWorldContacts(car, margin, out) {
+  const b = car.body, hs = car.halfSize, off = car.config.hitboxOffset;
+  const R = b.rot;
+  let count = 0;
+  const cLocal = new Vec3(off.x, off.y, off.z);
+  const c = b.pos.add(R.mulVec(cLocal));
+  const bound = Math.sqrt(hs.x * hs.x + hs.y * hs.y + hs.z * hs.z);
+  const dc = arenaSDF(c.x, c.y, c.z);
+  if (dc > bound + margin) return 0;
+  const cand = [];
+  for (const s of BOX_SAMPLES) {
+    const local = new Vec3(off.x + s[0] * hs.x, off.y + s[1] * hs.y, off.z + s[2] * hs.z);
+    const p = b.pos.add(R.mulVec(local));
+    const d = arenaSDF(p.x, p.y, p.z);
+    if (d < margin) cand.push({ p, d, w: (s[0] !== 0) + (s[1] !== 0) + (s[2] !== 0) });
+  }
+  if (!cand.length) return 0;
+  cand.sort((u, v) => u.d - v.d || v.w - u.w);
+  for (const c2 of cand.slice(0, 8)) {
+    arenaNormal(c2.p.x, c2.p.y, c2.p.z, _n);
+    out.push({ n: new Vec3(_n.x, _n.y, _n.z), depth: c2.d, pA: c2.p });
+    count++;
+  }
+  return count;
+}
+function carBallContact(car, ball, radius, margin) {
+  const b = car.body, hs = car.halfSize, off = car.config.hitboxOffset;
+  const R = b.rot;
+  const rel = R.mulVecT(ball.pos.sub(b.pos));
+  const lx = rel.x - off.x, ly = rel.y - off.y, lz = rel.z - off.z;
+  const cx = Math.max(-hs.x, Math.min(hs.x, lx));
+  const cy = Math.max(-hs.y, Math.min(hs.y, ly));
+  const cz = Math.max(-hs.z, Math.min(hs.z, lz));
+  let dx = lx - cx, dy = ly - cy, dz = lz - cz;
+  let dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+  let nLocal, depth;
+  if (dist > 1e-6) {
+    depth = dist - radius;
+    if (depth > margin) return null;
+    nLocal = new Vec3(dx / dist, dy / dist, dz / dist);
+  } else {
+    const px = hs.x - Math.abs(lx), py = hs.y - Math.abs(ly), pz = hs.z - Math.abs(lz);
+    if (px <= py && px <= pz) {
+      nLocal = new Vec3(Math.sign(lx) || 1, 0, 0);
+      depth = -px - radius;
+    } else if (py <= pz) {
+      nLocal = new Vec3(0, Math.sign(ly) || 1, 0);
+      depth = -py - radius;
+    } else {
+      nLocal = new Vec3(0, 0, Math.sign(lz) || 1);
+      depth = -pz - radius;
+    }
+  }
+  const pCarLocal = new Vec3(cx + off.x, cy + off.y, cz + off.z);
+  const pCar = b.pos.add(R.mulVec(pCarLocal));
+  const n = R.mulVec(nLocal);
+  const pBall = ball.pos.sub(n.mul(radius));
+  return { n, depth, pCar, pBall, pCarLocal };
+}
+function boxOf(car) {
+  const b = car.body, off = car.config.hitboxOffset;
+  const R = b.rot;
+  return {
+    c: b.pos.add(R.mulVec(new Vec3(off.x, off.y, off.z))),
+    ax: [R.forward, R.right, R.up],
+    h: [car.halfSize.x, car.halfSize.y, car.halfSize.z]
+  };
+}
+function boxVerticesOfFace(box, axis, sign) {
+  const i = axis, j = (axis + 1) % 3, k = (axis + 2) % 3;
+  const fc = box.c.add(box.ax[i].mul(box.h[i] * sign));
+  const uj = box.ax[j].mul(box.h[j]), uk = box.ax[k].mul(box.h[k]);
+  return [fc.add(uj).add(uk), fc.sub(uj).add(uk), fc.sub(uj).sub(uk), fc.add(uj).sub(uk)];
+}
+function clipPolygon(poly, n, d) {
+  const out = [];
+  for (let i = 0; i < poly.length; i++) {
+    const p = poly[i], q = poly[(i + 1) % poly.length];
+    const dp = p.dot(n) - d, dq = q.dot(n) - d;
+    if (dp <= 0) out.push(p);
+    if (dp < 0 && dq > 0 || dp > 0 && dq < 0) {
+      const t = dp / (dp - dq);
+      out.push(p.add(q.sub(p).mul(t)));
+    }
+  }
+  return out;
+}
+function closestSegSeg(p1, q1, p2, q2) {
+  const d1 = q1.sub(p1), d2 = q2.sub(p2), r = p1.sub(p2);
+  const a = d1.dot(d1), e = d2.dot(d2), f = d2.dot(r);
+  let s, t;
+  const c = d1.dot(r), b = d1.dot(d2), den = a * e - b * b;
+  s = den > 1e-9 ? Math.max(0, Math.min(1, (b * f - c * e) / den)) : 0;
+  t = (b * s + f) / e;
+  if (t < 0) {
+    t = 0;
+    s = Math.max(0, Math.min(1, -c / a));
+  } else if (t > 1) {
+    t = 1;
+    s = Math.max(0, Math.min(1, (b - c) / a));
+  }
+  return [p1.add(d1.mul(s)), p2.add(d2.mul(t))];
+}
+function carCarContacts(carA, carB, margin) {
+  const A = boxOf(carA), B = boxOf(carB);
+  const d = A.c.sub(B.c);
+  const ra = Math.hypot(A.h[0], A.h[1], A.h[2]), rb = Math.hypot(B.h[0], B.h[1], B.h[2]);
+  if (d.len() > ra + rb + margin) return [];
+  let best = null;
+  const test = (L, type, i, j2) => {
+    const l = L.len();
+    if (l < 1e-6) return true;
+    const n2 = L.mul(1 / l);
+    const projA = A.h[0] * Math.abs(A.ax[0].dot(n2)) + A.h[1] * Math.abs(A.ax[1].dot(n2)) + A.h[2] * Math.abs(A.ax[2].dot(n2));
+    const projB = B.h[0] * Math.abs(B.ax[0].dot(n2)) + B.h[1] * Math.abs(B.ax[1].dot(n2)) + B.h[2] * Math.abs(B.ax[2].dot(n2));
+    const dist = d.dot(n2);
+    const overlap = projA + projB - Math.abs(dist);
+    if (overlap < -margin) return false;
+    const score = type === 2 ? overlap * 1.05 + 0.5 : overlap;
+    if (!best || score < best.score) {
+      best = { score, overlap, n: dist < 0 ? n2.neg() : n2, type, i, j: j2 };
+    }
+    return true;
+  };
+  for (let i = 0; i < 3; i++) if (!test(A.ax[i], 0, i, -1)) return [];
+  for (let i = 0; i < 3; i++) if (!test(B.ax[i], 1, i, -1)) return [];
+  for (let i = 0; i < 3; i++) for (let j2 = 0; j2 < 3; j2++) if (!test(A.ax[i].cross(B.ax[j2]), 2, i, j2)) return [];
+  const n = best.n;
+  const contacts = [];
+  if (best.type === 2) {
+    const i = best.i, j2 = best.j;
+    let pa = A.c.clone();
+    for (let k2 = 0; k2 < 3; k2++) if (k2 !== i) pa = pa.add(A.ax[k2].mul(A.h[k2] * (A.ax[k2].dot(n) > 0 ? -1 : 1)));
+    let pb = B.c.clone();
+    for (let k2 = 0; k2 < 3; k2++) if (k2 !== j2) pb = pb.add(B.ax[k2].mul(B.h[k2] * (B.ax[k2].dot(n) > 0 ? 1 : -1)));
+    const [ca, cb] = closestSegSeg(
+      pa.sub(A.ax[i].mul(A.h[i])),
+      pa.add(A.ax[i].mul(A.h[i])),
+      pb.sub(B.ax[j2].mul(B.h[j2])),
+      pb.add(B.ax[j2].mul(B.h[j2]))
+    );
+    contacts.push({ n, depth: -best.overlap, pA: ca, pB: cb });
+    return contacts;
+  }
+  const refIsA = best.type === 0;
+  const ref = refIsA ? A : B, inc = refIsA ? B : A;
+  const ri = best.i;
+  const towards = refIsA ? n.neg() : n;
+  const rs = ref.ax[ri].dot(towards) > 0 ? 1 : -1;
+  const refN = ref.ax[ri].mul(rs);
+  let ii = 0, idot = Infinity, isgn = 1;
+  for (let k2 = 0; k2 < 3; k2++) {
+    const dd = inc.ax[k2].dot(refN);
+    if (-Math.abs(dd) < idot) {
+      idot = -Math.abs(dd);
+      ii = k2;
+      isgn = dd > 0 ? -1 : 1;
+    }
+  }
+  let poly = boxVerticesOfFace(inc, ii, isgn);
+  const refC = ref.c.add(refN.mul(ref.h[ri]));
+  const j = (ri + 1) % 3, k = (ri + 2) % 3;
+  const sides = [[ref.ax[j], ref.h[j]], [ref.ax[j].neg(), ref.h[j]], [ref.ax[k], ref.h[k]], [ref.ax[k].neg(), ref.h[k]]];
+  for (const [sn, sh] of sides) {
+    poly = clipPolygon(poly, sn, sn.dot(ref.c) + sh);
+    if (!poly.length) break;
+  }
+  for (const p of poly) {
+    const sep = p.sub(refC).dot(refN);
+    if (sep <= margin) {
+      const onRef = p.sub(refN.mul(sep));
+      if (refIsA) contacts.push({ n, depth: sep, pA: onRef, pB: p });
+      else contacts.push({ n, depth: sep, pA: p, pB: onRef });
+    }
+  }
+  if (contacts.length > 4) {
+    contacts.sort((u, v) => u.depth - v.depth);
+    contacts.length = 4;
+  }
+  return contacts;
+}
+function raySphere(o, dir, c, r, maxLen) {
+  const oc = o.sub(c);
+  const b = oc.dot(dir);
+  const cc = oc.dot(oc) - r * r;
+  const disc = b * b - cc;
+  if (disc < 0) return -1;
+  const s = Math.sqrt(disc);
+  let t = -b - s;
+  if (t < 0) t = -b + s < 0 ? -1 : 0;
+  if (t < 0 || t > maxLen) return -1;
+  return t;
+}
+function rayCarBox(o, dir, car, maxLen) {
+  const b = car.body, hs = car.halfSize, off = car.config.hitboxOffset;
+  const R = b.rot;
+  const lo = R.mulVecT(o.sub(b.pos));
+  lo.x -= off.x;
+  lo.y -= off.y;
+  lo.z -= off.z;
+  const ld = R.mulVecT(dir);
+  let tmin = -Infinity, tmax = Infinity, axis = -1, sgn2 = 1;
+  const O = [lo.x, lo.y, lo.z], D = [ld.x, ld.y, ld.z], Hh = [hs.x, hs.y, hs.z];
+  for (let i = 0; i < 3; i++) {
+    if (Math.abs(D[i]) < 1e-9) {
+      if (O[i] < -Hh[i] || O[i] > Hh[i]) return null;
+    } else {
+      let t1 = (-Hh[i] - O[i]) / D[i], t2 = (Hh[i] - O[i]) / D[i];
+      let s = -1;
+      if (t1 > t2) {
+        const tt = t1;
+        t1 = t2;
+        t2 = tt;
+        s = 1;
+      }
+      if (t1 > tmin) {
+        tmin = t1;
+        axis = i;
+        sgn2 = s;
+      }
+      if (t2 < tmax) tmax = t2;
+      if (tmin > tmax) return null;
+    }
+  }
+  if (tmin < 0 || tmin > maxLen || axis < 0) return null;
+  const nl = [0, 0, 0];
+  nl[axis] = sgn2;
+  return { t: tmin, n: R.mulVec(new Vec3(nl[0], nl[1], nl[2])) };
+}
+function solveContacts(contacts, dt) {
+  const n = contacts.length;
+  if (!n) return;
+  const invDt = 1 / dt;
+  for (const c of contacts) {
+    const A = c.a, B = c.b;
+    c.rA = c.pA.sub(A.pos);
+    c.rB = B ? c.pB.sub(B.pos) : null;
+    const denA = A.impulseDenom(c.rA, c.n);
+    const denB = B ? B.impulseDenom(c.rB, c.n) : 0;
+    c.kN = 1 / (denA + denB);
+    const vrel = A.velAt(c.rA).sub(B ? B.velAt(c.rB) : new Vec3());
+    const vn = vrel.dot(c.n);
+    let rest = Math.abs(vn) < RESTITUTION_VEL_THRESHOLD ? 0 : c.restitution * -vn;
+    if (rest <= 0) rest = 0;
+    c.target = rest;
+    c.push = c.depth > 0 ? 0 : -c.depth * SOLVER_ERP2 * invDt;
+    c.lambda = 0;
+    c.pushLambda = 0;
+    let t1 = vrel.sub(c.n.mul(vn));
+    if (t1.len2() > 1e-6) t1 = t1.normalized();
+    else {
+      const a = Math.abs(c.n.x) < 0.7 ? new Vec3(1, 0, 0) : new Vec3(0, 1, 0);
+      t1 = a.sub(c.n.mul(a.dot(c.n))).normalized();
+    }
+    const t2 = c.n.cross(t1);
+    c.t1 = t1;
+    c.t2 = t2;
+    c.kT1 = 1 / (A.impulseDenom(c.rA, t1) + (B ? B.impulseDenom(c.rB, t1) : 0));
+    c.kT2 = 1 / (A.impulseDenom(c.rA, t2) + (B ? B.impulseDenom(c.rB, t2) : 0));
+    c.lt1 = 0;
+    c.lt2 = 0;
+  }
+  for (let it = 0; it < SOLVER_ITERATIONS; it++) {
+    for (const c of contacts) {
+      const A = c.a, B = c.b;
+      const vrel = A.velAt(c.rA).sub(B ? B.velAt(c.rB) : new Vec3());
+      const vn = vrel.dot(c.n);
+      let dl = c.kN * (c.target - vn);
+      const old = c.lambda;
+      c.lambda = Math.max(0, old + dl);
+      dl = c.lambda - old;
+      if (dl !== 0) {
+        const imp = c.n.mul(dl);
+        A.applyImpulse(imp, c.rA);
+        if (B) B.applyImpulse(imp.neg(), c.rB);
+      }
+    }
+    for (const c of contacts) {
+      if (c.lambda <= 0 || c.friction <= 0) continue;
+      const A = c.a, B = c.b;
+      const vrel = A.velAt(c.rA).sub(B ? B.velAt(c.rB) : new Vec3());
+      const maxF = c.friction * c.lambda;
+      let n1 = c.lt1 - c.kT1 * vrel.dot(c.t1);
+      let n2 = c.lt2 - c.kT2 * vrel.dot(c.t2);
+      const m = Math.hypot(n1, n2);
+      if (m > maxF) {
+        n1 *= maxF / m;
+        n2 *= maxF / m;
+      }
+      const d1 = n1 - c.lt1, d2 = n2 - c.lt2;
+      c.lt1 = n1;
+      c.lt2 = n2;
+      const imp = c.t1.mul(d1).add(c.t2.mul(d2));
+      A.applyImpulse(imp, c.rA);
+      if (B) B.applyImpulse(imp.neg(), c.rB);
+    }
+  }
+  for (let it = 0; it < SOLVER_ITERATIONS; it++) {
+    for (const c of contacts) {
+      if (c.push <= 0 && c.pushLambda <= 0) continue;
+      const A = c.a, B = c.b;
+      const va = A.invMass ? A.pushVel.add(A.turnVel.cross(c.rA)) : new Vec3();
+      const vb = B && B.invMass ? B.pushVel.add(B.turnVel.cross(c.rB)) : new Vec3();
+      const vn = va.sub(vb).dot(c.n);
+      let dl = c.kN * (c.push - vn);
+      const old = c.pushLambda;
+      c.pushLambda = Math.max(0, old + dl);
+      dl = c.pushLambda - old;
+      if (dl !== 0) {
+        if (A.invMass) {
+          A.pushVel.addScaledSelf(c.n, dl * A.invMass);
+          A.turnVel.addSelf(A.invInertiaMul(c.rA.cross(c.n.mul(dl))));
+        }
+        if (B && B.invMass) {
+          B.pushVel.addScaledSelf(c.n, -dl * B.invMass);
+          B.turnVel.addSelf(B.invInertiaMul(c.rB.cross(c.n.mul(-dl))));
+        }
+      }
+    }
+  }
+}
+function integrateBody(b, dt) {
+  b.pos.x += (b.vel.x + b.pushVel.x) * dt;
+  b.pos.y += (b.vel.y + b.pushVel.y) * dt;
+  b.pos.z += (b.vel.z + b.pushVel.z) * dt;
+  const w = b.angVel.add(b.turnVel);
+  b.rot = integrateRotation(b.rot, w, dt);
+  b.pushVel.set(0, 0, 0);
+  b.turnVel.set(0, 0, 0);
+}
+var RigidBody, _n, BOX_SAMPLES;
+var init_physics = __esm({
+  "src/sim/physics.js"() {
+    init_math();
+    init_arena();
+    init_const();
+    RigidBody = class {
+      constructor(mass, inertiaDiag) {
+        this.pos = new Vec3();
+        this.vel = new Vec3();
+        this.angVel = new Vec3();
+        this.rot = new RotMat();
+        this.mass = mass;
+        this.invMass = mass > 0 ? 1 / mass : 0;
+        this.inertia = inertiaDiag;
+        this.invInertia = new Vec3(
+          inertiaDiag.x > 0 ? 1 / inertiaDiag.x : 0,
+          inertiaDiag.y > 0 ? 1 / inertiaDiag.y : 0,
+          inertiaDiag.z > 0 ? 1 / inertiaDiag.z : 0
+        );
+        this.force = new Vec3();
+        this.angAccel = new Vec3();
+        this.pushVel = new Vec3();
+        this.turnVel = new Vec3();
+        this.velCache = new Vec3();
+        this.active = true;
+      }
+      // I_world^-1 * v
+      invInertiaMul(v) {
+        const l = this.rot.mulVecT(v);
+        l.x *= this.invInertia.x;
+        l.y *= this.invInertia.y;
+        l.z *= this.invInertia.z;
+        return this.rot.mulVec(l);
+      }
+      // I_world * v
+      inertiaMul(v) {
+        const l = this.rot.mulVecT(v);
+        l.x *= this.inertia.x;
+        l.y *= this.inertia.y;
+        l.z *= this.inertia.z;
+        return this.rot.mulVec(l);
+      }
+      velAt(rel) {
+        return this.vel.add(this.angVel.cross(rel));
+      }
+      applyImpulse(imp, rel) {
+        if (!this.invMass) return;
+        this.vel.addScaledSelf(imp, this.invMass);
+        this.angVel.addSelf(this.invInertiaMul(rel.cross(imp)));
+      }
+      applyCentralImpulse(imp) {
+        this.vel.addScaledSelf(imp, this.invMass);
+      }
+      applyCentralForce(f) {
+        this.force.addSelf(f);
+      }
+      // impulse denominator along n at rel (btRigidBody::computeImpulseDenominator)
+      impulseDenom(rel, n) {
+        if (!this.invMass) return 0;
+        const c = rel.cross(n);
+        const vec = this.invInertiaMul(c).cross(rel);
+        return this.invMass + n.dot(vec);
+      }
+    };
+    _n = new Vec3();
+    BOX_SAMPLES = [];
+    for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) for (let k = -1; k <= 1; k++) {
+      if (i === 0 && j === 0 && k === 0) continue;
+      BOX_SAMPLES.push([i, j, k]);
+    }
+  }
+});
+
+// src/sim/carconfig.js
+function wheelLayout(cfg) {
+  const out = [];
+  for (let i = 0; i < 4; i++) {
+    const front = i < 2, left = i % 2 === 1;
+    const w = front ? cfg.frontWheels : cfg.backWheels;
+    out.push({
+      front,
+      left,
+      radius: w.radius,
+      suspRest: w.suspRest,
+      restLen: w.suspRest - 12,
+      // MAX_SUSPENSION_TRAVEL
+      offset: { x: w.offset.x, y: left ? -w.offset.y : w.offset.y, z: w.offset.z }
+    });
+  }
+  return out;
+}
+var mk, CAR_CONFIGS;
+var init_carconfig = __esm({
+  "src/sim/carconfig.js"() {
+    mk = (size, offset, fr, br, frest, brest, fpos, bpos) => ({
+      hitboxSize: { x: size[0], y: size[1], z: size[2] },
+      hitboxOffset: { x: offset[0], y: 0, z: offset[1] },
+      frontWheels: { radius: fr, suspRest: frest, offset: { x: fpos[0], y: fpos[1], z: fpos[2] } },
+      backWheels: { radius: br, suspRest: brest, offset: { x: bpos[0], y: bpos[1], z: bpos[2] } },
+      dodgeDeadzone: 0.5
+    });
+    CAR_CONFIGS = {
+      OCTANE: mk([120.507, 86.6994, 38.6591], [13.8757, 20.755], 12.5, 15, 38.755, 37.055, [51.25, 25.9, 20.755], [-33.75, 29.5, 20.755]),
+      DOMINUS: mk([130.427, 85.7799, 33.8], [9, 15.75], 12, 13.5, 33.95, 33.85, [50.3, 31.1, 15.75], [-34.75, 33, 15.75]),
+      PLANK: mk([131.32, 87.1704, 31.8944], [9.00857, 12.0942], 12.5, 17, 31.9242, 27.9242, [49.97, 27.8, 12.0942], [-35.43, 20.28, 12.0942]),
+      BREAKOUT: mk([133.992, 83.021, 32.8], [12.5, 11.75], 13.5, 15, 29.7, 29.666, [51.5, 26.67, 11.75], [-35.75, 35, 11.75]),
+      HYBRID: mk([129.519, 84.6879, 36.6591], [13.8757, 20.755], 12.5, 15, 38.755, 37.055, [51.25, 25.9, 20.755], [-34, 29.5, 20.755]),
+      MERC: mk([123.22, 79.2103, 44.1591], [11.3757, 21.505], 15, 15, 39.505, 39.105, [51.25, 25.9, 21.505], [-33.75, 29.5, 21.505])
+    };
+  }
+});
+
+// src/sim/car.js
+var UP, _hitN, Car;
+var init_car = __esm({
+  "src/sim/car.js"() {
+    init_math();
+    init_physics();
+    init_arena();
+    init_carconfig();
+    init_const();
+    init_contracts();
+    UP = new Vec3(0, 0, 1);
+    _hitN = new Vec3();
+    Car = class {
+      constructor({ id, team, hitbox = "OCTANE", name = "Player", isBot = false, bodyId = "vector" }) {
+        this.id = id;
+        this.team = team;
+        this.name = name;
+        this.isBot = isBot;
+        this.bodyId = bodyId;
+        this.hitbox = hitbox;
+        this.config = CAR_CONFIGS[hitbox];
+        const s = this.config.hitboxSize;
+        this.halfSize = new Vec3(s.x / 2, s.y / 2, s.z / 2);
+        const m = CAR_MASS;
+        const inertia = new Vec3(
+          m / 12 * (s.y * s.y + s.z * s.z),
+          m / 12 * (s.x * s.x + s.z * s.z),
+          m / 12 * (s.x * s.x + s.y * s.y)
+        );
+        this.body = new RigidBody(m, inertia);
+        this.wheelDefs = wheelLayout(this.config);
+        this.wheels = this.wheelDefs.map((d) => ({
+          def: d,
+          // ray cast info
+          isInContact: false,
+          isWorld: false,
+          groundBody: null,
+          hardPoint: new Vec3(),
+          contactPoint: new Vec3(),
+          contactNormal: new Vec3(0, 0, 1),
+          suspLen: d.restLen,
+          suspRelVel: 0,
+          clippedInv: 1,
+          extraPushback: 0,
+          // wheel basis (steered), world space
+          wFwd: new Vec3(1, 0, 0),
+          wRight: new Vec3(0, 1, 0),
+          wUp: new Vec3(0, 0, 1),
+          steerAngle: 0,
+          engineForce: 0,
+          brake: 0,
+          latFriction: 1,
+          longFriction: 1,
+          impulse: new Vec3(),
+          suspForce: 0,
+          // render-only
+          spin: 0
+        }));
+        this.controls = makeControls();
+        this.lastControls = makeControls();
+        this.resetState();
+      }
+      resetState() {
+        this.boost = BOOST_SPAWN_AMOUNT;
+        this.isOnGround = true;
+        this.isJumping = false;
+        this.hasJumped = false;
+        this.jumpTime = 0;
+        this.hasDoubleJumped = false;
+        this.hasFlipped = false;
+        this.isFlipping = false;
+        this.flipTime = 0;
+        this.flipRelTorque = new Vec3();
+        this.airTime = 0;
+        this.airTimeSinceJump = 0;
+        this.isAutoFlipping = false;
+        this.autoFlipTimer = 0;
+        this.autoFlipTorqueScale = 0;
+        this.handbrakeVal = 0;
+        this.isBoosting = false;
+        this.boostingTime = 0;
+        this.timeSinceBoosted = 0;
+        this.isSupersonic = false;
+        this.supersonicTime = 0;
+        this.worldContact = { hasContact: false, normal: new Vec3(0, 0, 1) };
+        this.carContact = { otherCarId: -1, cooldownTimer: 0 };
+        this.isDemoed = false;
+        this.demoRespawnTimer = 0;
+        this.ballHit = { tick: -10, extraTick: -10 };
+        this.wheelsWithContact = [false, false, false, false];
+        this.numWheelsInContact = 4;
+        this.forwardSpeed = 0;
+        this.lastLandTick = -100;
+        for (const w of this.wheels || []) {
+          w.steerAngle = 0;
+          w.engineForce = 0;
+          w.brake = 0;
+          w.impulse.set(0, 0, 0);
+          w.isInContact = false;
+        }
+        this.body.vel.set(0, 0, 0);
+        this.body.angVel.set(0, 0, 0);
+        this.body.velCache.set(0, 0, 0);
+        this.body.force.set(0, 0, 0);
+        this.body.angAccel.set(0, 0, 0);
+      }
+      setSpawn(x, y, z, yaw, boost = BOOST_SPAWN_AMOUNT) {
+        this.resetState();
+        this.body.pos.set(x, y, z);
+        this.body.rot = rotMatFromYPR(yaw, 0, 0);
+        this.boost = boost;
+        this.isOnGround = true;
+        this.controls = makeControls();
+        this.lastControls = makeControls();
+      }
+      get pos() {
+        return this.body.pos;
+      }
+      get vel() {
+        return this.body.vel;
+      }
+      get angVel() {
+        return this.body.angVel;
+      }
+      get rot() {
+        return this.body.rot;
+      }
+      get forward() {
+        return this.body.rot.forward;
+      }
+      get right() {
+        return this.body.rot.right;
+      }
+      get up() {
+        return this.body.rot.up;
+      }
+      // ---------------------------------------------------------------- btVehicleRL
+      _updateWheelTransforms() {
+        const b = this.body, R = b.rot;
+        const f = R.forward, r = R.right, u = R.up;
+        for (const w of this.wheels) {
+          w.hardPoint = b.pos.add(R.mulVec(w.def.offset));
+          const c = Math.cos(w.steerAngle), s = Math.sin(w.steerAngle);
+          w.wFwd = f.mul(c).add(r.mul(s));
+          w.wRight = r.mul(c).sub(f.mul(s));
+          w.wUp = u;
+        }
+      }
+      _rayCast(w, world) {
+        const b = this.body;
+        const up = b.rot.up;
+        const dir = up.neg();
+        const travel = MAX_SUSPENSION_TRAVEL;
+        const restLen = w.def.restLen;
+        const rayLen = restLen + travel + w.def.radius - SUSPENSION_SUBTRACTION;
+        const src = w.hardPoint;
+        w.isInContact = false;
+        w.isWorld = false;
+        w.groundBody = null;
+        let bestT = -1, bestN = null, bestBody = null, isWorld = false;
+        const tw = arenaRaycast(src.x, src.y, src.z, dir.x, dir.y, dir.z, rayLen, _hitN);
+        if (tw >= 0) {
+          bestT = tw;
+          bestN = new Vec3(_hitN.x, _hitN.y, _hitN.z);
+          isWorld = true;
+        }
+        if (world.ball) {
+          const tb = raySphere(src, dir, world.ball.body.pos, BALL_RADIUS, rayLen);
+          if (tb >= 0 && (bestT < 0 || tb < bestT)) {
+            bestT = tb;
+            bestBody = world.ball.body;
+            isWorld = false;
+            bestN = src.add(dir.mul(tb)).sub(world.ball.body.pos).normalized();
+          }
+        }
+        for (const oc of world.cars) {
+          if (oc === this || oc.isDemoed) continue;
+          if (oc.body.pos.dist(src) > 200) continue;
+          const h = rayCarBox(src, dir, oc, rayLen);
+          if (h && (bestT < 0 || h.t < bestT)) {
+            bestT = h.t;
+            bestN = h.n;
+            bestBody = oc.body;
+            isWorld = false;
+          }
+        }
+        if (bestT >= 0) {
+          w.contactPoint = src.add(dir.mul(bestT));
+          w.contactNormal = bestN;
+          w.isInContact = true;
+          w.isWorld = isWorld;
+          w.groundBody = bestBody;
+          const traceLen = src.sub(w.contactPoint).dot(up);
+          w.suspLen = clamp(traceLen - w.def.radius, restLen - travel, restLen + travel);
+          const denom = bestN.dot(up);
+          const relpos = w.contactPoint.sub(b.pos);
+          const velAt = b.velAt(relpos);
+          const projVel = bestN.dot(velAt);
+          if (denom > 0.1) {
+            const inv = 1 / denom;
+            w.suspRelVel = projVel * inv;
+            w.clippedInv = inv;
+          } else {
+            w.suspRelVel = 0;
+            w.clippedInv = 10;
+          }
+          w.extraPushback = 0;
+          if (isWorld) {
+            const thresh = restLen + w.def.radius - SUSPENSION_SUBTRACTION;
+            if (traceLen < thresh) {
+              const dist = traceLen - thresh;
+              const relVel = bestN.dot(velAt);
+              const posErr = SOLVER_ERP * -dist / TICK_TIME;
+              const velErr = -relVel;
+              const den = b.impulseDenom(relpos, bestN);
+              let imp = (posErr + velErr) / den;
+              if (imp < 0) imp = 0;
+              w.extraPushback = imp / 4;
+            }
+          }
+        } else {
+          w.suspLen = restLen + travel;
+          w.suspRelVel = 0;
+          w.contactNormal = up;
+          w.clippedInv = 1;
+          w.extraPushback = 0;
+        }
+      }
+      _calcFrictionImpulses(dt) {
+        const b = this.body;
+        const frictionScale = b.mass / 3;
+        for (const w of this.wheels) {
+          if (!w.isInContact) {
+            w.impulse = new Vec3();
+            continue;
+          }
+          const g = w.groundBody;
+          const n = w.contactNormal;
+          let axle = w.wRight;
+          axle = axle.sub(n.mul(axle.dot(n))).normalized();
+          const fwd = n.cross(axle).normalized();
+          const relA = w.contactPoint.sub(b.pos);
+          const velA = b.velAt(relA);
+          let velB = new Vec3(), denB = 0;
+          if (g) {
+            const relB = w.contactPoint.sub(g.pos);
+            velB = g.velAt(relB);
+            denB = g.impulseDenom(relB, axle);
+          }
+          const jac = b.impulseDenom(relA, axle) + denB;
+          const relVelSide = axle.dot(velA.sub(velB));
+          const sideImpulse = -0.2 * relVelSide / jac;
+          let rolling;
+          if (w.engineForce === 0) {
+            if (w.brake) {
+              const v1 = b.velAt(relA);
+              const v2 = g ? g.velAt(relA) : new Vec3();
+              const relVel = v1.sub(v2).dot(fwd);
+              rolling = clamp(-relVel * ROLLING_FRICTION_SCALE_MAGIC, -w.brake, w.brake);
+            } else rolling = 0;
+          } else {
+            rolling = -w.engineForce / frictionScale;
+          }
+          w.impulse = fwd.mul(rolling * w.longFriction).add(axle.mul(sideImpulse * w.latFriction)).mul(frictionScale);
+        }
+      }
+      _updateSuspension(dt) {
+        const b = this.body;
+        for (const w of this.wheels) {
+          if (w.isInContact) {
+            let force = (w.def.restLen - w.suspLen) * SUSPENSION_STIFFNESS * w.clippedInv;
+            const damp = w.suspRelVel < 0 ? WHEELS_DAMPING_COMPRESSION : WHEELS_DAMPING_RELAXATION;
+            force -= damp * w.suspRelVel;
+            force *= w.def.front ? SUSPENSION_FORCE_SCALE_FRONT : SUSPENSION_FORCE_SCALE_BACK;
+            if (force < 0) force = 0;
+            w.suspForce = force;
+          } else w.suspForce = 0;
+        }
+        for (const w of this.wheels) {
+          if (w.suspForce !== 0) {
+            const off = w.contactPoint.sub(b.pos);
+            const mag = w.suspForce * dt + w.extraPushback;
+            b.applyImpulse(w.contactNormal.mul(mag), off);
+          }
+        }
+      }
+      _applyFrictionImpulses(dt) {
+        const b = this.body;
+        const up = b.rot.up;
+        for (const w of this.wheels) {
+          if (w.impulse.isZero()) continue;
+          const off = w.contactPoint.sub(b.pos);
+          const rel = off.sub(up.mul(up.dot(off)));
+          b.applyImpulse(w.impulse.mul(dt), rel);
+        }
+      }
+      _upwardsDirFromWheelContacts() {
+        let s = new Vec3();
+        for (const w of this.wheels) if (w.isInContact) s = s.add(w.contactNormal);
+        if (s.isZero()) return this.body.rot.up;
+        return s.normalized();
+      }
+      // --------------------------------------------------------------- pre tick
+      preTick(world, dt) {
+        const ev = world.events;
+        if (this.isDemoed) {
+          this.demoRespawnTimer = Math.max(this.demoRespawnTimer - dt, 0);
+          if (this.demoRespawnTimer === 0) world.respawnCar(this);
+          return;
+        }
+        const c = this.controls;
+        const b = this.body;
+        this._updateWheelTransforms();
+        for (const w of this.wheels) this._rayCast(w, world);
+        this._calcFrictionImpulses(dt);
+        const jumpPressed = c.jump && !this.lastControls.jump;
+        let numWheels = 0;
+        for (let i = 0; i < 4; i++) {
+          this.wheelsWithContact[i] = this.wheels[i].isInContact;
+          numWheels += this.wheels[i].isInContact ? 1 : 0;
+        }
+        const wasOnGround = this.isOnGround;
+        const prevWheels = this.numWheelsInContact;
+        this.isOnGround = numWheels >= 3;
+        this.numWheelsInContact = numWheels;
+        if (numWheels > 0 && prevWheels === 0 && world.tick - this.lastLandTick > 12) {
+          this.lastLandTick = world.tick;
+          ev.push({ type: EV.LAND, carId: this.id, speed: Math.abs(b.vel.dot(this._upwardsDirFromWheelContacts())), pos: b.pos.clone() });
+        }
+        const forwardSpeed = b.vel.dot(b.rot.forward);
+        this.forwardSpeed = forwardSpeed;
+        this._updateWheels(dt, numWheels, forwardSpeed);
+        if (numWheels < 3) this._updateAirTorque(dt, numWheels === 0);
+        else this.isFlipping = false;
+        this._updateJump(dt, jumpPressed, ev);
+        this._updateAutoFlip(dt, jumpPressed);
+        this._updateDoubleJumpOrFlip(dt, jumpPressed, forwardSpeed, ev);
+        if (c.throttle && (numWheels > 0 && numWheels < 4 || this.worldContact.hasContact))
+          this._updateAutoRoll(dt, numWheels);
+        this.worldContact.hasContact = false;
+        this._updateSuspension(dt);
+        this._applyFrictionImpulses(dt);
+        this._updateBoost(dt, ev, world);
+        for (const w of this.wheels) {
+          const sp = w.isInContact ? b.velAt(w.hardPoint.sub(b.pos)).dot(w.wFwd) : forwardSpeed * 0.98;
+          w.spin += sp / w.def.radius * dt;
+        }
+      }
+      _updateWheels(dt, numWheels, forwardSpeed) {
+        const c = this.controls, b = this.body;
+        const absFwd = Math.abs(forwardSpeed);
+        let wheelsHaveWorldContact = false;
+        for (const w of this.wheels) wheelsHaveWorldContact = wheelsHaveWorldContact || w.isInContact && w.isWorld;
+        this.handbrakeVal += (c.handbrake ? POWERSLIDE_RISE_RATE : -POWERSLIDE_FALL_RATE) * dt;
+        this.handbrakeVal = clamp(this.handbrakeVal, 0, 1);
+        let realThrottle = c.throttle;
+        let realBrake = 0;
+        if (c.boost && this.boost > 0) realThrottle = 1;
+        {
+          let driveSpeedScale = DRIVE_SPEED_TORQUE_FACTOR_CURVE.get(absFwd);
+          let engineThrottle = realThrottle;
+          if (c.handbrake) {
+          } else {
+            const absThrottle = Math.abs(realThrottle);
+            if (absThrottle >= THROTTLE_DEADZONE) {
+              if (absFwd > STOPPING_FORWARD_VEL && sgn(realThrottle) !== sgn(forwardSpeed)) {
+                realBrake = 1;
+                if (absFwd > BRAKING_NO_THROTTLE_SPEED_THRESH) engineThrottle = 0;
+              }
+            } else {
+              engineThrottle = 0;
+              realBrake = absFwd < STOPPING_FORWARD_VEL ? 1 : COASTING_BRAKE_FACTOR;
+            }
+          }
+          if (numWheels < 3) driveSpeedScale /= 4;
+          const engineForce = engineThrottle * THROTTLE_TORQUE_AMOUNT * driveSpeedScale;
+          const brakeForce = realBrake * BRAKE_TORQUE_AMOUNT;
+          for (const w of this.wheels) {
+            w.engineForce = engineForce;
+            w.brake = brakeForce;
+          }
+        }
+        {
+          let steerAngle = STEER_ANGLE_FROM_SPEED_CURVE.get(absFwd);
+          if (this.handbrakeVal) {
+            steerAngle += (POWERSLIDE_STEER_ANGLE_FROM_SPEED_CURVE.get(absFwd) - steerAngle) * this.handbrakeVal;
+          }
+          steerAngle *= c.steer;
+          this.wheels[0].steerAngle = steerAngle;
+          this.wheels[1].steerAngle = steerAngle;
+        }
+        for (const w of this.wheels) {
+          if (!w.isInContact) continue;
+          const latDir = w.wRight;
+          const longDir = latDir.cross(w.contactNormal);
+          let frictionCurveInput = 0;
+          const wheelDelta = w.hardPoint.sub(b.pos);
+          const crossVec = b.angVel.cross(wheelDelta).add(b.vel);
+          const baseFriction = Math.abs(crossVec.dot(latDir));
+          if (baseFriction > 5) frictionCurveInput = baseFriction / (Math.abs(crossVec.dot(longDir)) + baseFriction);
+          let latFriction = LAT_FRICTION_CURVE.get(frictionCurveInput);
+          let longFriction = LONG_FRICTION_CURVE.get(frictionCurveInput);
+          if (this.handbrakeVal) {
+            const hb = this.handbrakeVal;
+            latFriction *= (HANDBRAKE_LAT_FRICTION_FACTOR_CURVE.get(frictionCurveInput) - 1) * hb + 1;
+            longFriction *= (HANDBRAKE_LONG_FRICTION_FACTOR_CURVE.get(frictionCurveInput) - 1) * hb + 1;
+          } else {
+            longFriction = 1;
+          }
+          if (realThrottle === 0) {
+            const ns = NON_STICKY_FRICTION_FACTOR_CURVE.get(w.contactNormal.z);
+            latFriction *= ns;
+            longFriction *= ns;
+          }
+          w.latFriction = latFriction;
+          w.longFriction = longFriction;
+        }
+        if (wheelsHaveWorldContact) {
+          const upwardsDir = this._upwardsDirFromWheelContacts();
+          const fullStick = realThrottle !== 0 || absFwd > STOPPING_FORWARD_VEL;
+          let stickyForceScale = 0.5;
+          if (fullStick) stickyForceScale += 1 - Math.abs(upwardsDir.z);
+          b.applyCentralForce(upwardsDir.mul(stickyForceScale * GRAVITY_Z * CAR_MASS));
+        }
+      }
+      _updateBoost(dt, ev, world) {
+        const c = this.controls, b = this.body;
+        const wasBoosting = this.isBoosting;
+        if (world.unlimitedBoost && !this.isBot) this.boost = 100;
+        if (this.boost > 0) {
+          if (this.isBoosting) this.isBoosting = c.boost || this.boostingTime < BOOST_MIN_TIME;
+          else if (c.boost) this.isBoosting = true;
+        } else this.isBoosting = false;
+        if (this.isBoosting) this.boostingTime += dt;
+        else this.boostingTime = 0;
+        if (this.isBoosting) {
+          this.boost = Math.max(this.boost - BOOST_USED_PER_SECOND * dt, 0);
+          const acc = this.isOnGround ? BOOST_ACCEL_GROUND : BOOST_ACCEL_AIR;
+          b.applyCentralForce(b.rot.forward.mul(acc * CAR_MASS));
+          this.timeSinceBoosted = 0;
+        } else this.timeSinceBoosted += dt;
+        this.boost = Math.min(this.boost, BOOST_MAX);
+        if (this.isBoosting && !wasBoosting) ev.push({ type: EV.BOOST_START, carId: this.id });
+        if (!this.isBoosting && wasBoosting) ev.push({ type: EV.BOOST_END, carId: this.id });
+      }
+      _updateJump(dt, jumpPressed, ev) {
+        const b = this.body;
+        if (this.isOnGround && !this.isJumping) {
+          if (this.hasJumped && this.jumpTime < JUMP_MIN_TIME + JUMP_RESET_TIME_PAD) {
+          } else {
+            this.hasJumped = false;
+            this.jumpTime = 0;
+          }
+        }
+        if (this.isJumping) {
+          this.isJumping = this.jumpTime < JUMP_MIN_TIME || this.controls.jump && this.jumpTime < JUMP_MAX_TIME;
+        } else if (this.isOnGround && jumpPressed) {
+          this.isJumping = true;
+          this.jumpTime = 0;
+          b.applyCentralImpulse(b.rot.up.mul(JUMP_IMMEDIATE_FORCE * CAR_MASS));
+          ev.push({ type: EV.JUMP, carId: this.id, pos: b.pos.clone() });
+        }
+        if (this.isJumping) {
+          this.hasJumped = true;
+          let f = JUMP_ACCEL;
+          if (this.jumpTime < JUMP_MIN_TIME) f *= JUMP_PRE_MIN_ACCEL_SCALE;
+          b.applyCentralForce(b.rot.up.mul(f * CAR_MASS));
+        }
+        if (this.isJumping || this.hasJumped) this.jumpTime += dt;
+      }
+      _updateAirTorque(dt, updateAirControl) {
+        const c = this.controls, b = this.body;
+        const R = b.rot;
+        const dirPitch = R.right.neg(), dirYaw = R.up, dirRoll = R.forward.neg();
+        let doAirControl = false;
+        if (this.isFlipping) this.isFlipping = this.hasFlipped && this.flipTime < FLIP_TORQUE_TIME;
+        if (this.isFlipping) {
+          const rel = this.flipRelTorque.clone();
+          if (!rel.isZero()) {
+            let pitchScale = 1;
+            if (rel.y !== 0 && c.pitch !== 0) {
+              if (sgn(rel.y) === sgn(c.pitch)) {
+                pitchScale = 1 - Math.min(Math.abs(c.pitch), 1);
+                doAirControl = true;
+              }
+            }
+            rel.y *= pitchScale;
+            const local = new Vec3(rel.x * FLIP_TORQUE_X, rel.y * FLIP_TORQUE_Y, 0);
+            b.angVel.addSelf(R.mulVec(local).mul(dt));
+          } else {
+            doAirControl = true;
+          }
+        } else doAirControl = true;
+        doAirControl = doAirControl && !this.isAutoFlipping && updateAirControl;
+        if (doAirControl) {
+          let pitchTorqueScale = 1;
+          let torque = new Vec3();
+          if (c.pitch || c.yaw || c.roll) {
+            if (this.isFlipping) pitchTorqueScale = 0;
+            else if (this.hasFlipped) {
+              if (this.flipTime < FLIP_TORQUE_TIME + FLIP_PITCHLOCK_EXTRA_TIME) pitchTorqueScale = 0;
+            }
+            torque = dirPitch.mul(c.pitch * pitchTorqueScale * CAR_AIR_CONTROL_TORQUE.pitch).add(dirYaw.mul(c.yaw * CAR_AIR_CONTROL_TORQUE.yaw)).add(dirRoll.mul(c.roll * CAR_AIR_CONTROL_TORQUE.roll));
+          }
+          const w = b.angVel;
+          const dampPitch = dirPitch.dot(w) * CAR_AIR_CONTROL_DAMPING.pitch * (1 - Math.abs(c.pitch * pitchTorqueScale));
+          const dampYaw = dirYaw.dot(w) * CAR_AIR_CONTROL_DAMPING.yaw * (1 - Math.abs(c.yaw));
+          const dampRoll = dirRoll.dot(w) * CAR_AIR_CONTROL_DAMPING.roll;
+          const damping = dirYaw.mul(dampYaw).add(dirPitch.mul(dampPitch)).add(dirRoll.mul(dampRoll));
+          b.angVel.addSelf(torque.sub(damping).mul(CAR_TORQUE_SCALE * dt));
+        }
+        if (c.throttle !== 0) b.applyCentralForce(R.forward.mul(c.throttle * THROTTLE_AIR_ACCEL * CAR_MASS));
+      }
+      _updateDoubleJumpOrFlip(dt, jumpPressed, forwardSpeed, ev) {
+        const c = this.controls, b = this.body;
+        const tickTimeScale = dt / (1 / 120);
+        if (this.isOnGround) {
+          this.hasDoubleJumped = false;
+          this.hasFlipped = false;
+          this.airTime = 0;
+          this.airTimeSinceJump = 0;
+          this.flipTime = 0;
+        } else {
+          this.airTime += dt;
+          if (this.hasJumped && !this.isJumping) this.airTimeSinceJump += dt;
+          else this.airTimeSinceJump = 0;
+          if (jumpPressed && this.airTimeSinceJump < DOUBLEJUMP_MAX_DELAY) {
+            const inputMag = Math.abs(c.yaw) + Math.abs(c.pitch) + Math.abs(c.roll);
+            const isFlipInput = inputMag >= (this.dodgeDeadzone ?? this.config.dodgeDeadzone);
+            let canUse = !this.hasDoubleJumped && !this.hasFlipped;
+            if (this.isAutoFlipping) canUse = false;
+            if (canUse) {
+              if (isFlipInput) {
+                this.flipTime = 0;
+                this.hasFlipped = true;
+                this.isFlipping = true;
+                const forwardSpeedRatio = Math.abs(forwardSpeed) / CAR_MAX_SPEED;
+                let dodgeDir = new Vec3(-c.pitch, c.yaw + c.roll, 0);
+                if (Math.abs(c.yaw + c.roll) < 0.1 && Math.abs(c.pitch) < 0.1) dodgeDir = new Vec3();
+                else dodgeDir = dodgeDir.normalized();
+                this.flipRelTorque = new Vec3(-dodgeDir.y / tickTimeScale, dodgeDir.x / tickTimeScale, 0);
+                if (Math.abs(dodgeDir.x) < 0.1) dodgeDir.x = 0;
+                if (Math.abs(dodgeDir.y) < 0.1) dodgeDir.y = 0;
+                if (Math.abs(dodgeDir.x) > 1e-6 || Math.abs(dodgeDir.y) > 1e-6) {
+                  let backwards;
+                  if (Math.abs(forwardSpeed) < 100) backwards = dodgeDir.x < 0;
+                  else backwards = dodgeDir.x >= 0 !== forwardSpeed >= 0;
+                  const init = dodgeDir.mul(FLIP_INITIAL_VEL_SCALE);
+                  const maxSpeedScaleX = backwards ? FLIP_BACKWARD_IMPULSE_MAX_SPEED_SCALE : FLIP_FORWARD_IMPULSE_MAX_SPEED_SCALE;
+                  init.x *= (maxSpeedScaleX - 1) * forwardSpeedRatio + 1;
+                  init.y *= (FLIP_SIDE_IMPULSE_MAX_SPEED_SCALE - 1) * forwardSpeedRatio + 1;
+                  if (backwards) init.x *= FLIP_BACKWARD_IMPULSE_SCALE_X;
+                  const f2 = b.rot.forward.to2D().normalized();
+                  const r2 = new Vec3(-f2.y, f2.x, 0);
+                  const dv = f2.mul(init.x).add(r2.mul(init.y));
+                  b.applyCentralImpulse(dv.mul(CAR_MASS));
+                }
+                ev.push({ type: EV.DODGE, carId: this.id, dir: { x: dodgeDir.x, y: dodgeDir.y }, pos: b.pos.clone() });
+              } else {
+                b.applyCentralImpulse(b.rot.up.mul(JUMP_IMMEDIATE_FORCE * CAR_MASS));
+                this.hasDoubleJumped = true;
+                ev.push({ type: EV.DOUBLE_JUMP, carId: this.id, pos: b.pos.clone() });
+              }
+            }
+          }
+        }
+        if (this.isFlipping) {
+          this.flipTime += dt;
+          if (this.flipTime <= FLIP_TORQUE_TIME) {
+            if (this.flipTime >= FLIP_Z_DAMP_START && (b.vel.z < 0 || this.flipTime < FLIP_Z_DAMP_END)) {
+              b.vel.z *= Math.pow(1 - FLIP_Z_DAMP_120, tickTimeScale);
+            }
+          }
+        } else if (this.hasFlipped) {
+          this.flipTime += dt;
+        }
+      }
+      _updateAutoFlip(dt, jumpPressed) {
+        const b = this.body;
+        if (jumpPressed && this.worldContact.hasContact && this.worldContact.normal.z > CAR_AUTOFLIP_NORMZ_THRESH) {
+          const ang = yprFromRotMat(b.rot);
+          const absRoll = Math.abs(ang.roll);
+          if (absRoll > CAR_AUTOFLIP_ROLL_THRESH) {
+            this.autoFlipTimer = CAR_AUTOFLIP_TIME * (absRoll / Math.PI);
+            this.autoFlipTorqueScale = ang.roll > 0 ? 1 : -1;
+            this.isAutoFlipping = true;
+            b.applyCentralImpulse(b.rot.up.mul(-CAR_AUTOFLIP_IMPULSE * CAR_MASS));
+          }
+        }
+        if (this.isAutoFlipping) {
+          if (this.autoFlipTimer <= 0) {
+            this.isAutoFlipping = false;
+            this.autoFlipTimer = 0;
+          } else {
+            b.angVel.addSelf(b.rot.forward.mul(CAR_AUTOFLIP_TORQUE * this.autoFlipTorqueScale * dt));
+            this.autoFlipTimer -= dt;
+          }
+        }
+      }
+      _updateAutoRoll(dt, numWheels) {
+        const b = this.body;
+        const groundUp = numWheels > 0 ? this._upwardsDirFromWheelContacts() : this.worldContact.normal;
+        const groundDown = groundUp.neg();
+        const f = b.rot.forward, r = b.rot.right;
+        const crossRight = groundUp.cross(f);
+        const crossForward = groundDown.cross(crossRight);
+        const rightTorqueFactor = 1 - clamp(r.dot(crossRight), 0, 1);
+        const forwardTorqueFactor = 1 - clamp(f.dot(crossForward), 0, 1);
+        const torqueDirRight = f.mul(r.dot(groundUp) >= 0 ? -1 : 1);
+        const torqueDirForward = r.mul(f.dot(groundUp) >= 0 ? 1 : -1);
+        const torque = torqueDirForward.mul(forwardTorqueFactor).add(torqueDirRight.mul(rightTorqueFactor));
+        b.applyCentralForce(groundDown.mul(CAR_AUTOROLL_FORCE * CAR_MASS));
+        b.angVel.addSelf(torque.mul(CAR_AUTOROLL_TORQUE * dt));
+      }
+      // -------------------------------------------------------------- post tick
+      postTick(world, dt) {
+        if (this.isDemoed) return;
+        const b = this.body;
+        const speed2 = b.vel.len2();
+        const wasSS = this.isSupersonic;
+        if (this.isSupersonic && this.supersonicTime < SUPERSONIC_MAINTAIN_MAX_TIME)
+          this.isSupersonic = speed2 >= SUPERSONIC_MAINTAIN_MIN_SPEED ** 2;
+        else this.isSupersonic = speed2 >= SUPERSONIC_START_SPEED ** 2;
+        if (this.isSupersonic) this.supersonicTime += dt;
+        else this.supersonicTime = 0;
+        if (this.isSupersonic && !wasSS) world.events.push({ type: EV.SUPERSONIC_START, carId: this.id });
+        if (this.carContact.cooldownTimer > 0) this.carContact.cooldownTimer = Math.max(this.carContact.cooldownTimer - dt, 0);
+        this.lastControls = { ...this.controls };
+      }
+      finishTick() {
+        if (this.isDemoed) return;
+        const b = this.body;
+        if (!b.velCache.isZero()) {
+          b.vel.addSelf(b.velCache);
+          b.velCache.set(0, 0, 0);
+        }
+        const v2 = b.vel.len2();
+        if (v2 > CAR_MAX_SPEED ** 2) b.vel.mulSelf(CAR_MAX_SPEED / Math.sqrt(v2));
+        const w2 = b.angVel.len2();
+        if (w2 > CAR_MAX_ANG_SPEED ** 2) b.angVel.mulSelf(CAR_MAX_ANG_SPEED / Math.sqrt(w2));
+      }
+      // Convenience for bots / UI
+      hasFlipOrJump() {
+        return this.isOnGround || !this.hasFlipped && !this.hasDoubleJumped && this.airTimeSinceJump < DOUBLEJUMP_MAX_DELAY;
+      }
+      hasFlipReset() {
+        return !this.isOnGround && this.hasFlipOrJump() && !this.hasJumped;
+      }
+    };
+  }
+});
+
+// src/sim/ball.js
+function stepBallAlone(ball, dt) {
+  const b = ball.body;
+  if (b.vel.len2() === 0 && b.angVel.len2() === 0) return;
+  ball.integrateVelocity(dt);
+  const c = ball.worldContact();
+  if (c) solveContacts([c], dt);
+  integrateBody(b, dt);
+  ball.finishTick();
+}
+var Ball, BallPredictor;
+var init_ball = __esm({
+  "src/sim/ball.js"() {
+    init_math();
+    init_physics();
+    init_const();
+    Ball = class {
+      constructor() {
+        const r = BALL_RADIUS, m = BALL_MASS;
+        const I = 0.4 * m * r * r;
+        this.body = new RigidBody(m, new Vec3(I, I, I));
+        this.radius = r;
+        this.reset();
+      }
+      reset(x = 0, y = 0, z = BALL_KICKOFF_Z) {
+        const b = this.body;
+        b.pos.set(x, y, z);
+        b.vel.set(0, 0, 0);
+        b.angVel.set(0, 0, 0);
+        b.rot = new RotMat();
+        b.velCache.set(0, 0, 0);
+        b.force.set(0, 0, 0);
+      }
+      get pos() {
+        return this.body.pos;
+      }
+      get vel() {
+        return this.body.vel;
+      }
+      get angVel() {
+        return this.body.angVel;
+      }
+      get rot() {
+        return this.body.rot;
+      }
+      isSleeping() {
+        const b = this.body;
+        return b.vel.len2() === 0 && b.angVel.len2() === 0;
+      }
+      // Velocity integration part of btRigidBody (gravity + damping); sleeping ball stays put
+      integrateVelocity(dt) {
+        const b = this.body;
+        b.vel.z += GRAVITY_Z * dt;
+        b.vel.addScaledSelf(b.force, b.invMass * dt);
+        b.force.set(0, 0, 0);
+        b.vel.mulSelf(Math.pow(1 - BALL_DRAG, dt));
+      }
+      worldContact() {
+        const b = this.body;
+        const c = ballWorldContact(b, BALL_RADIUS, BALL_REST_Z, 0.05);
+        if (!c) return null;
+        return {
+          a: b,
+          b: null,
+          pA: c.pA,
+          pB: c.pA,
+          n: c.n,
+          depth: c.depth,
+          friction: BALL_FRICTION,
+          restitution: BALL_RESTITUTION,
+          kind: "ballWorld"
+        };
+      }
+      finishTick() {
+        const b = this.body;
+        if (!b.velCache.isZero()) {
+          b.vel.addSelf(b.velCache);
+          b.velCache.set(0, 0, 0);
+        }
+        const v2 = b.vel.len2();
+        if (v2 > BALL_MAX_SPEED ** 2) b.vel.mulSelf(BALL_MAX_SPEED / Math.sqrt(v2));
+        const w2 = b.angVel.len2();
+        if (w2 > BALL_MAX_ANG_SPEED ** 2) b.angVel.mulSelf(BALL_MAX_ANG_SPEED / Math.sqrt(w2));
+      }
+    };
+    BallPredictor = class {
+      constructor() {
+        this.ball = new Ball();
+      }
+      // returns array of {t, pos:{x,y,z}, vel:{x,y,z}} sampled every `every` ticks
+      predict(state, seconds = 6, every = 1) {
+        const ball = this.ball, b = ball.body;
+        b.pos.copy(state.pos);
+        b.vel.copy(state.vel);
+        b.angVel.copy(state.angVel);
+        b.velCache.set(0, 0, 0);
+        b.force.set(0, 0, 0);
+        const dt = TICK_TIME;
+        const n = Math.round(seconds / dt);
+        const out = [];
+        for (let i = 1; i <= n; i++) {
+          stepBallAlone(ball, dt);
+          if (i % every === 0) out.push({ t: i * dt, pos: { x: b.pos.x, y: b.pos.y, z: b.pos.z }, vel: { x: b.vel.x, y: b.vel.y, z: b.vel.z } });
+        }
+        return out;
+      }
+    };
+  }
+});
+
+// src/sim/world.js
+function carAABB(car) {
+  const b = car.body, hs = car.halfSize, off = car.config.hitboxOffset, R = b.rot;
+  const c = b.pos.add(R.mulVec(new Vec3(off.x, off.y, off.z)));
+  const m = R.m;
+  const ex = Math.abs(m[0]) * hs.x + Math.abs(m[1]) * hs.y + Math.abs(m[2]) * hs.z;
+  const ey = Math.abs(m[3]) * hs.x + Math.abs(m[4]) * hs.y + Math.abs(m[5]) * hs.z;
+  const ez = Math.abs(m[6]) * hs.x + Math.abs(m[7]) * hs.y + Math.abs(m[8]) * hs.z;
+  return { min: new Vec3(c.x - ex, c.y - ey, c.z - ez), max: new Vec3(c.x + ex, c.y + ey, c.z + ez) };
+}
+var BoostPad, World;
+var init_world = __esm({
+  "src/sim/world.js"() {
+    init_math();
+    init_car();
+    init_ball();
+    init_physics();
+    init_const();
+    init_contracts();
+    BoostPad = class {
+      constructor(index, x, y, z, isBig) {
+        this.index = index;
+        this.pos = new Vec3(x, y, z);
+        this.isBig = isBig;
+        this.isActive = true;
+        this.cooldown = 0;
+        this.prevLockedCarId = -1;
+        this.curLockedCar = null;
+        const br = isBig ? PAD.BOX_RAD_BIG : PAD.BOX_RAD_SMALL;
+        this.boxMin = new Vec3(x - br, y - br, z);
+        this.boxMax = new Vec3(x + br, y + br, z + PAD.BOX_HEIGHT);
+      }
+      reset() {
+        this.isActive = true;
+        this.cooldown = 0;
+        this.prevLockedCarId = -1;
+        this.curLockedCar = null;
+      }
+      preTick(dt) {
+        if (this.cooldown > 0) this.cooldown = Math.max(this.cooldown - dt, 0);
+        this.isActive = this.cooldown === 0;
+        this.curLockedCar = null;
+      }
+      checkCollide(car) {
+        const p = car.body.pos;
+        let colliding = false;
+        if (this.prevLockedCarId === car.id) {
+          const aabb = carAABB(car);
+          colliding = this.boxMax.x > aabb.min.x && this.boxMax.y > aabb.min.y && this.boxMax.z > aabb.min.z && this.boxMin.x < aabb.max.x && this.boxMin.y < aabb.max.y && this.boxMin.z < aabb.max.z;
+        } else {
+          const rad = this.isBig ? PAD.CYL_RAD_BIG : PAD.CYL_RAD_SMALL;
+          const dx = p.x - this.pos.x, dy = p.y - this.pos.y;
+          if (dx * dx + dy * dy < rad * rad) colliding = Math.abs(p.z - this.pos.z) < PAD.CYL_HEIGHT;
+        }
+        if (colliding) this.curLockedCar = car;
+      }
+      postTick(dt, events) {
+        let lockedId = -1;
+        const car = this.curLockedCar;
+        if (car) {
+          lockedId = car.id;
+          if (this.isActive) {
+            const add = this.isBig ? PAD.BOOST_AMOUNT_BIG : PAD.BOOST_AMOUNT_SMALL;
+            car.boost = Math.min(car.boost + add, BOOST_MAX);
+            this.isActive = false;
+            this.cooldown = this.isBig ? PAD.COOLDOWN_BIG : PAD.COOLDOWN_SMALL;
+            events.push({ type: EV.PAD_PICKUP, carId: car.id, padIndex: this.index, isBig: this.isBig, pos: this.pos.clone() });
+          }
+        }
+        this.prevLockedCarId = lockedId;
+      }
+    };
+    World = class {
+      constructor(opts = {}) {
+        this.tick = 0;
+        this.time = 0;
+        this.dt = TICK_TIME;
+        this.cars = [];
+        this.ball = new Ball();
+        this.pads = [];
+        PAD_LOCS_BIG.forEach((p, i) => this.pads.push(new BoostPad(i, p[0], p[1], p[2], true)));
+        PAD_LOCS_SMALL.forEach((p, i) => this.pads.push(new BoostPad(PAD_LOCS_BIG.length + i, p[0], p[1], p[2], false)));
+        this.events = [];
+        this.rng = opts.rng || Math.random;
+        this.unlimitedBoost = false;
+        this.demosEnabled = true;
+        this.lastTouch = null;
+        this.ballTouchedThisTick = [];
+        this._nextCarId = 0;
+        this.goalScored = null;
+        this.carsFrozen = false;
+      }
+      addCar(opts) {
+        const car = new Car({ id: this._nextCarId++, ...opts });
+        this.cars.push(car);
+        return car;
+      }
+      removeCar(car) {
+        this.cars = this.cars.filter((c) => c !== car);
+      }
+      getCar(id) {
+        return this.cars.find((c) => c.id === id);
+      }
+      // RocketSim Arena::ResetToRandomKickoff
+      resetKickoff() {
+        const order = [0, 1, 2, 3, 4];
+        for (let i = order.length - 1; i > 0; i--) {
+          const j = Math.floor(this.rng() * (i + 1));
+          [order[i], order[j]] = [order[j], order[i]];
+        }
+        const blue = this.cars.filter((c) => c.team === 0), orange = this.cars.filter((c) => c.team === 1);
+        const n = Math.max(blue.length, orange.length);
+        const atRespawn = [0, 0, 0, 0];
+        for (let i = 0; i < n; i++) {
+          let sp;
+          if (i < 5) sp = { ...CAR_SPAWN_LOCATIONS[order[i]] };
+          else {
+            const ri = (i - 5) % 4;
+            sp = { ...CAR_RESPAWN_LOCATIONS[ri] };
+            sp.y += 250 * atRespawn[ri]++;
+          }
+          for (let t = 0; t < 2; t++) {
+            const list = t === 0 ? blue : orange;
+            if (i >= list.length) continue;
+            const s = t === 0 ? 1 : -1;
+            list[i].setSpawn(sp.x * s, sp.y * s, CAR_SPAWN_REST_Z, sp.yaw + (t === 0 ? 0 : Math.PI));
+            list[i].kickoffSpawnIndex = order[Math.min(i, 4)];
+          }
+        }
+        this.ball.reset();
+        for (const p of this.pads) p.reset();
+        this.lastTouch = null;
+        this.goalScored = null;
+      }
+      respawnCar(car) {
+        const idx = Math.floor(this.rng() * 4);
+        const sp = CAR_RESPAWN_LOCATIONS[idx];
+        const s = car.team === 0 ? 1 : -1;
+        car.setSpawn(sp.x, sp.y * s, CAR_RESPAWN_Z, sp.yaw + (car.team === 0 ? 0 : Math.PI));
+        this.events.push({ type: EV.RESPAWN, carId: car.id });
+      }
+      demolish(car, attacker) {
+        car.isDemoed = true;
+        car.demoRespawnTimer = DEMO_RESPAWN_TIME;
+        car.isBoosting = false;
+        this.events.push({ type: EV.DEMO, attackerId: attacker ? attacker.id : -1, victimId: car.id, pos: car.body.pos.clone(), vel: car.body.vel.clone() });
+      }
+      isBallScored() {
+        return Math.abs(this.ball.body.pos.y) > SOCCAR_GOAL_SCORE_BASE_THRESHOLD_Y + BALL_RADIUS;
+      }
+      // controls: Map/obj carId -> Controls (optional; otherwise car.controls is used)
+      step() {
+        const dt = this.dt;
+        this.events = [];
+        this.ballTouchedThisTick = [];
+        const ball = this.ball, bb = ball.body;
+        const ballVelBefore = bb.vel.clone();
+        if (this.carsFrozen) {
+          for (const car of this.cars) {
+            car.controls = { ...car.controls, throttle: 0, steer: 0, pitch: 0, yaw: 0, roll: 0, jump: false, boost: false, handbrake: false };
+          }
+        }
+        for (const car of this.cars) car.preTick(this, dt);
+        for (const p of this.pads) p.preTick(dt);
+        const ballSleeping = ball.isSleeping();
+        for (const car of this.cars) {
+          if (car.isDemoed) {
+            car.body.force.set(0, 0, 0);
+            continue;
+          }
+          const b = car.body;
+          b.vel.addScaledSelf(b.force, b.invMass * dt);
+          b.vel.z += GRAVITY_Z * dt;
+          b.force.set(0, 0, 0);
+        }
+        if (!ballSleeping) ball.integrateVelocity(dt);
+        const contacts = [];
+        if (!ballSleeping) {
+          const bc = ball.worldContact();
+          if (bc) {
+            contacts.push(bc);
+            const vn = -bb.vel.dot(bc.n);
+            if (vn > 150) this.events.push({ type: EV.BALL_BOUNCE, pos: bb.pos.clone(), normal: bc.n.clone(), speed: vn });
+          }
+        }
+        const active = this.cars.filter((c) => !c.isDemoed);
+        for (const car of active) {
+          const wc = [];
+          carWorldContacts(car, 1, wc);
+          for (const c of wc) {
+            car.worldContact.hasContact = true;
+            car.worldContact.normal = c.n;
+            contacts.push({ a: car.body, b: null, pA: c.pA, pB: c.pA, n: c.n, depth: c.depth, friction: CARWORLD_FRICTION, restitution: CARWORLD_RESTITUTION, kind: "carWorld", car });
+          }
+        }
+        for (const car of active) {
+          const c = carBallContact(car, bb, BALL_RADIUS, 1);
+          if (!c) continue;
+          this._onCarBallHit(car, c);
+          contacts.push({ a: bb, b: car.body, pA: c.pBall, pB: c.pCar, n: c.n, depth: c.depth, friction: CARBALL_FRICTION, restitution: CARBALL_RESTITUTION, kind: "carBall", car });
+        }
+        for (let i = 0; i < active.length; i++) {
+          for (let j = i + 1; j < active.length; j++) {
+            const A = active[i], B = active[j];
+            const cc = carCarContacts(A, B, 1);
+            if (!cc.length) continue;
+            for (const c of cc) {
+              this._onCarCarContact(A, B, c);
+              if (A.isDemoed || B.isDemoed) break;
+              contacts.push({ a: A.body, b: B.body, pA: c.pA, pB: c.pB, n: c.n, depth: c.depth, friction: CARCAR_FRICTION, restitution: CARCAR_RESTITUTION, kind: "carCar", carA: A, carB: B });
+            }
+          }
+        }
+        const live = contacts.filter((c) => !(c.car && c.car.isDemoed || c.carA && (c.carA.isDemoed || c.carB.isDemoed)));
+        solveContacts(live, dt);
+        for (const car of this.cars) if (!car.isDemoed) integrateBody(car.body, dt);
+        if (!ballSleeping || !bb.vel.isZero() || !bb.angVel.isZero() || !bb.pushVel.isZero()) integrateBody(bb, dt);
+        else {
+          bb.pushVel.set(0, 0, 0);
+          bb.turnVel.set(0, 0, 0);
+        }
+        for (const car of this.cars) {
+          car.postTick(this, dt);
+          car.finishTick();
+          if (!car.isDemoed) for (const p of this.pads) p.checkCollide(car);
+        }
+        for (const p of this.pads) p.postTick(dt, this.events);
+        ball.finishTick();
+        if (this.ballTouchedThisTick.length) {
+          const dv = bb.vel.sub(ballVelBefore);
+          for (const id of this.ballTouchedThisTick) {
+            const car = this.getCar(id);
+            this.events.push({ type: EV.BALL_HIT, carId: id, team: car.team, impulse: dv.len(), pos: bb.pos.clone(), ballVel: bb.vel.clone() });
+          }
+        }
+        if (!this.goalScored && this.isBallScored()) {
+          this.goalScored = { team: bb.pos.y > 0 ? 0 : 1 };
+        }
+        this.tick++;
+        this.time += dt;
+      }
+      _onCarBallHit(car, c) {
+        const bb = this.ball.body;
+        const tick = this.tick;
+        car.ballHit.tick = tick;
+        if (!this.ballTouchedThisTick.includes(car.id)) this.ballTouchedThisTick.push(car.id);
+        this.lastTouch = { carId: car.id, team: car.team, tick };
+        if (tick > car.ballHit.extraTick + 1 || car.ballHit.extraTick > tick) {
+          car.ballHit.extraTick = tick;
+          const carFwd = car.body.rot.forward;
+          const relPos = bb.pos.sub(car.body.pos);
+          const relVel = bb.vel.sub(car.body.vel);
+          const relSpeed = Math.min(relVel.len(), BALL_CAR_EXTRA_IMPULSE_MAXDELTAVEL_UU);
+          if (relSpeed > 0) {
+            let hitDir = new Vec3(relPos.x, relPos.y, relPos.z * BALL_CAR_EXTRA_IMPULSE_Z_SCALE).normalized();
+            const adj = carFwd.mul(hitDir.dot(carFwd) * (1 - BALL_CAR_EXTRA_IMPULSE_FORWARD_SCALE));
+            hitDir = hitDir.sub(adj).normalized();
+            const added = hitDir.mul(relSpeed * BALL_CAR_EXTRA_IMPULSE_FACTOR_CURVE.get(relSpeed));
+            bb.velCache.addSelf(added);
+          }
+        }
+      }
+      _onCarCarContact(car1, car2, c) {
+        for (let i = 0; i < 2; i++) {
+          const A = i === 0 ? car1 : car2, B = i === 0 ? car2 : car1;
+          if (A.isDemoed || B.isDemoed) return;
+          if (A.carContact.otherCarId === B.id && A.carContact.cooldownTimer > 0) continue;
+          const deltaPos = B.body.pos.sub(A.body.pos);
+          if (A.body.vel.dot(deltaPos) <= 0) continue;
+          const velDir = A.body.vel.normalized();
+          const dirToOther = deltaPos.normalized();
+          const speedTowards = A.body.vel.dot(dirToOther);
+          const otherAway = B.body.vel.dot(velDir);
+          if (speedTowards <= otherAway) continue;
+          const pOnA = i === 0 ? c.pA : c.pB;
+          const local = A.body.rot.mulVecT(pOnA.sub(A.body.pos));
+          if (local.x <= BUMP_MIN_FORWARD_DIST) continue;
+          let isDemo = A.isSupersonic && this.demosEnabled;
+          if (isDemo && A.team === B.team) isDemo = false;
+          if (isDemo) {
+            this.demolish(B, A);
+          } else {
+            const groundHit = B.isOnGround;
+            const baseScale = (groundHit ? BUMP_VEL_AMOUNT_GROUND_CURVE : BUMP_VEL_AMOUNT_AIR_CURVE).get(speedTowards);
+            const hitUp = B.isOnGround ? B.body.rot.up : new Vec3(0, 0, 1);
+            const imp = velDir.mul(baseScale).add(hitUp.mul(BUMP_UPWARD_VEL_AMOUNT_CURVE.get(speedTowards)));
+            B.body.velCache.addSelf(imp);
+            this.events.push({ type: EV.CAR_BUMP, attackerId: A.id, victimId: B.id, pos: pOnA.clone(), speed: speedTowards });
+          }
+          A.carContact.otherCarId = B.id;
+          A.carContact.cooldownTimer = BUMP_COOLDOWN_TIME;
+        }
+      }
+      // Serializable snapshot for replays / interpolation
+      snapshot() {
+        return {
+          tick: this.tick,
+          ball: { pos: this.ball.body.pos.clone(), vel: this.ball.body.vel.clone(), angVel: this.ball.body.angVel.clone(), rot: this.ball.body.rot.clone() },
+          cars: this.cars.map((c) => ({
+            id: c.id,
+            pos: c.body.pos.clone(),
+            vel: c.body.vel.clone(),
+            angVel: c.body.angVel.clone(),
+            rot: c.body.rot.clone(),
+            boost: c.boost,
+            isBoosting: c.isBoosting,
+            isSupersonic: c.isSupersonic,
+            isDemoed: c.isDemoed,
+            isOnGround: c.isOnGround,
+            handbrakeVal: c.handbrakeVal,
+            steer: c.wheels[0].steerAngle,
+            wheels: c.wheels.map((w) => ({ suspLen: w.suspLen, spin: w.spin, contact: w.isInContact }))
+          })),
+          pads: this.pads.map((p) => p.isActive)
+        };
+      }
+    };
+  }
+});
+
+// src/tests/selftest.js
+var selftest_exports = {};
+__export(selftest_exports, {
+  TESTS: () => TESTS,
+  runAll: () => runAll
+});
+function mkWorld(nCars = 1, hitbox = "OCTANE") {
+  const w = new World({ rng: /* @__PURE__ */ (() => {
+    let s = 1;
+    return () => (s = s * 16807 % 2147483647) / 2147483647;
+  })() });
+  for (let i = 0; i < nCars; i++) w.addCar({ team: i % 2, hitbox, name: "T" + i });
+  return w;
+}
+function settleCar(w, car, x = 0, y = 0, yaw = 0, ticks = 120) {
+  car.setSpawn(x, y, CAR_SPAWN_REST_Z, yaw);
+  w.ball.reset(0, 4e3, BALL_KICKOFF_Z);
+  for (let i = 0; i < ticks; i++) w.step();
+}
+function ctl(over) {
+  return Object.assign(makeControls(), over);
+}
+function airborneCar(w, car, speed = 0) {
+  car.setSpawn(0, -4e3, 17, Math.PI / 2, 100);
+  for (let i = 0; i < 30; i++) w.step();
+  if (speed > 0) {
+    for (let i = 0; i < 600 && car.forwardSpeed < speed; i++) {
+      car.controls = ctl({ throttle: 1, boost: car.forwardSpeed < speed - 40 });
+      w.step();
+      if (car.pos.y > 3e3) car.body.pos.y -= 6e3;
+    }
+  }
+}
+function runAll(filterPhase = null, log = console.log) {
+  const results = [];
+  for (const t of TESTS) {
+    if (filterPhase && t.phase !== filterPhase) continue;
+    let r;
+    const t0 = typeof performance !== "undefined" ? performance.now() : Date.now();
+    try {
+      r = t.fn();
+    } catch (e) {
+      r = { pass: false, detail: "EXCEPTION " + (e && e.stack || e) };
+    }
+    const ms = (typeof performance !== "undefined" ? performance.now() : Date.now()) - t0;
+    results.push({ phase: t.phase, name: t.name, ...r, ms });
+    log(`${r.pass ? "PASS" : "FAIL"}  [P${t.phase}] ${t.name} — ${r.detail} (${ms.toFixed(0)} ms)`);
+  }
+  const passed = results.filter((r) => r.pass).length;
+  log(`${passed}/${results.length} passed`);
+  return results;
+}
+var near, TESTS, T;
+var init_selftest = __esm({
+  "src/tests/selftest.js"() {
+    init_world();
+    init_math();
+    init_arena();
+    init_ball();
+    init_const();
+    init_contracts();
+    near = (a, b, tol) => Math.abs(a - b) <= tol;
+    TESTS = [];
+    T = (phase, name, fn) => TESTS.push({ phase, name, fn });
+    T(1, "Ball drop from z=1000 bounces to ~0.36x height", () => {
+      const w = mkWorld(0);
+      w.ball.reset(0, 0, 1e3);
+      w.ball.body.vel.set(0, 0, -1e-6);
+      let goingUp = false, peak = 0, bounced = false;
+      for (let i = 0; i < 600; i++) {
+        w.step();
+        const b = w.ball.body;
+        if (b.vel.z > 0) {
+          goingUp = true;
+          bounced = true;
+        }
+        if (goingUp) peak = Math.max(peak, b.pos.z);
+        if (bounced && b.vel.z < 0 && goingUp) break;
+      }
+      const rise = peak - BALL_REST_Z, drop = 1e3 - BALL_REST_Z;
+      const ratio = rise / drop;
+      return { pass: ratio > 0.32 && ratio < 0.39, detail: `peak ${peak.toFixed(1)} (rise/drop ${ratio.toFixed(3)}, expected ≈0.36 minus drag)` };
+    });
+    T(1, "Ball rests at z≈93.15", () => {
+      const w = mkWorld(0);
+      w.ball.reset(0, 0, 200);
+      w.ball.body.vel.set(0, 0, -1e-6);
+      for (let i = 0; i < 1200; i++) w.step();
+      const z = w.ball.body.pos.z;
+      return { pass: near(z, 93.15, 1), detail: `rest z ${z.toFixed(2)}` };
+    });
+    T(1, "Ball speed never exceeds 6000", () => {
+      const w = mkWorld(0);
+      w.ball.reset(0, 0, 1e3);
+      w.ball.body.vel.set(9e3, 3e3, 2e3);
+      let mx = 0;
+      for (let i = 0; i < 600; i++) {
+        w.step();
+        mx = Math.max(mx, w.ball.body.vel.len());
+      }
+      return { pass: mx <= 6000.01, detail: `max speed ${mx.toFixed(1)}` };
+    });
+    T(1, "Ball rolls into corner ramp smoothly and stays inside", () => {
+      const w = mkWorld(0);
+      w.ball.reset(2500, 3500, BALL_REST_Z);
+      w.ball.body.vel.set(1500, 1500, 0);
+      let minSdf = Infinity, maxZ = 0;
+      for (let i = 0; i < 360; i++) {
+        w.step();
+        const p = w.ball.body.pos;
+        minSdf = Math.min(minSdf, arenaSDF(p.x, p.y, p.z));
+        maxZ = Math.max(maxZ, p.z);
+      }
+      return { pass: minSdf > 60 && maxZ > 200, detail: `min clearance ${minSdf.toFixed(1)} (radius 91.25), climbed to z ${maxZ.toFixed(0)}` };
+    });
+    T(1, "Ball at 6000 uu/s never leaves the arena / tunnels the goal frame", () => {
+      const w = mkWorld(0);
+      let escaped = 0;
+      const rng = /* @__PURE__ */ (() => {
+        let s = 7;
+        return () => (s = s * 16807 % 2147483647) / 2147483647;
+      })();
+      for (let trial = 0; trial < 60; trial++) {
+        w.ball.reset((rng() - 0.5) * 6e3, (rng() - 0.5) * 8e3, 200 + rng() * 1500);
+        const dir = new Vec3(rng() - 0.5, (rng() - 0.5) * 2, rng() - 0.5).normalized();
+        w.ball.body.vel.copy(dir.mul(6e3));
+        for (let i = 0; i < 240; i++) {
+          w.step();
+          const p = w.ball.body.pos;
+          if (arenaSDF(p.x, p.y, p.z) < -5 || Math.abs(p.y) > 6e3 || Math.abs(p.x) > 4096 || p.z > 2044 || p.z < 0) {
+            escaped++;
+            break;
+          }
+        }
+      }
+      const shots = [[892, 5e3, 300, 0, 1, 0], [-892, 5e3, 300, 0, 1, 0], [0, 5e3, 642, 0, 1, 0.1], [892, -5e3, 100, 0.2, -1, 0]];
+      for (const s of shots) {
+        w.ball.reset(s[0], s[1], s[2]);
+        w.ball.body.vel.copy(new Vec3(s[3], s[4], s[5]).normalized().mul(6e3));
+        for (let i = 0; i < 120; i++) {
+          w.step();
+          const p = w.ball.body.pos;
+          if (arenaSDF(p.x, p.y, p.z) < -5) {
+            escaped++;
+            break;
+          }
+        }
+      }
+      return { pass: escaped === 0, detail: `${escaped} escapes out of 64 shots` };
+    });
+    T(2, "Car rests on its wheels (4 wheels, isOnGround)", () => {
+      const w = mkWorld(1);
+      const car = w.cars[0];
+      settleCar(w, car, 0, 0, 0, 240);
+      return { pass: car.isOnGround && car.numWheelsInContact === 4 && near(car.pos.z, 17, 3), detail: `z ${car.pos.z.toFixed(2)}, wheels ${car.numWheelsInContact}` };
+    });
+    T(2, "Throttle-only top speed ≈1410", () => {
+      const w = mkWorld(1);
+      const car = w.cars[0];
+      settleCar(w, car, -3e3, -3800, Math.PI / 4 * 0 + 0);
+      car.setSpawn(-2e3, -3e3, 17, Math.PI / 2);
+      for (let i = 0; i < 30; i++) w.step();
+      for (let i = 0; i < 900; i++) {
+        car.controls = ctl({ throttle: 1 });
+        w.step();
+        if (car.pos.y > 3e3) car.body.pos.y -= 6e3;
+      }
+      const v = car.forwardSpeed;
+      return { pass: near(v, 1410, 15), detail: `speed ${v.toFixed(1)}` };
+    });
+    T(2, "Boost reaches 2300 and caps; supersonic at 2200", () => {
+      const w = mkWorld(1);
+      const car = w.cars[0];
+      car.setSpawn(0, -4500, 17, Math.PI / 2, 100);
+      for (let i = 0; i < 30; i++) w.step();
+      let ssAt = -1, mx = 0;
+      for (let i = 0; i < 360; i++) {
+        car.controls = ctl({ throttle: 1, boost: true });
+        w.step();
+        const s = car.vel.len();
+        mx = Math.max(mx, s);
+        if (car.isSupersonic && ssAt < 0) ssAt = s;
+      }
+      return { pass: near(mx, 2300, 1) && ssAt >= 2199 && ssAt < 2240, detail: `max ${mx.toFixed(1)}, supersonic flag at ${ssAt.toFixed(1)}` };
+    });
+    T(2, "Full boost tank lasts 3.0 s", () => {
+      const w = mkWorld(1);
+      const car = w.cars[0];
+      car.setSpawn(0, 0, 300, Math.PI / 2, 100);
+      w.ball.reset(0, 4e3, BALL_KICKOFF_Z);
+      let ticks = 0;
+      car.body.rot = rotMatFromYPR(0, Math.PI / 2, 0);
+      for (let i = 0; i < 600 && car.boost > 0; i++) {
+        car.controls = ctl({ boost: true });
+        w.step();
+        ticks++;
+      }
+      const t = ticks / 120;
+      return { pass: near(t, 3, 0.02), detail: `${t.toFixed(3)} s` };
+    });
+    T(2, "Coasting decel ≈525, braking ≈3500", () => {
+      const w = mkWorld(1);
+      const car = w.cars[0];
+      car.setSpawn(0, -4e3, 17, Math.PI / 2);
+      for (let i = 0; i < 30; i++) w.step();
+      for (let i = 0; i < 240; i++) {
+        car.controls = ctl({ throttle: 1 });
+        w.step();
+      }
+      const v0 = car.forwardSpeed;
+      for (let i = 0; i < 3; i++) {
+        car.controls = ctl({});
+        w.step();
+      }
+      const v0b = car.forwardSpeed;
+      for (let i = 0; i < 60; i++) {
+        car.controls = ctl({});
+        w.step();
+      }
+      const coast = (v0b - car.forwardSpeed) / 0.5;
+      for (let i = 0; i < 240; i++) {
+        car.controls = ctl({ throttle: 1 });
+        w.step();
+      }
+      for (let i = 0; i < 3; i++) {
+        car.controls = ctl({ throttle: -1 });
+        w.step();
+      }
+      const v1 = car.forwardSpeed;
+      for (let i = 0; i < 24; i++) {
+        car.controls = ctl({ throttle: -1 });
+        w.step();
+      }
+      const brake = (v1 - car.forwardSpeed) / 0.2;
+      return { pass: near(coast, 525, 30) && near(brake, 3500, 120), detail: `coast ${coast.toFixed(0)} uu/s², brake ${brake.toFixed(0)} uu/s²` };
+    });
+    T(2, "Powerslide slides (lateral speed builds up)", () => {
+      const w = mkWorld(1);
+      const car = w.cars[0];
+      car.setSpawn(0, -4e3, 17, Math.PI / 2);
+      for (let i = 0; i < 30; i++) w.step();
+      for (let i = 0; i < 180; i++) {
+        car.controls = ctl({ throttle: 1 });
+        w.step();
+      }
+      let maxLat = 0;
+      for (let i = 0; i < 60; i++) {
+        car.controls = ctl({ throttle: 1, steer: 1, handbrake: true });
+        w.step();
+        maxLat = Math.max(maxLat, Math.abs(car.vel.dot(car.right)));
+      }
+      const w2 = mkWorld(1);
+      const c2 = w2.cars[0];
+      c2.setSpawn(0, -4e3, 17, Math.PI / 2);
+      for (let i = 0; i < 30; i++) w2.step();
+      for (let i = 0; i < 180; i++) {
+        c2.controls = ctl({ throttle: 1 });
+        w2.step();
+      }
+      let maxLat2 = 0;
+      for (let i = 0; i < 60; i++) {
+        c2.controls = ctl({ throttle: 1, steer: 1 });
+        w2.step();
+        maxLat2 = Math.max(maxLat2, Math.abs(c2.vel.dot(c2.right)));
+      }
+      return { pass: maxLat > maxLat2 * 2 && maxLat > 200, detail: `lateral slip with powerslide ${maxLat.toFixed(0)} vs normal ${maxLat2.toFixed(0)}` };
+    });
+    T(2, "Drives up the wall, along it and onto the ceiling holding throttle", () => {
+      const w = mkWorld(1);
+      const car = w.cars[0];
+      car.setSpawn(2500, 0, 17, 0, 100);
+      for (let i = 0; i < 30; i++) w.step();
+      let onWall = false, onCeil = false, maxZ = 0;
+      for (let i = 0; i < 900; i++) {
+        car.controls = ctl({ throttle: 1, boost: i < 400 });
+        w.step();
+        maxZ = Math.max(maxZ, car.pos.z);
+        if (car.isOnGround && car.up.x < -0.9 && car.pos.z > 500) onWall = true;
+        if (car.isOnGround && car.up.z < -0.9 && car.pos.z > 1900) onCeil = true;
+      }
+      return { pass: onWall && onCeil, detail: `wall ${onWall}, ceiling ${onCeil}, max z ${maxZ.toFixed(0)}` };
+    });
+    T(2, "Slides off the wall when throttle released", () => {
+      const w = mkWorld(1);
+      const car = w.cars[0];
+      car.setSpawn(2500, 0, 17, 0, 100);
+      for (let i = 0; i < 30; i++) w.step();
+      let t = 0;
+      for (; t < 600; t++) {
+        car.controls = ctl({ throttle: 1, boost: true });
+        w.step();
+        if (car.isOnGround && car.pos.z > 700 && car.up.x < -0.95) break;
+      }
+      const zStart = car.pos.z;
+      let fell = false;
+      for (let i = 0; i < 360; i++) {
+        car.controls = ctl({});
+        w.step();
+        if (car.pos.z < zStart - 300 || !car.isOnGround) {
+          fell = true;
+        }
+      }
+      return { pass: fell, detail: `wall z ${zStart.toFixed(0)} -> ${car.pos.z.toFixed(0)}, onGround ${car.isOnGround}` };
+    });
+    T(3, "Dodge only within 1.25 s after jump ends", () => {
+      const w = mkWorld(1);
+      const car = w.cars[0];
+      airborneCar(w, car);
+      for (let i = 0; i < 30; i++) {
+        car.controls = ctl({ jump: true });
+        w.step();
+      }
+      for (let i = 0; i < 1.3 * 120; i++) {
+        car.controls = ctl({});
+        w.step();
+      }
+      const canLate = car.airTimeSinceJump < DOUBLEJUMP_MAX_DELAY;
+      car.controls = ctl({ jump: true, pitch: -1 });
+      w.step();
+      const flippedLate = car.hasFlipped;
+      const w2 = mkWorld(1);
+      const c2 = w2.cars[0];
+      airborneCar(w2, c2);
+      for (let i = 0; i < 30; i++) {
+        c2.controls = ctl({ jump: true });
+        w2.step();
+      }
+      for (let i = 0; i < 100; i++) {
+        c2.controls = ctl({});
+        w2.step();
+      }
+      c2.controls = ctl({ jump: true, pitch: -1 });
+      w2.step();
+      return { pass: !flippedLate && !canLate && c2.hasFlipped, detail: `late flip ${flippedLate}, in-window flip ${c2.hasFlipped}` };
+    });
+    T(3, "Driving off a ramp without jumping keeps the flip indefinitely", () => {
+      const w = mkWorld(1);
+      const car = w.cars[0];
+      car.setSpawn(0, 0, 800, 0);
+      for (let i = 0; i < 240; i++) {
+        car.controls = ctl({});
+        w.step();
+        car.body.pos.z = 800;
+        car.body.vel.z = 0;
+      }
+      car.controls = ctl({ jump: true, pitch: -1 });
+      w.step();
+      return { pass: car.hasFlipped, detail: `airTime ${car.airTime.toFixed(2)} s, flipped ${car.hasFlipped}` };
+    });
+    T(3, "Front flip at 1000 uu/s adds ~500 uu/s forward", () => {
+      const w = mkWorld(1);
+      const car = w.cars[0];
+      airborneCar(w, car, 1e3);
+      car.controls = ctl({ jump: true });
+      w.step();
+      w.step();
+      car.controls = ctl({});
+      for (let i = 0; i < 6; i++) w.step();
+      const before = car.vel.to2D().dot(car.forward.to2D().normalized());
+      car.controls = ctl({ jump: true, pitch: -1 });
+      w.step();
+      const after = car.vel.to2D().dot(car.forward.to2D().normalized());
+      const dv = after - before;
+      return { pass: near(dv, 500, 25), detail: `Δv forward ${dv.toFixed(1)} at ${before.toFixed(0)} uu/s` };
+    });
+    T(3, "Side flip at max speed adds ~950 uu/s sideways", () => {
+      const w = mkWorld(1);
+      const car = w.cars[0];
+      airborneCar(w, car, 2290);
+      car.controls = ctl({ jump: true });
+      w.step();
+      w.step();
+      car.controls = ctl({});
+      for (let i = 0; i < 6; i++) w.step();
+      const r2 = car.right.to2D().normalized();
+      const before = car.vel.dot(r2), fs = car.forwardSpeed;
+      car.controls = ctl({ jump: true, yaw: 1 });
+      w.step();
+      const dv = car.vel.dot(r2) - before;
+      const expect = 500 * (1 + 0.9 * Math.abs(fs) / 2300);
+      const vz = car.vel.z, pre = Math.hypot(fs, before + expect, vz);
+      const expectAfter = (before + expect) * Math.min(1, 2300 / pre) - before;
+      return { pass: near(dv, expectAfter, 15) && expect > 930, detail: `impulse ${expect.toFixed(0)} uu/s at fwd ${fs.toFixed(0)}; after 2300 clamp Δv side ${dv.toFixed(1)} (expected ${expectAfter.toFixed(0)})` };
+    });
+    T(3, "Backflip at speed scales up to 2.5×", () => {
+      const w = mkWorld(1);
+      const car = w.cars[0];
+      airborneCar(w, car, 2e3);
+      car.controls = ctl({ jump: true });
+      w.step();
+      w.step();
+      car.controls = ctl({});
+      for (let i = 0; i < 6; i++) w.step();
+      const f2 = car.forward.to2D().normalized();
+      const before = car.vel.dot(f2), fs = car.forwardSpeed;
+      car.controls = ctl({ jump: true, pitch: 1 });
+      w.step();
+      const dv = before - car.vel.dot(f2);
+      const expect = 500 * (1 + 1.5 * Math.abs(fs) / 2300) * 16 / 15;
+      return { pass: near(dv, expect, 30), detail: `Δv back ${dv.toFixed(1)} (expected ${expect.toFixed(0)})` };
+    });
+    T(3, "Flip cancel produces a working half-flip", () => {
+      const w = mkWorld(1);
+      const car = w.cars[0];
+      car.setSpawn(0, 0, 17, Math.PI / 2);
+      for (let i = 0; i < 30; i++) w.step();
+      for (let i = 0; i < 120; i++) {
+        car.controls = ctl({ throttle: -1 });
+        w.step();
+      }
+      car.controls = ctl({ jump: true, throttle: -1 });
+      w.step();
+      w.step();
+      w.step();
+      car.controls = ctl({ throttle: -1 });
+      for (let i = 0; i < 4; i++) w.step();
+      car.controls = ctl({ jump: true, pitch: 1 });
+      w.step();
+      for (let i = 0; i < 8; i++) {
+        car.controls = ctl({ pitch: 1 });
+        w.step();
+      }
+      for (let i = 0; i < 150; i++) {
+        car.controls = ctl({ pitch: -1, roll: 1, throttle: 1, boost: false });
+        w.step();
+        if (car.isOnGround && i > 30) break;
+      }
+      for (let i = 0; i < 60; i++) {
+        car.controls = ctl({ throttle: 1 });
+        w.step();
+      }
+      const fwdY = car.forward.y;
+      return { pass: fwdY < -0.7 && car.up.z > 0.8, detail: `facing y ${fwdY.toFixed(2)}, up.z ${car.up.z.toFixed(2)}` };
+    });
+    T(3, "Pitch locked during flip", () => {
+      const w = mkWorld(1);
+      const car = w.cars[0];
+      airborneCar(w, car);
+      car.controls = ctl({ jump: true });
+      w.step();
+      w.step();
+      car.controls = ctl({});
+      for (let i = 0; i < 6; i++) w.step();
+      car.controls = ctl({ jump: true, yaw: 1 });
+      w.step();
+      const r0 = car.right;
+      let maxPitchRate = 0;
+      for (let i = 0; i < 40; i++) {
+        car.controls = ctl({ pitch: 1 });
+        w.step();
+        maxPitchRate = Math.max(maxPitchRate, Math.abs(car.angVel.dot(car.right)));
+      }
+      return { pass: maxPitchRate < 0.5, detail: `max pitch rate during side flip with full pitch input ${maxPitchRate.toFixed(3)} rad/s` };
+    });
+    T(3, "Air roll rate and 5.5 rad/s cap", () => {
+      const w = mkWorld(1);
+      const car = w.cars[0];
+      car.setSpawn(0, 0, 1e3, 0);
+      car.body.vel.set(0, 0, 500);
+      let mx = 0;
+      const w0 = car.angVel.len();
+      car.controls = ctl({ roll: 1 });
+      w.step();
+      const acc = (car.angVel.len() - w0) * 120;
+      for (let i = 0; i < 200; i++) {
+        car.controls = ctl({ roll: 1, yaw: 1, pitch: 1 });
+        w.step();
+        mx = Math.max(mx, car.angVel.len());
+      }
+      return { pass: near(acc, 38.35, 1) && mx <= 5.5001, detail: `initial roll accel ${acc.toFixed(2)} rad/s² (expect 38.35), max ω ${mx.toFixed(3)}` };
+    });
+    T(4, "Driving into still ball at 1400 uu/s (RocketSim model predicts ≈2000)", () => {
+      const w = mkWorld(1);
+      const car = w.cars[0];
+      car.setSpawn(0, -3e3, 17, Math.PI / 2);
+      w.ball.reset(0, 0, BALL_REST_Z);
+      for (let i = 0; i < 30; i++) {
+        w.step();
+      }
+      w.ball.reset(0, 0, BALL_REST_Z);
+      let hitSpeed = 0, carSpeed = 0;
+      for (let i = 0; i < 600; i++) {
+        car.controls = ctl({ throttle: 1, boost: car.forwardSpeed < 1390 });
+        w.ball.body.pos.y = Math.max(w.ball.body.pos.y, 0);
+        w.step();
+        if (w.ball.body.vel.len() > 10) {
+          carSpeed = car.forwardSpeed;
+          for (let k = 0; k < 6; k++) {
+            car.controls = ctl({});
+            w.step();
+          }
+          hitSpeed = w.ball.body.vel.len();
+          break;
+        }
+      }
+      return { pass: hitSpeed > 1800 && hitSpeed < 2400, detail: `car ${carSpeed.toFixed(0)} uu/s -> ball ${hitSpeed.toFixed(0)} uu/s` };
+    });
+    T(4, "Ball can be dribbled on the roof", () => {
+      const w = mkWorld(1);
+      const car = w.cars[0];
+      car.setSpawn(0, -4e3, 17, Math.PI / 2);
+      for (let i = 0; i < 60; i++) w.step();
+      for (let i = 0; i < 100; i++) {
+        car.controls = ctl({ throttle: 0.6 });
+        w.step();
+      }
+      w.ball.reset(car.pos.x, car.pos.y + 5, car.pos.z + 135);
+      w.ball.body.vel.copy(car.vel);
+      let onRoof = 0;
+      for (let i = 0; i < 360; i++) {
+        const rel = car.rot.mulVecT(w.ball.pos.sub(car.pos));
+        const rv = car.rot.mulVecT(w.ball.vel.sub(car.vel));
+        car.controls = ctl({
+          throttle: Math.max(-1, Math.min(1, (rel.x - 8) * 0.05 + rv.x * 0.03 + 0.2)),
+          steer: Math.max(-1, Math.min(1, rel.y * 0.03 + rv.y * 0.01))
+        });
+        w.step();
+        if (car.pos.y > 3e3) {
+          car.body.pos.y -= 6e3;
+          w.ball.body.pos.y -= 6e3;
+        }
+        const r2 = car.rot.mulVecT(w.ball.pos.sub(car.pos));
+        if (r2.z > 90 && Math.abs(r2.x) < 80 && Math.abs(r2.y) < 60) onRoof++;
+      }
+      return { pass: onRoof > 340, detail: `ball on roof ${onRoof}/360 ticks at ~640 uu/s` };
+    });
+    T(4, "Landing all wheels on the ball resets the flip", () => {
+      const w = mkWorld(1);
+      const car = w.cars[0];
+      w.ball.reset(0, 0, 600);
+      w.ball.body.vel.set(0, 0, 1e-6);
+      car.setSpawn(0, 0, 800, 0);
+      car.hasJumped = true;
+      car.hasFlipped = true;
+      car.isOnGround = false;
+      w.ball.body.vel.set(0, 0, 0);
+      w.ball.body.angVel.set(0, 0, 0);
+      let reset = false;
+      for (let i = 0; i < 150; i++) {
+        car.controls = ctl({});
+        w.ball.body.pos.set(0, 0, 600);
+        w.ball.body.vel.set(0, 0, 1e-3);
+        w.step();
+        if (car.isOnGround && !car.hasFlipped) reset = true;
+      }
+      return { pass: reset, detail: `wheels ${car.numWheelsInContact}, hasFlipped ${car.hasFlipped}` };
+    });
+    T(4, "Supersonic front-bumper hit demolishes an enemy", () => {
+      const w = mkWorld(2);
+      const a = w.cars[0], b = w.cars[1];
+      a.setSpawn(0, -4e3, 17, Math.PI / 2, 100);
+      b.setSpawn(0, 1500, 17, 0);
+      w.ball.reset(3e3, 0, BALL_REST_Z);
+      let demo = false;
+      for (let i = 0; i < 600 && !demo; i++) {
+        a.controls = ctl({ throttle: 1, boost: true });
+        b.controls = ctl({});
+        w.step();
+        if (b.isDemoed) demo = true;
+      }
+      return { pass: demo, detail: `victim demoed ${demo}, attacker supersonic ${a.isSupersonic}` };
+    });
+    T(4, "Non-supersonic hit bumps per curve (with 0.25 s cooldown)", () => {
+      const w = mkWorld(2);
+      const a = w.cars[0], b = w.cars[1];
+      a.setSpawn(0, -3e3, 17, Math.PI / 2, 0);
+      b.setSpawn(0, -1e3, 17, 0);
+      w.ball.reset(3e3, 0, BALL_REST_Z);
+      let bumps = [], speed = 0;
+      for (let i = 0; i < 400; i++) {
+        a.controls = ctl({ throttle: 1 });
+        b.controls = ctl({});
+        w.step();
+        for (const e of w.events) if (e.type === "carBump") {
+          bumps.push(w.tick);
+          speed = e.speed;
+        }
+      }
+      const bv = b.vel.len();
+      const expected = BUMP_VEL_AMOUNT_GROUND_CURVE.get(speed);
+      const okCooldown = bumps.every((t, i) => i === 0 || t - bumps[i - 1] >= 30);
+      return { pass: bumps.length >= 1 && !b.isDemoed && okCooldown, detail: `${bumps.length} bump(s) at ${speed.toFixed(0)} uu/s (curve ${expected.toFixed(0)}), victim speed after ${bv.toFixed(0)}` };
+    });
+    T(5, "Boost pad pickup (+12 small, +100 big, respawn timers)", () => {
+      const w = mkWorld(1);
+      const car = w.cars[0];
+      car.setSpawn(0, -1024 - 400, 17, Math.PI / 2, 0);
+      for (let i = 0; i < 300; i++) {
+        car.controls = ctl({ throttle: 1 });
+        w.step();
+        if (car.pos.y > -900) break;
+      }
+      const small = car.boost;
+      const pad = w.pads.find((p) => !p.isBig && p.pos.x === 0 && p.pos.y === -1024);
+      return { pass: near(small, 12, 0.01) && !pad.isActive && near(pad.cooldown, 4, 0.5), detail: `boost ${small.toFixed(2)}, pad cooldown ${pad.cooldown.toFixed(2)}` };
+    });
+    T(5, "Goal detected when the whole ball crosses the line", () => {
+      const w = mkWorld(0);
+      w.ball.reset(0, 4800, 300);
+      w.ball.body.vel.set(0, 2e3, 0);
+      let at = null;
+      for (let i = 0; i < 120; i++) {
+        w.step();
+        if (w.goalScored && !at) at = w.ball.pos.y;
+      }
+      return { pass: at !== null && at > 5215 && w.goalScored.team === 0, detail: `scored at y=${at && at.toFixed(1)} by team ${w.goalScored && w.goalScored.team}` };
+    });
+    T(5, "Ball prediction matches the live sim", () => {
+      const w = mkWorld(0);
+      w.ball.reset(-1e3, -2e3, 500);
+      w.ball.body.vel.set(1500, 2500, 800);
+      const pred = new BallPredictor().predict({ pos: w.ball.pos, vel: w.ball.vel, angVel: w.ball.angVel }, 3);
+      for (let i = 0; i < 360; i++) w.step();
+      const p = pred[359].pos;
+      const err = w.ball.pos.dist(new Vec3(p.x, p.y, p.z));
+      return { pass: err < 1, detail: `error after 3 s: ${err.toFixed(3)} uu` };
+    });
+  }
+});
+
+// src/main.js
+init_world();
+init_ball();
+init_const();
+init_arena();
+init_carconfig();
+init_contracts();
+import * as THREE5 from "three";
+
+// src/game/view.js
+init_math();
+function lerpV(a, b, t) {
+  return new Vec3(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t, a.z + (b.z - a.z) * t);
+}
+function matToQuat(m) {
+  const a = m.m;
+  const tr = a[0] + a[4] + a[8];
+  let w, x, y, z;
+  if (tr > 0) {
+    const s = Math.sqrt(tr + 1) * 2;
+    w = 0.25 * s;
+    x = (a[7] - a[5]) / s;
+    y = (a[2] - a[6]) / s;
+    z = (a[3] - a[1]) / s;
+  } else if (a[0] > a[4] && a[0] > a[8]) {
+    const s = Math.sqrt(1 + a[0] - a[4] - a[8]) * 2;
+    w = (a[7] - a[5]) / s;
+    x = 0.25 * s;
+    y = (a[1] + a[3]) / s;
+    z = (a[2] + a[6]) / s;
+  } else if (a[4] > a[8]) {
+    const s = Math.sqrt(1 + a[4] - a[0] - a[8]) * 2;
+    w = (a[2] - a[6]) / s;
+    x = (a[1] + a[3]) / s;
+    y = 0.25 * s;
+    z = (a[5] + a[7]) / s;
+  } else {
+    const s = Math.sqrt(1 + a[8] - a[0] - a[4]) * 2;
+    w = (a[3] - a[1]) / s;
+    x = (a[2] + a[6]) / s;
+    y = (a[5] + a[7]) / s;
+    z = 0.25 * s;
+  }
+  return [x, y, z, w];
+}
+function quatToMat(q) {
+  const [x, y, z, w] = q;
+  return new RotMat([
+    1 - 2 * (y * y + z * z),
+    2 * (x * y - z * w),
+    2 * (x * z + y * w),
+    2 * (x * y + z * w),
+    1 - 2 * (x * x + z * z),
+    2 * (y * z - x * w),
+    2 * (x * z - y * w),
+    2 * (y * z + x * w),
+    1 - 2 * (x * x + y * y)
+  ]);
+}
+function slerpRot(ma, mb, t) {
+  const a = matToQuat(ma), b = matToQuat(mb);
+  let d = a[0] * b[0] + a[1] * b[1] + a[2] * b[2] + a[3] * b[3];
+  if (d < 0) {
+    b[0] = -b[0];
+    b[1] = -b[1];
+    b[2] = -b[2];
+    b[3] = -b[3];
+    d = -d;
+  }
+  let q;
+  if (d > 0.9995) q = a.map((v, i) => v + (b[i] - v) * t);
+  else {
+    const th = Math.acos(d), s = Math.sin(th);
+    const wa = Math.sin((1 - t) * th) / s, wb = Math.sin(t * th) / s;
+    q = a.map((v, i) => v * wa + b[i] * wb);
+  }
+  const l = Math.hypot(q[0], q[1], q[2], q[3]);
+  return quatToMat(q.map((v) => v / l));
+}
+function captureFrame(world, match) {
+  return {
+    tick: world.tick,
+    time: world.time,
+    ball: {
+      pos: world.ball.body.pos.clone(),
+      vel: world.ball.body.vel.clone(),
+      angVel: world.ball.body.angVel.clone(),
+      rot: world.ball.body.rot.clone()
+    },
+    cars: world.cars.map((c) => ({
+      id: c.id,
+      team: c.team,
+      name: c.name,
+      isBot: c.isBot,
+      bodyId: c.bodyId,
+      hitbox: c.hitbox,
+      accent: c.accent,
+      pos: c.body.pos.clone(),
+      vel: c.body.vel.clone(),
+      angVel: c.body.angVel.clone(),
+      rot: c.body.rot.clone(),
+      boost: c.boost,
+      isBoosting: c.isBoosting,
+      isSupersonic: c.isSupersonic,
+      isDemoed: c.isDemoed,
+      isOnGround: c.isOnGround,
+      numWheelsInContact: c.numWheelsInContact,
+      handbrakeVal: c.handbrakeVal,
+      forwardSpeed: c.forwardSpeed,
+      steer: c.wheels[0].steerAngle,
+      controls: { ...c.controls },
+      hasJumped: c.hasJumped,
+      hasFlipped: c.hasFlipped,
+      isFlipping: c.isFlipping,
+      isJumping: c.isJumping,
+      airTimeSinceJump: c.airTimeSinceJump,
+      demoRespawnTimer: c.demoRespawnTimer,
+      wheels: c.wheels.map((w) => ({
+        offset: w.def.offset,
+        radius: w.def.radius,
+        restLen: w.def.restLen,
+        front: w.def.front,
+        left: w.def.left,
+        suspLen: w.suspLen,
+        spin: w.spin,
+        contact: w.isInContact
+      }))
+    })),
+    pads: world.pads.map((p) => ({ index: p.index, pos: p.pos, isBig: p.isBig, isActive: p.isActive, cooldown: p.cooldown }))
+  };
+}
+function interpolateFrames(a, b, t) {
+  if (!a) a = b;
+  const view = {
+    tick: b.tick,
+    time: a.time + (b.time - a.time) * t,
+    isReplay: false,
+    ball: {
+      pos: lerpV(a.ball.pos, b.ball.pos, t),
+      vel: lerpV(a.ball.vel, b.ball.vel, t),
+      angVel: b.ball.angVel,
+      rot: slerpRot(a.ball.rot, b.ball.rot, t)
+    },
+    cars: [],
+    pads: b.pads,
+    match: null
+  };
+  for (const cb of b.cars) {
+    const ca = a.cars.find((c) => c.id === cb.id) || cb;
+    const teleport = ca.pos.dist(cb.pos) > 400 || ca.isDemoed !== cb.isDemoed;
+    const tt = teleport ? 1 : t;
+    const rot = slerpRot(ca.rot, cb.rot, tt);
+    view.cars.push({
+      ...cb,
+      pos: lerpV(ca.pos, cb.pos, tt),
+      vel: lerpV(ca.vel, cb.vel, tt),
+      rot,
+      forward: rot.forward,
+      right: rot.right,
+      up: rot.up,
+      boost: ca.boost + (cb.boost - ca.boost) * tt,
+      wheels: cb.wheels.map((w, i) => ({
+        ...w,
+        suspLen: ca.wheels[i].suspLen + (w.suspLen - ca.wheels[i].suspLen) * tt,
+        spin: ca.wheels[i].spin + (w.spin - ca.wheels[i].spin) * tt
+      }))
+    });
+  }
+  if (a.ball.pos.dist(b.ball.pos) > 600) view.ball.pos = b.ball.pos.clone();
+  return view;
+}
+
+// src/game/settings.js
+var KEY = "turbopitch.v1";
+var DEFAULT_BINDINGS = {
+  // keyboard/mouse: values are KeyboardEvent.code or 'Mouse0'/'Mouse1'/'Mouse2'
+  kb: {
+    throttle: ["KeyW"],
+    reverse: ["KeyS"],
+    steerLeft: ["KeyA"],
+    steerRight: ["KeyD"],
+    pitchUp: ["ArrowDown"],
+    // nose up (pull back)
+    pitchDown: ["ArrowUp"],
+    // nose down
+    yawLeft: ["ArrowLeft"],
+    yawRight: ["ArrowRight"],
+    jump: ["Mouse2"],
+    boost: ["Mouse0"],
+    powerslide: ["ShiftLeft"],
+    airRollLeft: ["KeyQ"],
+    airRollRight: ["KeyE"],
+    ballCam: ["Space"],
+    resetBall: ["KeyR"],
+    scoreboard: ["Tab"],
+    pause: ["Escape"]
+  },
+  // gamepad: standard mapping button indices / axes
+  pad: {
+    throttle: "b7",
+    // RT (analog)
+    reverse: "b6",
+    // LT (analog)
+    jump: "b0",
+    // A
+    boost: "b1",
+    // B
+    powerslide: "b2",
+    // X
+    ballCam: "b3",
+    // Y
+    airRollLeft: "b4",
+    // LB
+    airRollRight: "b5",
+    // RB
+    scoreboard: "b8",
+    // Back/View
+    pause: "b9",
+    // Start/Menu
+    resetBall: "b12",
+    // dpad up
+    steerAxis: "a0",
+    pitchAxis: "a1",
+    lookX: "a2",
+    lookY: "a3"
+  }
+};
+var DEFAULT_SETTINGS = {
+  camera: {
+    fov: 110,
+    distance: 270,
+    height: 100,
+    angle: -4,
+    stiffness: 0.45,
+    swivelSpeed: 5,
+    transitionSpeed: 1.2,
+    shake: true,
+    ballCamDefault: true,
+    ballCamMode: "toggle",
+    // or 'hold'
+    invertSwivel: false
+  },
+  controls: {
+    deadzone: 0.2,
+    // controller stick deadzone
+    dodgeDeadzone: 0.5,
+    aerialSensitivity: 1,
+    steeringSensitivity: 1,
+    deadzoneShape: "cross",
+    mouseAirPitch: false,
+    // mouse movement controls air pitch/yaw
+    mouseSensitivity: 1,
+    kbAirRollMode: "yaw",
+    // A/D: 'yaw' in air (default) ; with powerslide held = roll
+    invertPitch: false
+  },
+  bindings: JSON.parse(JSON.stringify(DEFAULT_BINDINGS)),
+  graphics: { quality: "high", motionBlur: false, fpsCap: 0, showFps: false, nameplates: true, renderScale: 1 },
+  audio: { master: 0.8, sfx: 0.9, crowd: 0.7, music: 0 },
+  game: {
+    playerName: "Player",
+    carBody: "vector",
+    accent: "#e8e8e8",
+    team: 0,
+    lastMode: { teamSize: 1, difficulty: "pro" },
+    freeplay: { predictionLine: true, unlimitedBoost: true }
+  }
+};
+var DEFAULT_STATS = { matches: 0, wins: 0, goals: 0, assists: 0, saves: 0, shots: 0, demos: 0, mvps: 0 };
+function deepMerge(base, over) {
+  if (typeof base !== "object" || base === null || Array.isArray(base)) return over === void 0 ? base : over;
+  const out = {};
+  for (const k of Object.keys(base)) out[k] = deepMerge(base[k], over ? over[k] : void 0);
+  if (over && typeof over === "object") {
+    for (const k of Object.keys(over)) if (!(k in out)) out[k] = over[k];
+  }
+  return out;
+}
+function loadAll() {
+  let raw = null;
+  try {
+    raw = JSON.parse(localStorage.getItem(KEY) || "null");
+  } catch (e) {
+    raw = null;
+  }
+  return {
+    settings: deepMerge(DEFAULT_SETTINGS, raw && raw.settings),
+    stats: deepMerge(DEFAULT_STATS, raw && raw.stats)
+  };
+}
+function saveAll(settings2, stats2) {
+  try {
+    localStorage.setItem(KEY, JSON.stringify({ settings: settings2, stats: stats2 }));
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+// src/render/util.js
+init_contracts();
+import * as THREE from "three";
+var _m4 = new THREE.Matrix4();
+function simToThree(v, out = new THREE.Vector3()) {
+  return out.set(v.x * UU_TO_M, v.z * UU_TO_M, v.y * UU_TO_M);
+}
+function simRotToQuat(rm, out = new THREE.Quaternion()) {
+  const a = rm.m;
+  _m4.set(
+    a[0],
+    a[2],
+    a[1],
+    0,
+    a[6],
+    a[8],
+    a[7],
+    0,
+    a[3],
+    a[5],
+    a[4],
+    0,
+    0,
+    0,
+    0,
+    1
+  );
+  return out.setFromRotationMatrix(_m4);
+}
+function applySimTransform(obj, pos, rot) {
+  simToThree(pos, obj.position);
+  if (rot) simRotToQuat(rot, obj.quaternion);
+}
+
+// src/render/environment.js
+init_arena();
+import * as THREE2 from "three";
+function createEnvironment(ctx2) {
+  const g = new THREE2.Group();
+  const floor = new THREE2.Mesh(new THREE2.PlaneGeometry(81.92, 120), new THREE2.MeshStandardMaterial({ color: 3112242 }));
+  floor.rotation.x = -Math.PI / 2;
+  floor.receiveShadow = true;
+  g.add(floor);
+  for (const u of [0]) {
+    const ring = arenaRing(u);
+    const pts = ring.map((p) => new THREE2.Vector3(p[0] / 100, 0.02, p[1] / 100));
+    pts.push(pts[0]);
+    g.add(new THREE2.Line(new THREE2.BufferGeometry().setFromPoints(pts), new THREE2.LineBasicMaterial({ color: 16777215 })));
+  }
+  g.add(new THREE2.HemisphereLight(16777215, 3359795, 1.2));
+  const sun = new THREE2.DirectionalLight(16777215, 2);
+  sun.position.set(20, 60, 10);
+  g.add(sun);
+  const padMeshes = [];
+  return {
+    object3d: g,
+    update(view) {
+      if (!padMeshes.length && view.pads) for (const p of view.pads) {
+        const m = new THREE2.Mesh(new THREE2.CylinderGeometry(p.isBig ? 1.6 : 1.2, p.isBig ? 1.6 : 1.2, 0.05, 16), new THREE2.MeshBasicMaterial({ color: 16763955 }));
+        m.position.set(p.pos.x / 100, 0.03, p.pos.y / 100);
+        g.add(m);
+        padMeshes.push(m);
+      }
+      view.pads.forEach((p, i) => {
+        padMeshes[i].visible = p.isActive;
+      });
+    },
+    setQuality() {
+    },
+    dispose() {
+    }
+  };
+}
+
+// src/render/cars.js
+init_carconfig();
+init_contracts();
+import * as THREE3 from "three";
+function createCarModel(ctx2, opts) {
+  const cfg = CAR_CONFIGS[opts.hitbox || "OCTANE"];
+  const g = new THREE3.Group();
+  const s = cfg.hitboxSize, o = cfg.hitboxOffset;
+  const body = new THREE3.Mesh(new THREE3.BoxGeometry(s.x / 100, s.z / 100, s.y / 100), new THREE3.MeshStandardMaterial({ color: TEAM_COLORS[opts.team].primary }));
+  body.position.set(o.x / 100, o.z / 100, 0);
+  body.castShadow = true;
+  g.add(body);
+  const wheels = [];
+  return {
+    object3d: g,
+    update(cv) {
+      g.visible = !cv.isDemoed;
+      applySimTransform(g, cv.pos, cv.rot);
+      if (!wheels.length) for (const w of cv.wheels) {
+        const m = new THREE3.Mesh(new THREE3.CylinderGeometry(w.radius / 100, w.radius / 100, 0.08, 12), new THREE3.MeshStandardMaterial({ color: 2236962 }));
+        m.rotation.x = Math.PI / 2;
+        const p = new THREE3.Group();
+        p.add(m);
+        g.add(p);
+        wheels.push(p);
+      }
+      cv.wheels.forEach((w, i) => wheels[i].position.set(w.offset.x / 100, (w.offset.z - w.suspLen) / 100, w.offset.y / 100));
+    },
+    dispose() {
+    }
+  };
+}
+function createBallModel(ctx2) {
+  const m = new THREE3.Mesh(new THREE3.SphereGeometry(0.9125, 24, 16), new THREE3.MeshStandardMaterial({ color: 14540253 }));
+  m.castShadow = true;
+  return { object3d: m, update(bv) {
+    applySimTransform(m, bv.pos, bv.rot);
+  }, dispose() {
+  } };
+}
+
+// src/render/vfx.js
+function createVFX(ctx2) {
+  return { onEvents() {
+  }, update() {
+  }, setQuality() {
+  }, clear() {
+  }, dispose() {
+  } };
+}
+
+// src/render/post.js
+function createPost(ctx2) {
+  return {
+    render() {
+      ctx2.renderer.render(ctx2.scene, ctx2.camera);
+    },
+    setSize() {
+    },
+    setQuality() {
+    },
+    dispose() {
+    }
+  };
+}
+
+// src/camera/camera.js
+import * as THREE4 from "three";
+function createCameraController(ctx2) {
+  const cam = ctx2.camera;
+  return {
+    update(view, opts) {
+      if (opts.mode === "fixed" && opts.fixed) {
+        simToThree(opts.fixed.pos, cam.position);
+        cam.lookAt(simToThree(opts.fixed.target));
+        return;
+      }
+      const car = view.cars.find((c) => c.id === opts.targetCarId) || view.cars[0];
+      if (!car) {
+        cam.position.set(0, 30, -60);
+        cam.lookAt(0, 0, 0);
+        return;
+      }
+      const f = car.forward;
+      const p = { x: car.pos.x - f.x * 270, y: car.pos.y - f.y * 270, z: car.pos.z + 100 };
+      simToThree(p, cam.position);
+      cam.lookAt(simToThree(car.pos));
+      cam.fov = ctx2.settings.camera.fov * 0.6;
+      cam.updateProjectionMatrix();
+    },
+    shake() {
+    },
+    dispose() {
+    }
+  };
+}
+
+// src/input/input.js
+init_contracts();
+function createInput({ canvas: canvas2, settings: settings2, onAction: onAction2 }) {
+  const keys = /* @__PURE__ */ new Set();
+  let jumpQueued = false;
+  let enabled = true;
+  let ballCam = true;
+  addEventListener("keydown", (e) => {
+    if (!keys.has(e.code) && e.code === "Space") {
+      ballCam = !ballCam;
+    }
+    keys.add(e.code);
+    if (e.code === "Escape") onAction2 && onAction2("pause");
+    if (e.code === "KeyJ" || e.code === "KeyK") jumpQueued = true;
+  });
+  addEventListener("keyup", (e) => keys.delete(e.code));
+  return {
+    poll() {
+    },
+    sampleTick() {
+      const c = makeControls();
+      if (!enabled) return c;
+      c.throttle = (keys.has("KeyW") ? 1 : 0) - (keys.has("KeyS") ? 1 : 0);
+      c.steer = (keys.has("KeyD") ? 1 : 0) - (keys.has("KeyA") ? 1 : 0);
+      c.yaw = c.steer;
+      c.pitch = (keys.has("ArrowDown") ? 1 : 0) - (keys.has("ArrowUp") ? 1 : 0);
+      c.jump = keys.has("KeyJ") || keys.has("KeyK") || jumpQueued;
+      jumpQueued = false;
+      c.boost = keys.has("KeyL");
+      c.handbrake = keys.has("ShiftLeft");
+      return c;
+    },
+    getLook() {
+      return { x: 0, y: 0 };
+    },
+    isBallCam() {
+      return ballCam;
+    },
+    setEnabled(v) {
+      enabled = v;
+    },
+    startRebind() {
+    },
+    lastDevice: "kb",
+    dispose() {
+    }
+  };
+}
+
+// src/audio/audio.js
+function createAudio() {
+  return { unlock() {
+  }, onEvents() {
+  }, update() {
+  }, setVolumes() {
+  }, setPaused() {
+  }, dispose() {
+  } };
+}
+
+// src/ui/ui.js
+function createUI({ root, api: api2 }) {
+  root.innerHTML = `<div id="stub-menu" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:12px;font:20px sans-serif;color:#fff;background:rgba(0,0,0,.5)">
+  <h1>TURBO PITCH</h1><button id="b1">1v1 vs bot</button><button id="b2">Free play</button></div>
+  <div id="stub-hud" style="position:absolute;top:8px;left:50%;transform:translateX(-50%);font:24px monospace;color:#fff"></div>`;
+  const menu = root.querySelector("#stub-menu"), hud = root.querySelector("#stub-hud");
+  root.querySelector("#b1").onclick = () => api2.startMatch({ teamSize: 1, difficulty: "pro", playerTeam: 0 });
+  root.querySelector("#b2").onclick = () => api2.startFreePlay({});
+  return {
+    update(view) {
+      const m = view.match;
+      if (m) {
+        const c = Math.ceil(m.clockSec);
+        hud.textContent = `${m.scores[0]}  ${Math.floor(c / 60)}:${String(c % 60).padStart(2, "0")}  ${m.scores[1]}`;
+      }
+    },
+    onEvents() {
+    },
+    showMainMenu() {
+      menu.style.display = "flex";
+    },
+    showPause() {
+      menu.style.display = "flex";
+    },
+    hideMenus() {
+      menu.style.display = "none";
+    },
+    showEndScreen() {
+      menu.style.display = "flex";
+    },
+    isMenuOpen() {
+      return menu.style.display !== "none";
+    },
+    setDebug() {
+    },
+    dispose() {
+    }
+  };
+}
+
+// src/bots/bot.js
+init_contracts();
+function createBot({ carId }) {
+  return {
+    events: [],
+    tick(world) {
+      const car = world.getCar(carId);
+      const c = makeControls();
+      if (!car || car.isDemoed) return c;
+      const d = world.ball.body.pos.sub(car.body.pos);
+      const local = car.body.rot.mulVecT(d);
+      c.throttle = 1;
+      c.steer = Math.max(-1, Math.min(1, Math.atan2(local.y, local.x) * 2));
+      return c;
+    }
+  };
+}
+
+// src/game/match.js
+init_contracts();
+function createMatch({ world, mode = "exhibition", durationSec = 300 }) {
+  let state = "countdown", countdownT = 3, clock = durationSec, scores = [0, 0], goalT = 0;
+  const m = {
+    get state() {
+      return state;
+    },
+    preTick() {
+      world.carsFrozen = state === "countdown";
+    },
+    postTick(ev) {
+      const out = [];
+      const dt = world.dt;
+      if (state === "countdown") {
+        const before = Math.ceil(countdownT);
+        countdownT -= dt;
+        if (Math.ceil(countdownT) !== before && countdownT > 0) out.push({ type: EV.KICKOFF_COUNTDOWN, n: Math.ceil(countdownT) });
+        if (countdownT <= 0) {
+          state = "playing";
+          out.push({ type: EV.KICKOFF_GO });
+        }
+      } else if (state === "playing") {
+        if (mode !== "freeplay" && world.lastTouch) clock = Math.max(0, clock - dt);
+        if (world.goalScored) {
+          const t = world.goalScored.team;
+          scores[t]++;
+          state = "goal";
+          goalT = 3;
+          const lt = world.lastTouch;
+          out.push({ type: EV.GOAL, team: t, scorerId: lt ? lt.carId : -1, pos: world.ball.body.pos.clone(), ballSpeed: world.ball.body.vel.len() });
+        }
+      } else if (state === "goal") {
+        goalT -= dt;
+        if (goalT <= 0) {
+          world.resetKickoff();
+          state = "countdown";
+          countdownT = 3;
+          out.push({ type: EV.KICKOFF_COUNTDOWN, n: 3 });
+        }
+      }
+      return out;
+    },
+    frameUpdate() {
+    },
+    getView() {
+      return { mode, state, clockSec: clock, isOvertime: false, countdown: Math.ceil(countdownT), scores: [...scores], players: [], replayActive: false };
+    },
+    getReplayView() {
+      return null;
+    },
+    skipReplay() {
+    },
+    resetBall() {
+      world.ball.reset();
+    },
+    recordFrame() {
+    },
+    isRunning() {
+      return state !== "ended";
+    },
+    isEnded() {
+      return state === "ended";
+    }
+  };
+  return m;
+}
+
+// src/main.js
+var params = new URLSearchParams(location.search);
+var { settings, stats } = loadAll();
+if (params.get("q")) settings.graphics.quality = params.get("q");
+var canvas = document.getElementById("game-canvas");
+var renderer = new THREE5.WebGLRenderer({ canvas, antialias: false, powerPreference: "high-performance", preserveDrawingBuffer: params.has("shot") });
+renderer.outputColorSpace = THREE5.SRGBColorSpace;
+renderer.toneMapping = THREE5.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE5.PCFSoftShadowMap;
+var scene = new THREE5.Scene();
+var camera = new THREE5.PerspectiveCamera(70, innerWidth / innerHeight, 0.1, 2e3);
+var ctx = {
+  THREE: THREE5,
+  renderer,
+  scene,
+  camera,
+  canvas,
+  settings,
+  get quality() {
+    return QUALITY[settings.graphics.quality] || QUALITY.high;
+  },
+  get qualityName() {
+    return settings.graphics.quality;
+  },
+  arena: { sdf: arenaSDF, normal: arenaNormal, raycast: arenaRaycast, ring: arenaRing, profile: arenaProfile, params: ARENA_PARAMS },
+  carConfigs: CAR_CONFIGS
+};
+function applyRenderScale() {
+  const q = ctx.quality;
+  const pr = Math.min(devicePixelRatio || 1, 2) * q.renderScale * (settings.graphics.renderScale || 1);
+  renderer.setPixelRatio(pr);
+  renderer.setSize(innerWidth, innerHeight, false);
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  post && post.setSize(innerWidth, innerHeight, pr);
+}
+var env = createEnvironment(ctx);
+scene.add(env.object3d);
+var post = createPost(ctx);
+var vfx = createVFX(ctx);
+var camCtl = createCameraController(ctx);
+var audio = createAudio({ settings });
+var ballModel = createBallModel(ctx);
+scene.add(ballModel.object3d);
+applyRenderScale();
+addEventListener("resize", applyRenderScale);
+var carModels = /* @__PURE__ */ new Map();
+function syncCarModels(world) {
+  const ids = new Set(world.cars.map((c) => c.id));
+  for (const [id, m] of carModels) if (!ids.has(id)) {
+    scene.remove(m.object3d);
+    m.dispose && m.dispose();
+    carModels.delete(id);
+  }
+  for (const c of world.cars) {
+    const key = `${c.bodyId}|${c.team}|${c.accent}`;
+    let m = carModels.get(c.id);
+    if (m && m._key !== key) {
+      scene.remove(m.object3d);
+      m.dispose && m.dispose();
+      m = null;
+    }
+    if (!m) {
+      m = createCarModel(ctx, { bodyId: c.bodyId, hitbox: c.hitbox, team: c.team, accent: c.accent, name: c.name, isPlayer: !c.isBot });
+      m._key = key;
+      scene.add(m.object3d);
+      carModels.set(c.id, m);
+    }
+  }
+}
+var game = {
+  world: null,
+  match: null,
+  bots: /* @__PURE__ */ new Map(),
+  playerCarId: -1,
+  mode: "menu",
+  prevFrame: null,
+  curFrame: null,
+  acc: 0,
+  paused: false,
+  cfg: null,
+  events: [],
+  predictor: new BallPredictor()
+};
+window.__game = game;
+var BOT_NAMES = ["Nova", "Blitz", "Comet", "Rook", "Viper", "Echo", "Jolt", "Titan", "Pulse", "Drift"];
+function bodyHitbox(bodyId) {
+  return (CAR_BODIES.find((b) => b.id === bodyId) || CAR_BODIES[0]).hitbox;
+}
+function newSession(cfg, mode) {
+  const world = new World();
+  game.world = world;
+  game.cfg = cfg;
+  game.mode = mode;
+  game.bots = /* @__PURE__ */ new Map();
+  const playerTeam = cfg.playerTeam ?? settings.game.team ?? 0;
+  const teamSize = cfg.teamSize || 1;
+  const bodyId = cfg.bodyId || settings.game.carBody;
+  const player = cfg.spectate ? null : world.addCar({ team: playerTeam, hitbox: bodyHitbox(bodyId), bodyId, name: settings.game.playerName || "Player", isBot: false });
+  if (player) {
+    player.accent = cfg.accent || settings.game.accent;
+    player.dodgeDeadzone = settings.controls.dodgeDeadzone;
+  }
+  game.playerCarId = player ? player.id : -1;
+  if (mode === "exhibition") {
+    const names = [...BOT_NAMES].sort(() => Math.random() - 0.5);
+    const bodies = CAR_BODIES.map((b) => b.id);
+    for (let t = 0; t < 2; t++) {
+      const n = teamSize - (player && player.team === t ? 1 : 0);
+      for (let i = 0; i < n; i++) {
+        const bid = bodies[Math.floor(Math.random() * bodies.length)];
+        const diff = (t === playerTeam ? cfg.teammateDifficulty : cfg.opponentDifficulty) || cfg.difficulty || "pro";
+        const car = world.addCar({ team: t, hitbox: bodyHitbox(bid), bodyId: bid, name: names.pop() || "Bot", isBot: true });
+        car.accent = "#d0d0d0";
+        car.difficulty = diff;
+        game.bots.set(car.id, createBot({ difficulty: diff, carId: car.id, team: t, rng: Math.random }));
+      }
+    }
+  }
+  world.unlimitedBoost = mode === "freeplay" && settings.game.freeplay.unlimitedBoost;
+  world.resetKickoff();
+  if (mode === "freeplay" && player) {
+    player.setSpawn(0, -2500, CAR_SPAWN_REST_Z, Math.PI / 2, 100);
+    world.ball.reset(0, 0, BALL_REST_Z + 300);
+    world.ball.body.vel.set(0, 0, -1);
+  }
+  game.match = createMatch({ world, mode, teamSize, durationSec: cfg.durationSec || 300, rng: Math.random });
+  syncCarModels(world);
+  vfx.clear && vfx.clear();
+  game.prevFrame = captureFrame(world, game.match);
+  game.curFrame = game.prevFrame;
+  game.acc = 0;
+  game.paused = false;
+  input.setEnabled(true);
+  ui.hideMenus();
+  audio.unlock && audio.unlock();
+}
+function menuScene() {
+  const world = new World();
+  const bodyId = settings.game.carBody;
+  const car = world.addCar({ team: settings.game.team || 0, hitbox: bodyHitbox(bodyId), bodyId, name: settings.game.playerName, isBot: false });
+  car.accent = settings.game.accent;
+  car.setSpawn(0, -600, CAR_SPAWN_REST_Z, Math.PI / 2 + 0.6);
+  world.ball.reset(0, 400, BALL_KICKOFF_Z);
+  for (let i = 0; i < 60; i++) world.step();
+  game.world = world;
+  game.match = null;
+  game.mode = "menu";
+  game.bots = /* @__PURE__ */ new Map();
+  game.playerCarId = car.id;
+  syncCarModels(world);
+  game.prevFrame = captureFrame(world, null);
+  game.curFrame = game.prevFrame;
+  input.setEnabled(false);
+}
+var input = createInput({ canvas, settings, onAction });
+function onAction(name, down = true) {
+  audio.unlock && audio.unlock();
+  if (name === "pause") {
+    if (game.mode === "menu") return;
+    if (game.match && game.match.isEnded && game.match.isEnded()) return;
+    if (game.paused) api.resumeGame();
+    else pauseGame();
+  } else if (name === "resetBall") {
+    if (game.mode === "freeplay") api.resetBall();
+  } else if (name === "debug") {
+    debugOn = !debugOn;
+    ui.setDebug && ui.setDebug(debugOn);
+  } else if (name === "skipReplay") {
+    game.match && game.match.skipReplay();
+  } else if (name === "scoreboard") {
+    ui.showScoreboard && ui.showScoreboard(down);
+  }
+}
+var debugOn = false;
+function pauseGame() {
+  game.paused = true;
+  input.setEnabled(false);
+  ui.showPause();
+  audio.setPaused && audio.setPaused(true);
+}
+var api = {
+  startMatch(cfg) {
+    settings.game.lastMode = { ...settings.game.lastMode, ...cfg };
+    saveAll(settings, stats);
+    newSession(cfg, "exhibition");
+  },
+  startFreePlay(cfg = {}) {
+    newSession({ teamSize: 1, ...cfg }, "freeplay");
+  },
+  resumeGame() {
+    game.paused = false;
+    input.setEnabled(true);
+    ui.hideMenus();
+    audio.setPaused && audio.setPaused(false);
+  },
+  quitToMenu() {
+    game.paused = false;
+    menuScene();
+    ui.showMainMenu();
+    audio.setPaused && audio.setPaused(false);
+  },
+  rematch() {
+    if (game.cfg) newSession(game.cfg, game.mode === "menu" ? "exhibition" : game.mode);
+  },
+  settingsChanged() {
+    applyRenderScale();
+    env.setQuality && env.setQuality(settings.graphics.quality);
+    post.setQuality && post.setQuality(settings.graphics.quality);
+    vfx.setQuality && vfx.setQuality(settings.graphics.quality);
+    audio.setVolumes && audio.setVolumes(settings.audio);
+    for (const c of game.world ? game.world.cars : []) if (!c.isBot) c.dodgeDeadzone = settings.controls.dodgeDeadzone;
+    if (game.world && game.mode === "freeplay") game.world.unlimitedBoost = settings.game.freeplay.unlimitedBoost;
+    saveAll(settings, stats);
+  },
+  saveSettings() {
+    saveAll(settings, stats);
+  },
+  getInput() {
+    return input;
+  },
+  getSettings() {
+    return settings;
+  },
+  getStats() {
+    return stats;
+  },
+  async runSelfTests(onLine) {
+    const mod = await Promise.resolve().then(() => (init_selftest(), selftest_exports));
+    return mod.runAll(null, onLine || console.log);
+  },
+  setPreviewCar(bodyId, accent, team) {
+    settings.game.carBody = bodyId;
+    if (accent) settings.game.accent = accent;
+    if (team !== void 0) settings.game.team = team;
+    if (game.mode === "menu") menuScene();
+  },
+  skipReplay() {
+    game.match && game.match.skipReplay();
+  },
+  resetBall() {
+    if (game.mode !== "freeplay" || !game.world) return;
+    const w = game.world, car = w.getCar(game.playerCarId);
+    w.ball.reset(0, 0, BALL_REST_Z + 300);
+    w.ball.body.vel.set(0, 0, -1);
+    if (car) car.setSpawn(0, -2500, CAR_SPAWN_REST_Z, Math.PI / 2, 100);
+    game.prevFrame = captureFrame(w, game.match);
+    game.curFrame = game.prevFrame;
+    game.match && game.match.resetBall && game.match.resetBall();
+  },
+  getGame() {
+    return game;
+  },
+  isFreePlay() {
+    return game.mode === "freeplay";
+  }
+};
+var ui = createUI({ root: document.getElementById("ui-root"), api, settings, stats });
+var predLine = new THREE5.Line(new THREE5.BufferGeometry(), new THREE5.LineBasicMaterial({ color: 16772744, transparent: true, opacity: 0.8 }));
+predLine.frustumCulled = false;
+scene.add(predLine);
+var predTick = -1;
+function updatePrediction() {
+  const show = game.mode === "freeplay" && settings.game.freeplay.predictionLine && game.world;
+  predLine.visible = !!show;
+  if (!show || predTick === game.world.tick) return;
+  predTick = game.world.tick;
+  const b = game.world.ball.body;
+  const pts = game.predictor.predict({ pos: b.pos, vel: b.vel, angVel: b.angVel }, 4, 4).map((p) => simToThree(p.pos));
+  predLine.geometry.setFromPoints(pts);
+}
+var last = performance.now();
+var fps = 60;
+var fpsAcc = 0;
+var fpsN = 0;
+var frameEvents = [];
+function physicsTick() {
+  const w = game.world, m = game.match;
+  if (game.playerCarId >= 0) {
+    const car = w.getCar(game.playerCarId);
+    if (car) car.controls = input.sampleTick();
+  }
+  for (const [id, bot] of game.bots) {
+    const car = w.getCar(id);
+    if (!car) continue;
+    car.controls = bot.tick(w, m ? m.getView() : null, w.dt);
+    if (bot.events && bot.events.length) {
+      frameEvents.push(...bot.events);
+      bot.events.length = 0;
+    }
+  }
+  m && m.preTick();
+  w.step();
+  frameEvents.push(...w.events);
+  if (m) {
+    const mev = m.postTick(w.events);
+    if (mev && mev.length) frameEvents.push(...mev);
+  }
+  game.prevFrame = game.curFrame;
+  game.curFrame = captureFrame(w, m);
+  m && m.recordFrame && m.recordFrame(game.curFrame);
+}
+function frame(now) {
+  requestAnimationFrame(frame);
+  let dt = (now - last) / 1e3;
+  last = now;
+  if (dt > 0.25) dt = 0.25;
+  fpsAcc += dt;
+  fpsN++;
+  if (fpsAcc > 0.5) {
+    fps = fpsN / fpsAcc;
+    fpsAcc = 0;
+    fpsN = 0;
+  }
+  input.poll(now);
+  let view, camOpts;
+  const w = game.world;
+  if (!w) return;
+  const replay = game.match && game.match.getReplayView ? game.match.getReplayView() : null;
+  if (game.mode === "menu") {
+    game.acc += dt;
+    let n = 0;
+    while (game.acc >= TICK_TIME && n < 8) {
+      w.step();
+      game.prevFrame = game.curFrame;
+      game.curFrame = captureFrame(w, null);
+      game.acc -= TICK_TIME;
+      n++;
+    }
+    view = interpolateFrames(game.prevFrame, game.curFrame, game.acc / TICK_TIME);
+    const t = now / 1e3 * 0.12;
+    const car = view.cars[0];
+    camOpts = { mode: "fixed", fixed: { pos: { x: car.pos.x + Math.cos(t) * 520, y: car.pos.y + Math.sin(t) * 520, z: 170 }, target: { x: car.pos.x, y: car.pos.y, z: 40 } } };
+  } else if (!game.paused) {
+    if (game.match && game.match.frameUpdate) game.match.frameUpdate(dt);
+    const inReplay = game.match && game.match.state === "replay";
+    if (!inReplay) {
+      game.acc += dt;
+      let n = 0;
+      while (game.acc >= TICK_TIME && n < 8) {
+        physicsTick();
+        game.acc -= TICK_TIME;
+        n++;
+      }
+      if (n === 8) game.acc = 0;
+    }
+  }
+  if (game.mode !== "menu") {
+    if (replay) {
+      view = replay.view;
+      view.isReplay = true;
+      camOpts = { mode: "replay", hint: replay.cameraHint, targetCarId: replay.cameraHint && replay.cameraHint.targetCarId };
+    } else {
+      view = interpolateFrames(game.prevFrame, game.curFrame, Math.min(game.acc / TICK_TIME, 1));
+      camOpts = { mode: game.playerCarId >= 0 ? "car" : "spectator", targetCarId: game.playerCarId, ballCam: input.isBallCam(), look: input.getLook() };
+    }
+  }
+  view.match = game.match ? game.match.getView() : null;
+  if (params.has("cam")) {
+    const c = params.get("cam").split(",").map(Number);
+    camOpts = { mode: "fixed", fixed: { pos: { x: c[0], y: c[1], z: c[2] }, target: { x: c[3], y: c[4], z: c[5] } } };
+  }
+  env.update(view, dt);
+  ballModel.update(view.ball, dt, view);
+  for (const cv of view.cars) {
+    const m = carModels.get(cv.id);
+    if (m) m.update(cv, dt, view);
+  }
+  const evs = frameEvents.splice(0);
+  vfx.onEvents(evs, view);
+  camCtl.update(view, camOpts, dt);
+  vfx.update(view, dt, camera);
+  updatePrediction();
+  const pc = view.cars.find((c) => c.id === game.playerCarId);
+  audio.onEvents(evs, view);
+  audio.update(view, { pos: camera.position, quaternion: camera.quaternion, playerCarId: game.playerCarId, camera }, dt);
+  ui.onEvents(evs, view);
+  ui.update(view, dt, { fps, playerCarId: game.playerCarId, tick: w.tick, ballCam: input.isBallCam(), inputDevice: input.lastDevice, mode: game.mode, paused: game.paused, playerCar: pc, world: w });
+  for (const e of evs) {
+    if (e.type === EV.MATCH_END) onMatchEnd(e);
+    if ((e.type === EV.DEMO || e.type === EV.GOAL) && settings.camera.shake) camCtl.shake(e.type === EV.GOAL ? 1 : 0.6);
+  }
+  post.render();
+}
+function onMatchEnd(e) {
+  const mv = game.match.getView();
+  const me = mv.players && mv.players.find((p) => p.carId === game.playerCarId);
+  stats.matches++;
+  if (me) {
+    if (mv.winner === me.team) stats.wins++;
+    stats.goals += me.goals || 0;
+    stats.assists += me.assists || 0;
+    stats.saves += me.saves || 0;
+    stats.shots += me.shots || 0;
+    stats.demos += me.demos || 0;
+    if (mv.mvpId === me.carId) stats.mvps++;
+  }
+  saveAll(settings, stats);
+  input.setEnabled(false);
+  ui.showEndScreen(mv);
+}
+document.title = GAME_TITLE;
+menuScene();
+var scen = params.get("scene");
+if (scen === "kickoff" || scen === "match") newSession({ teamSize: Number(params.get("size") || 3), difficulty: params.get("diff") || "allstar", playerTeam: 0 }, "exhibition");
+else if (scen === "freeplay") api.startFreePlay({});
+else if (scen === "spectate") newSession({ teamSize: Number(params.get("size") || 3), difficulty: params.get("diff") || "allstar", spectate: true }, "exhibition");
+else ui.showMainMenu();
+if (params.get("advance") && game.world) {
+  const n = Math.round(Number(params.get("advance")) * 120);
+  for (let i = 0; i < n; i++) physicsTick();
+  game.prevFrame = game.curFrame;
+}
+if (params.has("debug")) {
+  debugOn = true;
+  ui.setDebug && ui.setDebug(true);
+}
+requestAnimationFrame((t) => {
+  last = t;
+  frame(t);
+});
+window.__ready = true;
+
+</script>
+</body>
+</html>
