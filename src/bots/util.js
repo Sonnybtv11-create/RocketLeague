@@ -15,6 +15,9 @@ export const GRAVITY = 650;
 export const BALL_R = 91.25;
 
 export const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
+// Math.hypot allocates (varargs) in V8 -> plain sqrt versions for hot paths
+export const hyp = (a, b) => Math.sqrt(a * a + b * b);
+export const hyp3 = (a, b, c) => Math.sqrt(a * a + b * b + c * c);
 export const clamp1 = (v) => (v < -1 ? -1 : v > 1 ? 1 : v);
 export const sign = (v) => (v >= 0 ? 1 : -1);
 export const lerp = (a, b, t) => a + (b - a) * t;

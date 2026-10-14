@@ -5,7 +5,7 @@ import { getTrajectory, TrajView } from './predict.js';
 import { driveDist, maxJumpHeight } from './tables.js';
 import { aerialRequirement } from './mechanics.js';
 import {
-  clamp, sign, PI, carFwd, angle2D, FIELD_Y, GOAL_HW,
+  clamp, sign, PI, angle2D, FIELD_Y, GOAL_HW, hyp,
 } from './util.js';
 
 export const BOOST_ACC_AIR = 1058.33;
@@ -50,8 +50,8 @@ export function approachPath(px, py, cx, cy, sdx, sdy, r) {
   // circle centre
   const ox = cx - sdy * r * side, oy = cy + sdx * r * side;
   const dx = px - ox, dy = py - oy;
-  const d = Math.hypot(dx, dy);
-  const direct = Math.hypot(rx, ry);
+  const d = hyp(dx, dy);
+  const direct = hyp(rx, ry);
   // ahead of C along the shot line and nearly aligned: go straight
   if (d <= r * 1.02) {
     _ap.tx = cx; _ap.ty = cy; _ap.len = direct * 1.15; _ap.arc = 0; return _ap;
@@ -64,7 +64,7 @@ export function approachPath(px, py, cx, cy, sdx, sdy, r) {
   let arc = (ca - ta) * side;
   while (arc < 0) arc += 2 * Math.PI;
   while (arc > 2 * Math.PI) arc -= 2 * Math.PI;
-  const straight = Math.hypot(tx - px, ty - py);
+  const straight = hyp(tx - px, ty - py);
   _ap.len = straight + arc * r;
   _ap.arc = arc;
   if (straight > r * 0.35) { _ap.tx = tx; _ap.ty = ty; } else {
@@ -83,6 +83,14 @@ export function approachPath(px, py, cx, cy, sdx, sdy, r) {
 // Direction (2D unit) in which to hit a ball at b, for a car at (cx, cy) on team
 // with attack sign s (+1 attacks +y). Returns {x, y, kind} kind: 'shot'|'clear'|'cut'|'centre'
 const _shot = { x: 0, y: 1, kind: 'shot' };
+// signed angle between 2D unit vectors
+function ang2(x1, y1, x2, y2) { return Math.atan2(x1 * y2 - y1 * x2, x1 * x2 + y1 * y2); }
+// a direction is playable if it is within maxCut of the approach line and we
+// can still turn our heading onto it in the distance left (budget, rad)
+function playable(px, py, hasH, hx, hy, maxCut, budget, dx, dy) {
+  return Math.abs(ang2(px, py, dx, dy)) <= maxCut && (!hasH || Math.abs(ang2(hx, hy, dx, dy)) <= budget);
+}
+
 export function shotDirection(bx, by, cx, cy, s, maxCut = 1.25, hx = 0, hy = 0, budget = 10) {
   const oppY = FIELD_Y * s;
   // aim point inside the opponent goal (posts inset by 200)
@@ -91,27 +99,23 @@ export function shotDirection(bx, by, cx, cy, s, maxCut = 1.25, hx = 0, hy = 0, 
   let kind = 'shot';
   // deep in the opponent corner: centre the ball in front of goal instead
   if (Math.abs(bx) > 2300 && by * s > FIELD_Y - 1400) { ax = -bx * 0.9; ay = (oppY - s * 1500) - by; kind = 'centre'; }
-  let al = Math.hypot(ax, ay); ax /= al; ay /= al;
+  let al = hyp(ax, ay); ax /= al; ay /= al;
   // approach direction (car -> ball)
   let px = bx - cx, py = by - cy;
-  const pl = Math.hypot(px, py) || 1; px /= pl; py /= pl;
+  const pl = hyp(px, py) || 1; px /= pl; py /= pl;
   const hasH = hx !== 0 || hy !== 0;
-  // a direction is playable if it is within maxCut of the approach line and we
-  // can still turn our heading onto it in the distance left (budget, rad)
-  const ang = (x1, y1, x2, y2) => Math.atan2(x1 * y2 - y1 * x2, x1 * x2 + y1 * y2);
-  const ok = (dx, dy) => Math.abs(ang(px, py, dx, dy)) <= maxCut && (!hasH || Math.abs(ang(hx, hy, dx, dy)) <= budget);
-  if (!ok(ax, ay)) {
+  if (!playable(px, py, hasH, hx, hy, maxCut, budget, ax, ay)) {
     // in our half prefer a clear away from our goal
     const ownY = -FIELD_Y * s;
     let clx = bx * 0.6, cly = by - ownY;
-    const cll = Math.hypot(clx, cly) || 1; clx /= cll; cly /= cll;
-    if (by * s < 0 && ok(clx, cly)) { ax = clx; ay = cly; kind = 'clear'; } else {
+    const cll = hyp(clx, cly) || 1; clx /= cll; cly /= cll;
+    if (by * s < 0 && playable(px, py, hasH, hx, hy, maxCut, budget, clx, cly)) { ax = clx; ay = cly; kind = 'clear'; } else {
       // best reachable: approach line rotated toward the wanted direction
-      const cut = ang(px, py, ax, ay);
+      const cut = ang2(px, py, ax, ay);
       let a = sign(cut) * Math.min(Math.abs(cut), maxCut);
       let dx = px * Math.cos(a) - py * Math.sin(a), dy = px * Math.sin(a) + py * Math.cos(a);
       if (hasH) {
-        const hc = ang(hx, hy, dx, dy);
+        const hc = ang2(hx, hy, dx, dy);
         if (Math.abs(hc) > budget) {
           const b2 = sign(hc) * budget;
           dx = hx * Math.cos(b2) - hy * Math.sin(b2); dy = hx * Math.sin(b2) + hy * Math.cos(b2);
@@ -136,9 +140,9 @@ export function groundSlack(car, x, y, dx, dy, t, boost, extraTime = 0) {
   const p = car.body.pos, v = car.body.vel;
   const m = car.body.rot.m;
   let fx = m[0], fy = m[3];
-  const fl = Math.hypot(fx, fy) || 1; fx /= fl; fy /= fl;
+  const fl = hyp(fx, fy) || 1; fx /= fl; fy /= fl;
   const rx = x - p.x, ry = y - p.y;
-  const d = Math.hypot(rx, ry);
+  const d = hyp(rx, ry);
   if (d < 1) return 1e4;
   const ux = rx / d, uy = ry / d;
   const vf = v.x * fx + v.y * fy;           // forward speed
@@ -163,14 +167,19 @@ const _tv = new TrajView();
 function quickEta(car, traj, s) {
   if (car.isDemoed) return 99;
   const n = traj.n;
-  const p = car.body.pos;
+  const p = car.body.pos, m = car.body.rot.m, v = car.body.vel;
+  const v0 = Math.max(v.x * m[0] + v.y * m[3] + v.z * m[6], 0);
   for (let i = 0; i < n; i += 3) {
     const bz = traj.pz(i);
     if (bz > 400) continue;
     const bx = traj.px(i), by = traj.py(i), t = traj.t(i);
     if (Math.abs(by) > FIELD_Y + 120) break;
+    // allocation-free reject: out of reach even driving straight at full boost
+    const ub = Math.min(2300 * t, v0 * t + 1300 * t * t) + 300;
+    const ddx = bx - p.x, ddy = by - p.y;
+    if (ddx * ddx + ddy * ddy > ub * ub) continue;
     // contact point behind the ball as seen from the car
-    let dx = bx - p.x, dy = by - p.y; const l = Math.hypot(dx, dy) || 1; dx /= l; dy /= l;
+    let dx = bx - p.x, dy = by - p.y; const l = hyp(dx, dy) || 1; dx /= l; dy /= l;
     if (groundSlack(car, bx - dx * 140, by - dy * 140, dx, dy, t, car.boost, car.isOnGround ? 0 : 0.35) >= 0) return t;
   }
   return 6;
@@ -196,33 +205,37 @@ export function coordinator(world) {
     const goalSide = (ball.y - p.y) * s > -200;
     let score = eta + (goalSide ? 0 : 0.9);
     if (car.isDemoed) score = 99;
-    const f = carFwd(car);
-    const toB = Math.hypot(ball.x - p.x, ball.y - p.y) || 1;
-    const facing = (f.x * (ball.x - p.x) + f.y * (ball.y - p.y)) / toB;
+    const rm = car.body.rot.m;
+    const toB = hyp(ball.x - p.x, ball.y - p.y) || 1;
+    const facing = (rm[0] * (ball.x - p.x) + rm[3] * (ball.y - p.y)) / toB;
     score += (1 - facing) * 0.15;
     co.score.set(car.id, score);
   }
   for (let team = 0; team < 2; team++) {
-    const mates = world.cars.filter((c) => c.team === team);
-    const opps = world.cars.filter((c) => c.team !== team);
+    const cars = world.cars;
     let best = -1, bestScore = 1e9;
-    for (const c of mates) { const sc = co.score.get(c.id); if (sc < bestScore) { bestScore = sc; best = c.id; } }
+    for (const c of cars) { if (c.team !== team) continue; const sc = co.score.get(c.id); if (sc < bestScore) { bestScore = sc; best = c.id; } }
     const prev = co.first[team];
-    if (prev >= 0 && prev !== best && co.score.has(prev) && co.score.get(prev) < bestScore + 0.3 && !world.getCar(prev)?.isDemoed) best = prev;
-    co.first[team] = best;
-    // rest: sorted by distance to own goal (closest = last man)
-    const s = team === 0 ? 1 : -1;
-    const rest = mates.filter((c) => c.id !== best && !c.isDemoed)
-      .sort((a, b) => (a.body.pos.y * s) - (b.body.pos.y * s));
-    co.role.set(best, 1);
-    if (rest.length === 1) co.role.set(rest[0].id, 2);
-    else if (rest.length >= 2) {
-      co.role.set(rest[0].id, 3);
-      for (let i = 1; i < rest.length; i++) co.role.set(rest[i].id, 2);
+    if (prev >= 0 && prev !== best && co.score.has(prev) && co.score.get(prev) < bestScore + 0.3) {
+      const pc = world.getCar(prev);
+      if (pc && !pc.isDemoed) best = prev;
     }
-    for (const c of mates) if (c.isDemoed) co.role.set(c.id, 2);
+    co.first[team] = best;
+    co.role.set(best, 1);
+    // the others: closest to our own goal = last man (3), the rest support (2)
+    const s = team === 0 ? 1 : -1;
+    let last = -1, lastY = 1e9, nRest = 0;
+    for (const c of cars) {
+      if (c.team !== team || c.id === best) continue;
+      if (c.isDemoed) { co.role.set(c.id, 2); continue; }
+      nRest++;
+      co.role.set(c.id, 2);
+      const y = c.body.pos.y * s;
+      if (y < lastY) { lastY = y; last = c.id; }
+    }
+    if (nRest >= 2) co.role.set(last, 3);
     let oe = 6, of = -1;
-    for (const c of opps) { const e = co.eta.get(c.id); if (e < oe) { oe = e; of = c.id; } }
+    for (const c of cars) { if (c.team === team) continue; const e = co.eta.get(c.id); if (e < oe) { oe = e; of = c.id; } }
     co.oppEta[team] = oe; co.oppFirst[team] = of;
   }
   return co;
@@ -237,7 +250,7 @@ export function kickoffTakers(world, co) {
     let best = null, bestD = 1e9;
     for (const c of world.cars) {
       if (c.team !== team || c.isDemoed) continue;
-      const d = Math.hypot(c.body.pos.x, c.body.pos.y);
+      const d = hyp(c.body.pos.x, c.body.pos.y);
       // left from the team's view: blue (facing +y) left is -x; orange left is +x
       const leftKey = c.body.pos.x * s;
       if (d < bestD - 10 || (Math.abs(d - bestD) <= 10 && best && leftKey < best.body.pos.x * s)) { best = c; bestD = Math.min(d, bestD); }
@@ -259,14 +272,14 @@ export function findIntercept(bot, car, traj, out) {
   const reach2 = sk.doubleJumps ? maxJumpHeight(true) + 17 + 60 : 0;
   const onGround = car.isOnGround && car.body.rot.m[8] > 0.8;
   const airPenalty = car.isOnGround ? 0 : 0.4;
-  let aerialCand = null;
+  let aerialCand = null; // -> _aerC when set (module scratch, no allocation)
   out.found = false;
   const m = car.body.rot.m;
   const rTurn = turnRadius(Math.max(600, car.body.vel.x * m[0] + car.body.vel.y * m[3] + car.body.vel.z * m[6]));
   // current heading: velocity direction when moving, else the nose
-  const vh = Math.hypot(car.body.vel.x, car.body.vel.y);
+  const vh = hyp(car.body.vel.x, car.body.vel.y);
   let hx = vh > 400 ? car.body.vel.x / vh : m[0], hy = vh > 400 ? car.body.vel.y / vh : m[3];
-  const hl = Math.hypot(hx, hy) || 1; hx /= hl; hy /= hl;
+  const hl = hyp(hx, hy) || 1; hx /= hl; hy /= hl;
   const vfwd = car.body.vel.x * m[0] + car.body.vel.y * m[3] + car.body.vel.z * m[6];
   const rAppr = turnRadius(clamp(Math.max(vfwd, 1000), 900, 1700)) * APPROACH_R;
   const noWait = bot.threat >= 0;
@@ -274,10 +287,18 @@ export function findIntercept(bot, car, traj, out) {
   const aerialSlack = bot.aerialSlack();
   const n = traj.n;
   const stride = 2; // slices are 2 ticks apart -> every 4 ticks
-  for (let i = 1; i < n; i += stride) {
+  // cheap, allocation-free upper bound on how far the car can get in t s
+  // (rejects most early slices before the costly checks, which pass doubles
+  // to non-inlined functions and box them)
+  const v0 = Math.max(vfwd, 0), sp3 = hyp(car.body.vel.x, car.body.vel.y);
+  for (let i = 1; i < n; i += (i < 300 ? stride : 2 * stride)) {
     const t = traj.t(i);
     const bx = traj.px(i), by = traj.py(i), bz = traj.pz(i);
     if (Math.abs(by) > FIELD_Y + 60 && Math.abs(bx) < GOAL_HW + 50) break; // goal
+    const dx0 = bx - p.x, dy0 = by - p.y, d2 = dx0 * dx0 + dy0 * dy0;
+    const ubG = Math.min(2300 * t, v0 * t + 1300 * t * t) + 350;
+    const ubA = sp3 * t + 650 * t * t + 450;
+    if (d2 > ubG * ubG && d2 > ubA * ubA) continue;
     let kind;
     if (bz < 160) kind = 'ground';
     else if (bz < reach1) kind = 'jump';
@@ -285,7 +306,7 @@ export function findIntercept(bot, car, traj, out) {
     else kind = 'high';
     if (kind === 'high' && sk.wall && bz < 1700 && arenaSDF(bx, by, bz) < 230 && Math.abs(by) < FIELD_Y - 300) kind = 'wall';
     // how far we can redirect the ball depends on the room we have to curve in
-    const dB = Math.hypot(bx - p.x, by - p.y);
+    const dB = hyp(bx - p.x, by - p.y);
     const sd = shotDirection(bx, by, p.x, p.y, s, sk.maxCut, hx, hy, (dB - 150) / rTurn + 0.4);
     const sdx = sd.x, sdy = sd.y;
     if (kind === 'ground' || kind === 'jump' || kind === 'dbl') {
@@ -300,7 +321,7 @@ export function findIntercept(bot, car, traj, out) {
           if (!cutCand) return setOut(out, i, t, bx, by, bz, kind, sdx, sdy, sd.kind, traj);
         } else if (!cutCand) {
           // only a deflection is possible this early: look for a proper shot a bit later
-          cutCand = { i, t, bx, by, bz, kind, sdx, sdy, sk: sd.kind };
+          cutCand = setCand(_cutC, i, t, bx, by, bz, kind, sdx, sdy, sd.kind, false);
           const oe = bot.co ? bot.co.oppEta[bot.team] : 6;
           cutWait = (by * s < -1000 || oe < t + 0.6) ? 0.15 : 0.9;
         }
@@ -326,13 +347,11 @@ export function findIntercept(bot, car, traj, out) {
     }
     if (!aerialCand && sk.aerials && bz > 250 && bz < sk.aerialMaxZ && (onGround || !car.isOnGround) && t > 0.35 && t < 4) {
       // aerial: car origin a little behind the ball along the shot direction
-      const tz = bz - 25;
-      const tgt = { x: bx - sdx * 70, y: by - sdy * 70, z: tz };
       const dbl = sk.aerialDouble && bz > 700 && car.isOnGround;
-      const req = aerialRequirement(car, tgt, t, dbl);
+      const req = aerialRequirement(car, bx - sdx * 70, by - sdy * 70, bz - 25, t, dbl);
       if (req.acc < sk.aerialAcc && boost >= (req.acc / BOOST_ACC_AIR) * req.Te * 33.3 * 1.1 + 8) {
-        aerialCand = { i, t, bx, by, bz, sdx, sdy, sk: sd.kind, dbl };
-        if (bot.stats) bot.stats.aerialOptions = (bot.stats.aerialOptions || 0) + 1;
+        aerialCand = setCand(_aerC, i, t, bx, by, bz, 'aerial', sdx, sdy, sd.kind, dbl);
+        bot.stats.aerialOptions++;
       }
     }
   }
@@ -347,6 +366,17 @@ export function findIntercept(bot, car, traj, out) {
     return out;
   }
   return null;
+}
+
+const newCand = () => ({ i: 0, t: 0, bx: 0, by: 0, bz: 0, kind: '', sdx: 0, sdy: 0, sk: '', dbl: false });
+const _cutC = newCand(), _aerC = newCand();
+// stable-shape intercept result (bots allocate one each and reuse it)
+export function newIntercept() {
+  return { found: false, i: 0, t: 0, tick: 0, x: 0, y: 0, z: 0, kind: '', sdx: 0, sdy: 0, shotKind: '', trajId: 0, dbl: false };
+}
+function setCand(o, i, t, bx, by, bz, kind, sdx, sdy, sk, dbl) {
+  o.i = i; o.t = t; o.bx = bx; o.by = by; o.bz = bz; o.kind = kind; o.sdx = sdx; o.sdy = sdy; o.sk = sk; o.dbl = dbl;
+  return o;
 }
 
 function setOut(out, i, t, bx, by, bz, kind, sdx, sdy, sk, traj) {

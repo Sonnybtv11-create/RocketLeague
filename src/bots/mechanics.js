@@ -191,30 +191,34 @@ export class JumpShot {
 // ---------------------------------------------------------------- aerial
 // Aerial feasibility: can the car reach `target` (car-origin position) in T s?
 // Returns {acc: required average boost acceleration (uu/s²), ...}.
-const NO_AERIAL = { acc: Infinity, dir: null, dist: Infinity, Te: 0 };
-export function aerialRequirement(car, target, T, dbl) {
-  const p = car.body.pos, v = car.body.vel;
+// (result object is reused: read it before the next call)
+const NO_AERIAL = Object.freeze({ acc: Infinity, dist: Infinity, Te: 0 });
+const _aer = { acc: 0, dist: 0, Te: 0 };
+export function aerialRequirement(car, tx, ty, tz, T, dbl) {
+  const p = car.body.pos, v = car.body.vel, m = car.body.rot.m;
   let px = p.x, py = p.y, pz = p.z, vx = v.x, vy = v.y, vz = v.z, t1 = 0;
   if (car.isOnGround) {
-    const up = carUp(car);
+    const ux = m[2], uy = m[5], uz = m[8];
     // jump phase (0.2 s hold, measured table), optional double jump
     t1 = dbl ? 0.25 : 0.2;
     if (T <= t1 + 0.1) return NO_AERIAL;
     const h = jumpHeight(t1, dbl);
     const dvz = dbl ? 727 : 434; // vertical speed after the jump phase (table)
-    px += vx * t1 + up.x * h; py += vy * t1 + up.y * h; pz += vz * t1 + up.z * h;
-    vx += up.x * dvz; vy += up.y * dvz; vz += up.z * dvz;
+    px += vx * t1 + ux * h; py += vy * t1 + uy * h; pz += vz * t1 + uz * h;
+    vx += ux * dvz; vy += uy * dvz; vz += uz * dvz;
   }
   const Tr = T - t1;
   const g = -GRAVITY;
-  const X = { x: target.x - (px + vx * Tr), y: target.y - (py + vy * Tr), z: target.z - (pz + vz * Tr + 0.5 * g * Tr * Tr) };
-  const d = vlen(X);
-  // orientation time: angle between the nose and the required direction
-  const f = car.isOnGround ? vnorm(vadd(carFwd(car), { x: 0, y: 0, z: 0.8 })) : carFwd(car);
-  const ang = Math.acos(clamp(vdot(f, X) / (d || 1), -1, 1));
+  const Xx = tx - (px + vx * Tr), Xy = ty - (py + vy * Tr), Xz = tz - (pz + vz * Tr + 0.5 * g * Tr * Tr);
+  const d = Math.sqrt(Xx * Xx + Xy * Xy + Xz * Xz);
+  // orientation time: angle between the nose (pitched up if on the ground) and the required direction
+  let fx = m[0], fy = m[3], fz = m[6];
+  if (car.isOnGround) { fz += 0.8; const fl = Math.sqrt(fx * fx + fy * fy + fz * fz) || 1; fx /= fl; fy /= fl; fz /= fl; }
+  const ang = Math.acos(clamp((fx * Xx + fy * Xy + fz * Xz) / (d || 1), -1, 1));
   const Te = Tr - ang * 0.35 - 0.05;
   if (Te <= 0.05) return NO_AERIAL;
-  return { acc: 2 * d / (Te * Te), dir: X, dist: d, Te };
+  _aer.acc = 2 * d / (Te * Te); _aer.dist = d; _aer.Te = Te;
+  return _aer;
 }
 
 export class Aerial {

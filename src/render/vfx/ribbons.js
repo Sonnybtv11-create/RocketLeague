@@ -52,7 +52,7 @@ export class Ribbons {
           #include <colorspace_fragment>
         }`,
       uniforms: { uColor: { value: new THREE.Vector3(...color) } },
-      transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
+      transparent: true, depthWrite: false, forceSinglePass: true, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
     });
     this.geo = geo;
     this.mesh = new THREE.Mesh(geo, this.material);
@@ -133,11 +133,13 @@ export class Ribbons {
         c.set(camPos.x - x, camPos.y - y, camPos.z - z);
         s.crossVectors(t, c);
         const sl = s.length() || 1;
-        const w = this.width * (0.35 + 0.65 * f) / sl;
+        const w = this.width * (0.15 + 0.85 * f) / sl;
         const v0 = (vb + k) * 3, v1 = v0 + 3;
         P[v0] = x + s.x * w; P[v0 + 1] = y + s.y * w; P[v0 + 2] = z + s.z * w;
         P[v1] = x - s.x * w; P[v1 + 1] = y - s.y * w; P[v1 + 2] = z - s.z * w;
-        const a = this.alpha * f * f * (i === 0 ? 0.6 : 1);
+        const cd = Math.sqrt(c.x * c.x + c.y * c.y + c.z * c.z); // fade where the trail passes under the camera
+        const nearFade = Math.min(1, Math.max(0, (cd - 1.5) / 4));
+        const a = this.alpha * f * f * nearFade * nearFade * (i === 0 ? 0.6 : 1);
         const c0 = (vb + k) * 4, c1 = c0 + 4;
         C[c0] = 0; C[c0 + 3] = a;
         C[c1] = 1; C[c1 + 3] = a;

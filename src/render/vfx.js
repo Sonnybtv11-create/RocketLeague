@@ -36,10 +36,10 @@ const rr = (a, b) => a + (b - a) * rand();
 
 // ---- colours (linear, HDR) ----------------------------------------------------
 const C = {
-  fire0: [1.9, 0.82, 0.2, 0.55], fire1: [0.9, 0.1, 0.015, 0.0],
-  fireSS0: [2.4, 1.35, 0.45, 0.6], fireSS1: [1.0, 0.2, 0.04, 0.0],
+  fire0: [1.9, 0.8, 0.2, 0.42], fire1: [0.8, 0.07, 0.012, 0.0],
+  fireSS0: [2.3, 1.3, 0.42, 0.45], fireSS1: [0.9, 0.16, 0.03, 0.0],
   ember0: [6.0, 3.6, 1.2, 1.0], ember1: [2.4, 0.5, 0.08, 0.0],
-  smoke0: [0.075, 0.07, 0.066, 0.42], smoke1: [0.16, 0.155, 0.15, 0.0],
+  smoke0: [0.1, 0.095, 0.09, 0.5], smoke1: [0.2, 0.195, 0.19, 0.0],
   dust0: [0.24, 0.23, 0.21, 0.22], dust1: [0.3, 0.29, 0.27, 0.0],
   white0: [7, 7, 7, 1], white1: [2.5, 2.4, 2.2, 0],
   hitSpark0: [6.0, 5.0, 3.2, 1.0], hitSpark1: [2.4, 0.9, 0.2, 0.0],
@@ -69,7 +69,7 @@ export function createVFX(ctx) {
   const smoke = new ParticlePool(SMOKE_CAP, false, 12);
   const flames = new BoostFlames(carMats, carK);
   const streaks = new SupersonicStreaks(carMats, carK);
-  const ribbons = new Ribbons(MAX_CARS * 2, { life: 0.55, width: 0.045, color: [1.2, 1.25, 1.4], alpha: 0.42 });
+  const ribbons = new Ribbons(MAX_CARS * 2, { life: 0.4, width: 0.032, color: [1.0, 1.04, 1.12], alpha: 0.3 });
   const skids = new SkidMarks(2400, 7);
   const shocks = new Shocks();
   const debris = new Debris(48);
@@ -90,7 +90,7 @@ export function createVFX(ctx) {
   const _q = new THREE.Quaternion(), _one = new THREE.Vector3(1, 1, 1);
   const _fw = new THREE.Vector3(), _rt = new THREE.Vector3(), _up = new THREE.Vector3(), _cv = new THREE.Vector3();
   const _col1 = [0, 0, 0, 0];
-  const _c = new THREE.Color();
+  const _c = new THREE.Color(), _cw = new THREE.Color(1, 1, 1);
 
   // ---- per-car state --------------------------------------------------------------
   const cars = new Map(); // carId -> state
@@ -204,13 +204,13 @@ export function createVFX(ctx) {
         add.style(ss ? C.fireSS0 : C.fire0, ss ? C.fireSS1 : C.fire1, 3.5, 0, SHAPE.GLOW, 0, 0.04);
         add.emit(px + back.x * off, py + back.y * off, pz + back.z * off,
           back.x * sp + rr(-0.6, 0.6) + carVel.x * 0.1, back.y * sp + rr(-0.6, 0.6) + carVel.y * 0.1, back.z * sp + rr(-0.6, 0.6) + carVel.z * 0.1,
-          rr(0.09, 0.15) * (ss ? 1.3 : 1), rr(0.1, 0.13) * st.scale, rr(0.16, 0.24) * st.scale, birth);
+          rr(0.2, 0.3) * (ss ? 1.3 : 1), rr(0.1, 0.13) * st.scale, rr(0.24, 0.38) * st.scale, birth);
         // smoke
         if (rand() < 0.5) {
           smoke.style(C.smoke0, C.smoke1, 2.2, -0.35, SHAPE.SMOKE, 0, 0.12);
           smoke.emit(px - _fw.x * 0.25, py - _fw.y * 0.25, pz - _fw.z * 0.25,
             back.x * 1.6 + rr(-0.5, 0.5), back.y * 1.6 + rr(-0.3, 0.6), back.z * 1.6 + rr(-0.5, 0.5),
-            rr(0.55, 0.95), rr(0.1, 0.16) * st.scale, rr(0.45, 0.7) * st.scale, birth);
+            rr(0.8, 1.3), rr(0.1, 0.16) * st.scale, rr(0.45, 0.7) * st.scale, birth);
         }
         // sparkle
         if (rand() < 0.08) {
@@ -411,12 +411,14 @@ export function createVFX(ctx) {
       add.emit(c.x, c.y, c.z, _cv.x * sp + cvel.x, _cv.y * sp + cvel.y, _cv.z * sp + cvel.z, rr(0.5, 1.3), rr(0.03, 0.055), 0.015);
     }
     // smoke (lingers)
-    k = cnt(34);
-    smoke.style(C.demoSmoke0, C.demoSmoke1, 1.6, -0.9, SHAPE.SMOKE, 0, 0.15);
+    // many smaller puffs born over ~0.7 s that rise and spread (no single grey dome)
+    k = cnt(52);
+    smoke.style(C.demoSmoke0, C.demoSmoke1, 1.4, -1.8, SHAPE.SMOKE, 0, 0.2);
     for (let i = 0; i < k; i++) {
-      randDir(_cv); const sp = rr(1, 5);
-      smoke.emit(c.x + _cv.x * 0.6, c.y + _cv.y * 0.3, c.z + _cv.z * 0.6, _cv.x * sp + cvel.x, _cv.y * sp * 0.6 + cvel.y + 0.6, _cv.z * sp + cvel.z,
-        rr(1.8, 3.0), rr(0.6, 1.0), rr(2.4, 4.0), time + rr(0.02, 0.2));
+      randDir(_cv); const sp = rr(0.8, 4);
+      const r = rr(0.1, 1.2);
+      smoke.emit(c.x + _cv.x * r, c.y + Math.abs(_cv.y) * 0.4, c.z + _cv.z * r, _cv.x * sp + cvel.x, Math.abs(_cv.y) * sp * 0.5 + cvel.y * 0.5 + 0.4, _cv.z * sp + cvel.z,
+        rr(1.3, 2.3), rr(0.35, 0.65), rr(1.2, 2.3), time + rr(0.02, 0.7));
     }
     // shockwave
     shocks.ring(c.x, Math.max(0.05, c.y - 0.3), c.z, 0, 1, 0, 0.5, 0.5, 8, 0.06, 1.0, [3, 1.6, 0.6], 3);
@@ -440,56 +442,74 @@ export function createVFX(ctx) {
     const pal = teamPalette(e.team);
     const c = S(e.pos, new THREE.Vector3());
     const fz = e.pos.y > 0 ? -1 : 1; // towards the field (three z = sim y)
-    // white-hot core + team glow
-    add.style([6, 6, 6, 1], scaled(pal.l, 3, 0, _col1), 0, 0, SHAPE.GLOW, 0, 0);
-    add.emit(c.x, c.y, c.z, 0, 0, 0, 0.3, 2, 10);
-    add.style(scaled(pal.l, 2.5, 0.7, [0, 0, 0, 0]), scaled(pal.p, 1, 0, [0, 0, 0, 0]), 0, 0, SHAPE.GLOW, 0, 0);
-    add.emit(c.x, c.y, c.z, 0, 0, 0, 0.9, 5, 18);
-    startFlash(_v2.set(c.x, c.y + 2, c.z + fz * 4), pal.l, 2500, 1.4);
-    // radial light streaks
-    let k = cnt(130);
+    // compact white-hot core (~4 m, ~0.15 s) + short team glow
+    add.style([4, 4, 4, 1], scaled(pal.l, 2, 0, _col1), 0, 0, SHAPE.GLOW, 0, 0);
+    add.emit(c.x, c.y, c.z, 0, 0, 0, 0.15, 0.8, 4);
+    add.style(scaled(pal.l, 1.6, 0.5, [0, 0, 0, 0]), scaled(pal.p, 0.8, 0, [0, 0, 0, 0]), 0, 0, SHAPE.GLOW, 0, 0);
+    add.emit(c.x, c.y, c.z, 0, 0, 0, 0.45, 2, 6);
+    startFlash(_v2.set(c.x, c.y + 2, c.z + fz * 4), pal.l, 900, 0.9);
+    // radial light streaks (carry the explosion)
+    let k = cnt(150);
     add.style(scaled(pal.l, 4.5, 1, [0, 0, 0, 0]), scaled(pal.p, 2.5, 0, [0, 0, 0, 0]), 2.6, 0, SHAPE.SPARK, 0.07, 0);
     for (let i = 0; i < k; i++) {
       randDir(_cv); _cv.z += fz * 0.55; _cv.y = _cv.y * 0.85 + 0.15; _cv.normalize();
-      const sp = rr(25, 75);
-      add.emit(c.x, c.y, c.z, _cv.x * sp, _cv.y * sp, _cv.z * sp, rr(0.6, 1.3), rr(0.12, 0.24), 0.04);
+      const sp = rr(25, 70);
+      add.emit(c.x, c.y, c.z, _cv.x * sp, _cv.y * sp, _cv.z * sp, rr(0.6, 1.2), rr(0.1, 0.2), 0.03);
     }
     // white-hot fast streaks
     k = cnt(40);
-    add.style([10, 10, 10, 1], scaled(pal.l, 3, 0, _col1), 3.5, 0, SHAPE.SPARK, 0.05, 0);
+    add.style([8, 8, 8, 1], scaled(pal.l, 3, 0, _col1), 3.5, 0, SHAPE.SPARK, 0.05, 0);
     for (let i = 0; i < k; i++) {
       randDir(_cv); _cv.z += fz * 0.5; _cv.normalize();
       const sp = rr(40, 90);
-      add.emit(c.x, c.y, c.z, _cv.x * sp, _cv.y * sp, _cv.z * sp, rr(0.35, 0.6), rr(0.1, 0.18), 0.03);
+      add.emit(c.x, c.y, c.z, _cv.x * sp, _cv.y * sp, _cv.z * sp, rr(0.3, 0.5), rr(0.08, 0.15), 0.03);
     }
     // embers that hang and fall
-    k = cnt(280);
+    k = cnt(260);
     add.style(scaled(pal.l, 6, 1, [0, 0, 0, 0]), scaled(pal.p, 2, 0, [0, 0, 0, 0]), 1.1, 2.6, SHAPE.GLOW, 0, 0.02);
     for (let i = 0; i < k; i++) {
       randDir(_cv); _cv.z += fz * 0.3; _cv.y = Math.abs(_cv.y) * 0.9 + 0.1; _cv.normalize();
       const sp = rr(4, 26);
-      add.emit(c.x, c.y, c.z, _cv.x * sp, _cv.y * sp, _cv.z * sp, rr(1.6, 3.0), rr(0.07, 0.14), 0.03);
+      add.emit(c.x, c.y, c.z, _cv.x * sp, _cv.y * sp, _cv.z * sp, rr(1.6, 3.0), rr(0.1, 0.18), 0.04);
     }
-    // twinkles
-    k = cnt(36);
-    add.style([8, 8, 8, 1], scaled(pal.l, 3, 0, _col1), 0, 0, SHAPE.GLINT, 0, 0.15);
+    // delayed firework pops around the goal mouth
+    const pops = 6;
+    for (let b = 0; b < pops; b++) {
+      const delay = 0.12 + b * 0.14 + rr(0, 0.08);
+      randDir(_cv); _cv.z = fz * rr(0.2, 1); _cv.y = Math.abs(_cv.y) + 0.3; _cv.normalize();
+      const r = rr(3, 9);
+      const bx = c.x + _cv.x * r, by = Math.max(1, c.y + _cv.y * r * 0.8), bz = c.z + _cv.z * r;
+      const hot = b % 2 === 0;
+      const p0 = hot ? [6, 6, 6, 1] : scaled(pal.l, 5, 1, [0, 0, 0, 0]);
+      add.style(p0, scaled(pal.l, 2, 0, [0, 0, 0, 0]), 0, 0, SHAPE.GLOW, 0, 0);
+      add.emit(bx, by, bz, 0, 0, 0, 0.25, 0.4, 2.0, time + delay);
+      const n = cnt(30);
+      add.style(scaled(pal.l, 5, 1, [0, 0, 0, 0]), scaled(pal.p, 1.5, 0, [0, 0, 0, 0]), 1.6, 3.0, SHAPE.SPARK, 0.03, 0);
+      for (let i = 0; i < n; i++) {
+        randDir(_v3); const sp = rr(4, 9);
+        add.emit(bx, by, bz, _v3.x * sp, _v3.y * sp, _v3.z * sp, rr(0.7, 1.2), rr(0.05, 0.08), 0.02, time + delay);
+      }
+    }
+    // twinkles spread over ~1.5 s
+    k = cnt(60);
+    add.style([7, 7, 7, 1], scaled(pal.l, 3, 0, _col1), 0, 0, SHAPE.GLINT, 0, 0.15);
     for (let i = 0; i < k; i++) {
       randDir(_cv); const r = rr(2, 11);
-      add.emit(c.x + _cv.x * r, Math.max(0.5, c.y + _cv.y * r * 0.7), c.z + _cv.z * r + fz * r * 0.4, 0, 0.5, 0, rr(0.3, 0.5), rr(0.6, 1.3), 0.1, time + rr(0.05, 0.9));
+      add.emit(c.x + _cv.x * r, Math.max(0.5, c.y + _cv.y * r * 0.7), c.z + _cv.z * r + fz * r * 0.4, 0, 0.5, 0, rr(0.3, 0.5), rr(0.5, 1.1), 0.1, time + rr(0.05, 1.5));
     }
-    // team-tinted smoke
-    k = cnt(46);
-    const sm0 = scaled(pal.d, 0.6, 0.38, [0, 0, 0, 0]), sm1 = scaled(pal.d, 1.0, 0, [0, 0, 0, 0]);
-    smoke.style(sm0, sm1, 1.2, -0.5, SHAPE.SMOKE, 0, 0.2);
+    // light, team-tinted haze (never darker than the arena)
+    k = cnt(28);
+    const hz = _c.copy(pal.l).lerp(_cw, 0.55);
+    const sm0 = [hz.r * 0.9, hz.g * 0.9, hz.b * 0.9, 0.09], sm1 = [hz.r, hz.g, hz.b, 0];
+    smoke.style(sm0, sm1, 1.2, -0.5, SHAPE.SMOKE, 0, 0.25);
     for (let i = 0; i < k; i++) {
-      randDir(_cv); _cv.z += fz * 0.4; _cv.normalize(); const sp = rr(2, 9);
-      smoke.emit(c.x, c.y, c.z, _cv.x * sp, _cv.y * sp * 0.7 + 0.5, _cv.z * sp, rr(2.2, 3.2), rr(1.5, 2.5), rr(5, 8.5), time + rr(0.05, 0.3));
+      randDir(_cv); _cv.z += fz * 0.4; _cv.normalize(); const sp = rr(2, 8);
+      smoke.emit(c.x, c.y, c.z, _cv.x * sp, _cv.y * sp * 0.7 + 0.5, _cv.z * sp, rr(2.0, 2.8), rr(1.2, 2.0), rr(4, 6.5), time + rr(0.05, 0.3));
     }
-    // shockwaves
-    shocks.shell(c.x, c.y, c.z, 0.55, 0.5, 11, 0.55, scaled(pal.l, 3, 1, [0, 0, 0, 0]), 3);
-    shocks.shell(c.x, c.y, c.z, 1.0, 1, 22, 0.35, scaled(pal.p, 2.4, 1, [0, 0, 0, 0]), 2.5);
-    shocks.ring(c.x, c.y, c.z, 0, 0, fz, 0.8, 1, 20, 0.05, 1.6, scaled(pal.l, 4, 1, [0, 0, 0, 0]), 3);
-    shocks.ring(c.x, 0.06, c.z, 0, 1, 0, 1.2, 2, 30, 0.04, 0.8, scaled(pal.l, 3, 1, [0, 0, 0, 0]), 3);
+    // shockwaves: one small fast shell, thin faint rings
+    shocks.shell(c.x, c.y, c.z, 0.3, 0.5, 6, 0.22, scaled(pal.l, 3, 1, [0, 0, 0, 0]), 3);
+    shocks.ring(c.x, c.y, c.z, 0, 0, fz, 0.7, 1, 16, 0.03, 0.9, scaled(pal.l, 4, 1, [0, 0, 0, 0]), 3);
+    shocks.ring(c.x, 0.06, c.z, 0, 1, 0, 1.0, 2, 24, 0.03, 0.5, scaled(pal.l, 3, 1, [0, 0, 0, 0]), 3);
   }
 
   function carBump(e) {
@@ -657,6 +677,25 @@ export function createVFX(ctx) {
       flames.mesh.visible = anyBoost;
       streaks.mesh.visible = anySS;
       ribbons.mesh.visible = ribbons.update(time, cam.position) && ribbonsOn;
+    },
+
+    // Make every system renderable (but drawing nothing on screen) so renderer.compileAsync() builds all
+    // VFX programs up front. Returns restore(). Usage: const r = vfx.prewarm(); await renderer.compileAsync(scene, camera); r();
+    prewarm() {
+      const objs = [add.mesh, smoke.mesh, flames.mesh, streaks.mesh, ribbons.mesh, skids.mesh, shocks.rings.mesh, shocks.shells.mesh, debris.mesh];
+      const saved = objs.map((o) => [o, o.visible, o.geometry.instanceCount, o.count]);
+      for (const o of objs) {
+        o.visible = true; // dead particles / zero-boost flames / zero-scale debris all land off screen
+        if (o.geometry.isInstancedBufferGeometry && !(o.geometry.instanceCount >= 1)) o.geometry.instanceCount = 1;
+        if (o.isInstancedMesh && o.count < 1) o.count = 1;
+      }
+      return () => {
+        for (const [o, vis, ic, cnt0] of saved) {
+          o.visible = vis;
+          if (o.geometry.isInstancedBufferGeometry) o.geometry.instanceCount = ic;
+          if (o.isInstancedMesh) o.count = cnt0;
+        }
+      };
     },
 
     setQuality(name) {

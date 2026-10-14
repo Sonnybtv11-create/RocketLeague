@@ -125,7 +125,7 @@ export class BoostFlames {
     this.uniforms = { uCarMat: { value: carMats }, uCarK: { value: carK }, uTime: { value: 0 } };
     this.material = new THREE.ShaderMaterial({
       uniforms: this.uniforms, vertexShader: VERT, fragmentShader: FRAG,
-      transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.FrontSide,
+      transparent: true, depthWrite: false, forceSinglePass: true, blending: THREE.AdditiveBlending, side: THREE.FrontSide,
     });
     this.mesh = new THREE.Mesh(geo, this.material);
     this.mesh.frustumCulled = false;

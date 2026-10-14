@@ -19,10 +19,10 @@ import { makeControls } from '../contracts.js';
 import { getTrajectory, TrajView } from './predict.js';
 import { tables, jumpTimeTo } from './tables.js';
 import {
-  clamp, clamp1, dist, carFwd, carUp, localTarget, steerPD, clampToField, FIELD_Y, GOAL_HW,
+  clamp, clamp1, dist, carFwd, carUp, localTarget, steerPD, clampToField, FIELD_Y, GOAL_HW, hyp, hyp3,
 } from './util.js';
 import { Flip, HalfFlip, JumpShot, Aerial, Unstuck, recover, autoFlipInput } from './mechanics.js';
-import { coordinator, kickoffTakers, findIntercept, goalThreat, speedForRadius, approachPath, turnRadius, APPROACH_R } from './strategy.js';
+import { coordinator, kickoffTakers, findIntercept, newIntercept, goalThreat, speedForRadius, approachPath, turnRadius, APPROACH_R } from './strategy.js';
 import { Kickoff } from './kickoff.js';
 import { QuickChat } from './chat.js';
 
@@ -64,7 +64,7 @@ class Bot {
     this.rng = rng || Math.random;
     this.events = [];
     this.traj = new TrajView();
-    this.icpt = { found: false };
+    this.icpt = newIntercept();
     this.icptTick = -100;
     this.icptTrajId = -1;
     this.maneuver = null;
@@ -77,7 +77,14 @@ class Bot {
     this.padTarget = null; this.padUntil = 0;
     this.aimErr = 0; this.aimErrUntil = -1;
     this.stats = { flips: 0, halfFlips: 0, aerials: 0, aerialTouches: 0, jumpShots: 0, doubleJumpShots: 0, dodgeShots: 0,
-      kickoffs: 0, speedFlips: 0, demoAttempts: 0, unstucks: 0, ticks: 0, timeMs: 0 };
+      kickoffs: 0, speedFlips: 0, demoAttempts: 0, unstucks: 0, ticks: 0, timeMs: 0, aerialOptions: 0 };
+    // every field declared up front: one hidden class for all bots keeps the
+    // hot paths (intercept search, steering) monomorphic and optimised
+    this.world = null; this.car = null; this.co = null;
+    this.role = 1; this.teamSize = 1; this.lastMan = true; this.threat = -1;
+    this.demoCooldown = 0; this.aerialStart = 0; this.settledTick = -1e9;
+    this.posHist = []; this.stuckLevel = 0;
+    this._dodgeRollTick = -1e9; this._dodgeRoll = false;
     this.chat = new QuickChat(this);
     tables(); // calibrate once
   }
@@ -154,7 +161,7 @@ class Bot {
       let best = null, bd = 1e9;
       for (const pad of world.pads) {
         if (!pad.isActive) continue;
-        const d = Math.hypot(pad.pos.x - p.x, pad.pos.y - p.y) - (pad.isBig ? 1200 : 0);
+        const d = hyp(pad.pos.x - p.x, pad.pos.y - p.y) - (pad.isBig ? 1200 : 0);
         if (d < bd) { bd = d; best = pad; }
       }
       if (best) { tx = best.pos.x; ty = best.pos.y; }
@@ -299,7 +306,7 @@ class Bot {
     }
     const off = kind === 'ground' ? 150 : 105;
     const cx = b.x - sdx * off, cy = b.y - sdy * off;
-    const d = Math.hypot(cx - p.x, cy - p.y);
+    const d = hyp(cx - p.x, cy - p.y);
     // line + arc approach: arrive at C heading along the shot direction
     const vf0 = Math.max(car.forwardSpeed, 0);
     const r = turnRadius(clamp(Math.max(vf0, 1000), 900, 1700)) * APPROACH_R;
@@ -321,11 +328,11 @@ class Bot {
     const vf = car.forwardSpeed;
     if (kind === 'ground') {
       // dodge into the ball for power
-      const d2b0 = Math.hypot(b.x - p.x, b.y - p.y);
+      const d2b0 = hyp(b.x - p.x, b.y - p.y);
       const tHit = (d2b0 - 140) / Math.max(vf, 1);
       // where the ball will be when we arrive
       const bh = this.ballAt(clamp(tHit, 0, 1));
-      const d2b = Math.hypot(bh.x - p.x, bh.y - p.y);
+      const d2b = hyp(bh.x - p.x, bh.y - p.y);
       lb.x = localTarget(car, bh).x; lb.y = localTarget(car, bh).y;
       const angH = Math.atan2(lb.y, lb.x);
       const shotOk = fwd.x * sdx + fwd.y * sdy > 0.55 || urgent;
@@ -362,7 +369,7 @@ class Bot {
   rollDodge(world) {
     // rookies dodge into the ball only sometimes (decided once per approach)
     if (this.skill.dodgeShots >= 1) return true;
-    if (this._dodgeRollTick === undefined || world.tick - this._dodgeRollTick > 90) {
+    if (world.tick - this._dodgeRollTick > 90) {
       this._dodgeRollTick = world.tick; this._dodgeRoll = this.rng() < this.skill.dodgeShots;
     }
     return this._dodgeRoll;
@@ -408,7 +415,7 @@ class Bot {
     const s = this.s;
     const ball = this.ballNow();
     const ownY = -FIELD_Y * s;
-    const dGoal = Math.hypot(ball.x, ball.y - ownY);
+    const dGoal = hyp(ball.x, ball.y - ownY);
     const k = clamp(1200 / Math.max(dGoal, 1), 0.12, 0.45);
     let tx = ball.x * k, ty = ownY + (ball.y - ownY) * k;
     tx = clamp(tx, -GOAL_HW + 150, GOAL_HW - 150);
@@ -426,7 +433,7 @@ class Bot {
     const ownY = -FIELD_Y * s;
     const gx = clamp(ball.x * 0.25, -500, 500);
     let dx = gx - ball.x, dy = ownY - ball.y;
-    const l = Math.hypot(dx, dy) || 1; dx /= l; dy /= l;
+    const l = hyp(dx, dy) || 1; dx /= l; dy /= l;
     const D = clamp(l * 0.45, 900, 2200);
     const tx = ball.x + dx * D, ty = ball.y + dy * D;
     if (this.maybePads(car, c, world, tx, ty, 30)) return;
@@ -444,7 +451,7 @@ class Bot {
     let tx = far * (GOAL_HW - 50), ty = ownY + s * 350;
     // if we're already level with the post, cut to the goal centre
     if ((p.y - ownY) * s < 900) { tx = far * 300; ty = ownY + s * 200; }
-    const d = Math.hypot(tx - p.x, ty - p.y);
+    const d = hyp(tx - p.x, ty - p.y);
     if (d < 400) { this.position(car, c, world, tx * 0.5, ownY + s * 300, ball); return; }
     if (!urgent && this.maybePads(car, c, world, tx, ty, 40)) return;
     this.driveTo(car, c, tx, ty, 0, { speed: 2300, boost: urgent || d > 3000, flipOk: true });
@@ -461,7 +468,7 @@ class Bot {
     const ball = this.ballNow();
     const p = car.body.pos;
     const tx = clamp(cx, -GOAL_HW + 100, GOAL_HW - 100), ty = ownY + s * 120;
-    const d = Math.hypot(tx - p.x, ty - p.y);
+    const d = hyp(tx - p.x, ty - p.y);
     if (d > 300) this.driveTo(car, c, tx, ty, 0, { speed: 2300, boost: true });
     else {
       // face the ball, jump when it's about to arrive above us
@@ -481,7 +488,7 @@ class Bot {
   position(car, c, world, tx, ty, face, paceVel) {
     const p = car.body.pos;
     const T = clampToField({ x: tx, y: ty, z: 0 }, 200);
-    const d = Math.hypot(T.x - p.x, T.y - p.y);
+    const d = hyp(T.x - p.x, T.y - p.y);
     if (d > 250) {
       let speed = Math.min(2300, Math.sqrt(2 * 2200 * Math.max(d - 150, 0)) + 200);
       if (paceVel) speed = Math.max(speed * 0.8, Math.abs(paceVel.y) + 300);
@@ -505,19 +512,18 @@ class Bot {
     const p = car.body.pos;
     if (this.padTarget && (!this.padTarget.isActive && this.padTarget.cooldown > 1 || world.tick > this.padUntil)) this.padTarget = null;
     if (!this.padTarget) {
-      const direct = Math.hypot(tx - p.x, ty - p.y);
+      const direct = hyp(tx - p.x, ty - p.y);
       let best = null, bestCost = 1e9;
-      const vel = car.body.vel;
+      const ball = this.ballNow();
+      const fw = carFwd(car);
       for (const pad of world.pads) {
-        const d1 = Math.hypot(pad.pos.x - p.x, pad.pos.y - p.y);
+        const d1 = hyp(pad.pos.x - p.x, pad.pos.y - p.y);
         const arrive = d1 / 1600;
         if (!pad.isActive && pad.cooldown > arrive) continue;
         // don't go upfield of the ball for boost when defending
-        const ball = this.ballNow();
         if (!attacking && (pad.pos.y - ball.y) * this.s > 800 && this.mode !== 'support') continue;
-        const d2 = Math.hypot(tx - pad.pos.x, ty - pad.pos.y);
+        const d2 = hyp(tx - pad.pos.x, ty - pad.pos.y);
         // heading change needed to go for the pad
-        const fw = carFwd(car);
         const cosA = (fw.x * (pad.pos.x - p.x) + fw.y * (pad.pos.y - p.y)) / Math.max(d1, 1);
         const turnA = Math.acos(clamp(cosA, -1, 1));
         if (attacking && turnA > 0.35) continue;
@@ -539,12 +545,12 @@ class Bot {
   // Demolition attempt (all-star): only when fast, opponent ahead & grounded
   tryDemo(car, c, world, myEta) {
     const v = car.body.vel;
-    const speed = Math.hypot(v.x, v.y, v.z);
+    const speed = hyp3(v.x, v.y, v.z);
     if (!car.isOnGround || car.body.rot.m[8] < 0.9) return false;
     const now = world.tick;
     if (this.demoTarget >= 0 && now > this.demoUntil) { this.demoTarget = -1; this.demoCooldown = now + 600; }
     if (this.demoTarget < 0) {
-      if ((this.demoCooldown || 0) > now) return false;
+      if (this.demoCooldown > now) return false;
       if (speed < 1900 || car.boost < 25) return false;
       if (this.role === 1 && myEta < 2.5) return false;
       if (this.lastMan && this.teamSize > 1) return false;
@@ -553,7 +559,7 @@ class Bot {
       for (const o of world.cars) {
         if (o.team === this.team || o.isDemoed || !o.isOnGround) continue;
         const dx = o.body.pos.x - car.body.pos.x, dy = o.body.pos.y - car.body.pos.y;
-        const d = Math.hypot(dx, dy);
+        const d = hyp(dx, dy);
         if (d > 2200 || d < 200) continue;
         if ((f.x * dx + f.y * dy) / d < 0.93) continue;
         this.demoTarget = o.id; this.demoUntil = now + 180; this.stats.demoAttempts++;
@@ -588,7 +594,7 @@ class Bot {
     const loc = localTarget(car, { x: tx, y: ty, z: tz });
     const ang = Math.atan2(loc.y, loc.x);
     const p = car.body.pos;
-    const d = Math.hypot(tx - p.x, ty - p.y);
+    const d = hyp(tx - p.x, ty - p.y);
     const vf = car.forwardSpeed;
     const flatGround = car.isOnGround && car.body.rot.m[8] > 0.9;
     const aang = Math.abs(ang);
@@ -634,7 +640,7 @@ class Bot {
   // ---------------------------------------------------------------- robustness
   onRoofOrSide(car, c, world) {
     const up = carUp(car);
-    if (car.numWheelsInContact === 0 && car.worldContact.hasContact && (up.z < -0.3 || (Math.abs(up.z) < 0.5 && Math.hypot(car.body.vel.x, car.body.vel.y, car.body.vel.z) < 150))) {
+    if (car.numWheelsInContact === 0 && car.worldContact.hasContact && (up.z < -0.3 || (Math.abs(up.z) < 0.5 && hyp3(car.body.vel.x, car.body.vel.y, car.body.vel.z) < 150))) {
       this.roofT += 1 / 120;
       if (this.roofT > 0.15) { autoFlipInput(car, c, world.tick); return true; }
       return false;
@@ -645,7 +651,7 @@ class Bot {
 
   antiStuck(car, c, world) {
     const v = car.body.vel;
-    const speed = Math.hypot(v.x, v.y, v.z);
+    const speed = hyp3(v.x, v.y, v.z);
     const pushing = Math.abs(c.throttle) > 0.5 || c.boost;
     if (pushing && speed < 120) this.stuckT += 1 / 120; else this.stuckT = Math.max(0, this.stuckT - 2 / 120);
     if (this.stuckT > 0.9) { this.stuckT = 0; this.escape(car, c.throttle < 0, c.steer); }
@@ -656,13 +662,13 @@ class Bot {
   // escalating reverse -> jump out -> reverse the other way + jump.
   watchdog(car, world) {
     if (world.tick % 30 !== 0) return;
-    const h = this.posHist || (this.posHist = []);
+    const h = this.posHist;
     const p = car.body.pos;
     h.push(p.x, p.y, p.z);
     if (h.length > 18) h.splice(0, 3);
     if (h.length < 18) return;
-    const d = Math.hypot(p.x - h[0], p.y - h[1], p.z - h[2]);
-    const settled = world.tick - (this.settledTick || -1e9) < 90;
+    const d = hyp3(p.x - h[0], p.y - h[1], p.z - h[2]);
+    const settled = world.tick - this.settledTick < 90;
     if (d < 90 && !settled) {
       h.length = 0;
       this.escape(car, false, 0, 'watchdog');
@@ -671,8 +677,8 @@ class Bot {
 
   escape(car, wasReversing, steer, why = 'push') {
     this.stats.unstucks++;
-    if (DEBUG_STUCK) console.log('escape', why, this.skill.name, this.mode, this.maneuver && this.maneuver.name, car.body.pos.x | 0, car.body.pos.y | 0, car.body.pos.z | 0, 'up', car.body.rot.m[8].toFixed(2), 'wheels', car.numWheelsInContact, 'v', Math.hypot(car.body.vel.x, car.body.vel.y) | 0);
-    const lvl = this.stuckLevel = ((this.stuckLevel || 0) + 1) % 3;
+    if (DEBUG_STUCK) console.log('escape', why, this.skill.name, this.mode, this.maneuver && this.maneuver.name, car.body.pos.x | 0, car.body.pos.y | 0, car.body.pos.z | 0, 'up', car.body.rot.m[8].toFixed(2), 'wheels', car.numWheelsInContact, 'v', hyp(car.body.vel.x, car.body.vel.y) | 0);
+    const lvl = this.stuckLevel = (this.stuckLevel + 1) % 3;
     const onWheels = car.isOnGround && car.body.rot.m[8] > 0.5;
     if (!car.isOnGround) {
       // wedged on 1-2 wheels (e.g. against a goal wall): no jump possible,

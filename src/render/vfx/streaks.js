@@ -44,7 +44,7 @@ const FRAG = /* glsl */`
 varying float vA;
 varying vec2 vUv;
 void main() {
-  float a = vA * (1.0 - abs(vUv.y)) * smoothstep(1.0, 0.2, abs(vUv.x)) * 0.4;
+  float a = vA * (1.0 - abs(vUv.y)) * smoothstep(1.0, 0.2, abs(vUv.x)) * 0.28;
   if (a < 0.003) discard;
   gl_FragColor = vec4(vec3(1.25, 1.3, 1.4), a);
   #include <tonemapping_fragment>
@@ -69,7 +69,7 @@ export class SupersonicStreaks {
     this.uniforms = { uCarMat: { value: carMats }, uCarK: { value: carK }, uTime: { value: 0 } };
     this.material = new THREE.ShaderMaterial({
       uniforms: this.uniforms, vertexShader: VERT, fragmentShader: FRAG,
-      transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
+      transparent: true, depthWrite: false, forceSinglePass: true, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
     });
     this.mesh = new THREE.Mesh(geo, this.material);
     this.mesh.frustumCulled = false;
@@ -84,7 +84,7 @@ export class SupersonicStreaks {
     for (const s of slots) {
       const hs = s.cfg.hitboxSize, ho = s.cfg.hitboxOffset;
       const cy = ho.z / 100, hh = hs.z / 200 + 0.16, hw = hs.y / 200 + 0.16;
-      const front = (ho.x + hs.x / 2) / 100 + 0.35, range = hs.x / 100 + 1.6;
+      const front = (ho.x + hs.x / 2) / 100 + 0.35, range = hs.x / 100 + 0.5;
       for (let j = 0; j < STREAKS_PER_CAR; j++) {
         // angles around the body, mostly over the top and sides (none under the floor)
         const a = -1.75 + 3.5 * ((j + 0.5) / STREAKS_PER_CAR) + (Math.random() - 0.5) * 0.15;

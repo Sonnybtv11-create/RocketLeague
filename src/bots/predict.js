@@ -15,8 +15,8 @@ import { Ball, stepBallAlone } from '../sim/ball.js';
 
 const HORIZON = 5 * 120;       // ticks of look-ahead
 const CAP = 768;               // ring capacity (> HORIZON + max delay)
-const FIRST_FILL = 180;        // ticks predicted immediately after a touch
-const FILL_PER_TICK = 40;      // extra ticks filled per tick until HORIZON
+const FIRST_FILL = 48;         // ticks predicted immediately after a touch (0.4 s)
+const FILL_PER_TICK = 48;      // extra ticks filled per tick until HORIZON (full 5 s after ~0.1 s)
 const POOL = 24;               // versions kept (for delayed bots)
 
 class Version {

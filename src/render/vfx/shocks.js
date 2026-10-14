@@ -115,7 +115,7 @@ class ShockPool {
     this.uniforms = { uTime: { value: 0 } };
     this.material = new THREE.ShaderMaterial({
       uniforms: this.uniforms, vertexShader: vert, fragmentShader: frag,
-      transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
+      transparent: true, depthWrite: false, forceSinglePass: true, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
     });
     this.mesh = new THREE.Mesh(geo, this.material);
     this.mesh.frustumCulled = false;
@@ -157,7 +157,7 @@ class ShockPool {
 export class Shocks {
   constructor() {
     const quad = new THREE.PlaneGeometry(2, 2);
-    const sphere = new THREE.SphereGeometry(1, 28, 18);
+    const sphere = new THREE.SphereGeometry(1, 48, 32);
     this.rings = new ShockPool(quad, RING_VERT, RING_FRAG, 24, 24, 'vfx.rings');
     this.shells = new ShockPool(sphere, SHELL_VERT, SHELL_FRAG, 12, 24, 'vfx.shells');
     this.time = 0;

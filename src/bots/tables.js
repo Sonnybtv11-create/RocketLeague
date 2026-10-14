@@ -78,18 +78,19 @@ function sampleV(vt, idx) {
   return vt[i] + (vt[i + 1] - vt[i]) * f;
 }
 
-// Phase helpers: straight-line drive with throttle (and boost while it lasts)
+// Phase helper: straight-line drive along one table from speed v0 for t s.
+// Results in module scratch (_pd distance, _pv speed) -> no allocation.
+let _pd = 0, _pv = 0;
 function phase(xt, vt, v0, t) {
   const i0 = velIndex(vt, v0);
   const i1 = i0 + t / DT;
-  return { d: sampleX(xt, vt, i1) - sampleX(xt, vt, i0), v: sampleV(vt, i1) };
+  _pd = sampleX(xt, vt, i1) - sampleX(xt, vt, i0); _pv = sampleV(vt, i1);
 }
 
 const _res = { d: 0, v: 0 };
 export function drive(v0, t, boost) {
   const tb = tables();
   if (t <= 0) { _res.d = 0; _res.v = v0; return _res; }
-  let extra = 0;
   if (v0 < 0) { // braking from reverse: ~3500 uu/s² decel, no progress
     const tbk = -v0 / 3500;
     if (tbk >= t) { _res.d = 0; _res.v = 0; return _res; }
@@ -97,14 +98,11 @@ export function drive(v0, t, boost) {
   }
   const boostTime = boost / BOOST_PER_S;
   if (v0 > 1410 && boostTime <= 0) { _res.d = v0 * t; _res.v = v0; return _res; }
-  if (boostTime >= t) {
-    const p = phase(tb.bx, tb.bv, v0, t);
-    _res.d = p.d + extra; _res.v = p.v; return _res;
-  }
+  if (boostTime >= t) { phase(tb.bx, tb.bv, v0, t); _res.d = _pd; _res.v = _pv; return _res; }
   let d = 0, v = v0;
-  if (boostTime > 0) { const p = phase(tb.bx, tb.bv, v0, boostTime); d += p.d; v = p.v; t -= boostTime; }
-  if (v >= 1410) { d += v * t; } else { const p = phase(tb.tx, tb.tv, v, t); d += p.d; v = p.v; }
-  _res.d = d + extra; _res.v = v; return _res;
+  if (boostTime > 0) { phase(tb.bx, tb.bv, v0, boostTime); d += _pd; v = _pv; t -= boostTime; }
+  if (v >= 1410) { d += v * t; } else { phase(tb.tx, tb.tv, v, t); d += _pd; v = _pv; }
+  _res.d = d; _res.v = v; return _res;
 }
 export const driveDist = (v0, t, boost) => drive(v0, t, boost).d;
 

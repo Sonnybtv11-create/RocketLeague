@@ -63,7 +63,7 @@ export class SkidMarks {
     this.uniforms = { uTime: { value: 0 }, uLife: { value: life } };
     this.material = new THREE.ShaderMaterial({
       uniforms: this.uniforms, vertexShader: VERT, fragmentShader: FRAG,
-      transparent: true, depthWrite: false, side: THREE.DoubleSide,
+      transparent: true, depthWrite: false, forceSinglePass: true, side: THREE.DoubleSide,
       polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
     });
     this.mesh = new THREE.Mesh(geo, this.material);
