@@ -84,7 +84,7 @@ totalEmissiveRadiance = uGlow * (gRing * 2.6 + gCore * 0.12) + vec3(1.0, 0.97, 0
   mat.customProgramCacheKey = () => 'turbo-ball-v1';
   registerEnvUser(mat);
   const ball = new THREE.Mesh(new THREE.SphereGeometry(R_M, 64, 40), mat);
-  ball.castShadow = true;
+  ball.castShadow = false; // the blob decal below is THE landing cue; a sun-shadow blob would be ambiguous
   ball.receiveShadow = true;
   group.add(ball);
 
@@ -120,9 +120,10 @@ totalEmissiveRadiance = uGlow * (gRing * 2.6 + gCore * 0.12) + vec3(1.0, 0.97, 0
   sg.setIndex(idx);
   const smat = new THREE.MeshBasicMaterial({
     color: 0x000000, vertexColors: true, transparent: true, opacity: 0.8, depthWrite: false,
-    polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4, side: THREE.DoubleSide, toneMapped: false, fog: false,
+    polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4, side: THREE.FrontSide, toneMapped: false, fog: false,
     name: 'ball.shadow',
   });
+  smat.forceSinglePass = true;
   const shadow = new THREE.Mesh(sg, smat);
   shadow.frustumCulled = false;
   shadow.renderOrder = 2;
@@ -148,8 +149,9 @@ totalEmissiveRadiance = uGlow * (gRing * 2.6 + gCore * 0.12) + vec3(1.0, 0.97, 0
     const height = Math.max(0, t - BALL_RADIUS);
     // size & opacity vs height: grows ~35% and fades to ~60% by ceiling height, never vanishes
     const k = Math.min(1, height / 1900);
+    // stays >= 0.78 opacity at any height (critical gameplay cue)
     const radius = BALL_RADIUS * (0.92 + 0.38 * k);
-    smat.opacity = 0.82 - 0.3 * k;
+    smat.opacity = 0.9 - 0.12 * k;
     // basis in three space: N = surface normal
     N.set(nrm.x, nrm.z, nrm.y).normalize();
     T.set(1, 0, 0); if (Math.abs(N.x) > 0.9) T.set(0, 0, 1);

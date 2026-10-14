@@ -17,13 +17,15 @@ export function getSharedMaterials() {
   if (shared) return shared;
   shared = {
     trim: new THREE.MeshStandardMaterial({ color: 0x17191e, roughness: 0.55, metalness: 0.35, name: 'car.trim' }),
-    glass: new THREE.MeshPhysicalMaterial({ color: 0x080b12, roughness: 0.04, metalness: 0.1, clearcoat: 1, clearcoatRoughness: 0.03, envMapIntensity: 1.6, name: 'car.glass' }),
+    glass: new THREE.MeshPhysicalMaterial({ color: 0x080b12, roughness: 0.16, metalness: 0.1, clearcoat: 0.6, clearcoatRoughness: 0.16, envMapIntensity: 1.0, name: 'car.glass' }),
+    // instanced depth material for the tyres' shadow pass (keeps the instanced shadow program separate)
+    tyreDepth: new THREE.MeshDepthMaterial({ name: 'car.tyre.depth' }),
     light: new THREE.MeshBasicMaterial({ vertexColors: true, toneMapped: false, name: 'car.lights' }),
     chrome: new THREE.MeshStandardMaterial({ color: 0xc4c8d0, roughness: 0.18, metalness: 1.0, name: 'car.chrome' }),
     tyre: new THREE.MeshStandardMaterial({ color: 0x24262b, roughness: 0.88, metalness: 0.0, name: 'car.tyre' }),
     rim: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.28, metalness: 0.85, name: 'car.rim' }),
   };
-  for (const m of Object.values(shared)) envUsers.add(m);
+  for (const m of Object.values(shared)) if (!m.isMeshDepthMaterial && !m.isMeshBasicMaterial) envUsers.add(m);
   return shared;
 }
 
@@ -33,7 +35,7 @@ export function getPaint(team) {
     const tc = TEAM_COLORS[team] || TEAM_COLORS[0];
     m = new THREE.MeshPhysicalMaterial({
       color: tc.primary, roughness: 0.34, metalness: 0.12,
-      clearcoat: 1.0, clearcoatRoughness: 0.05, envMapIntensity: 1.1, name: 'car.paint.' + team,
+      clearcoat: 1.0, clearcoatRoughness: 0.13, envMapIntensity: 1.0, name: 'car.paint.' + team,
     });
     paintCache.set(team, m); envUsers.add(m);
   }
@@ -46,7 +48,7 @@ export function getAccent(hex) {
   if (!m) {
     m = new THREE.MeshPhysicalMaterial({
       color: new THREE.Color(key), roughness: 0.3, metalness: 0.2,
-      clearcoat: 1.0, clearcoatRoughness: 0.06, envMapIntensity: 1.0, name: 'car.accent.' + key,
+      clearcoat: 1.0, clearcoatRoughness: 0.14, envMapIntensity: 0.9, name: 'car.accent.' + key,
     });
     accentCache.set(key, m); envUsers.add(m);
   }

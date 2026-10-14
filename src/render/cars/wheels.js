@@ -25,15 +25,15 @@ function buildTyre(width) {
   prof.push([ri, -hw * 0.82, 0]);
   prof.push([ri + 10, -hw * 0.98, 0]);
   prof.push([R - c - 6, -hw * 1.02, 0]);   // sidewall bulge
-  for (let k = 0; k <= 3; k++) { const a = Math.PI - (k / 3) * (Math.PI / 2); prof.push([R - c + Math.sin(a) * c, -hw + c + Math.cos(a) * c, k >= 2 ? 1 : 0]); }
-  const NT = 6;
+  for (let k = 0; k <= 2; k++) { const a = Math.PI - (k / 2) * (Math.PI / 2); prof.push([R - c + Math.sin(a) * c, -hw + c + Math.cos(a) * c, k >= 2 ? 1 : 0]); }
+  const NT = 5;
   for (let k = 1; k < NT; k++) prof.push([R, lerp(-hw + c, hw - c, k / NT), 1]);
-  for (let k = 0; k <= 3; k++) { const a = Math.PI / 2 - (k / 3) * (Math.PI / 2); prof.push([R - c + Math.sin(a) * c, hw - c + Math.cos(a) * c, k <= 1 ? 1 : 0]); }
+  for (let k = 0; k <= 2; k++) { const a = Math.PI / 2 - (k / 2) * (Math.PI / 2); prof.push([R - c + Math.sin(a) * c, hw - c + Math.cos(a) * c, k <= 0 ? 1 : 0]); }
   prof.push([R - c - 6, hw * 1.02, 0]);
   prof.push([ri + 10, hw * 0.98, 0]);
   prof.push([ri, hw * 0.82, 0]);
   const P = prof.length;
-  const SEG = 72, BLOCKS = 24, depth = 4.2;
+  const SEG = 40, BLOCKS = 10, depth = 4.2;   // 4 segments per tread block
   const pos = [], idx = [];
   for (let i = 0; i < SEG; i++) {
     const th = (i / SEG) * Math.PI * 2, ct = Math.cos(th), st = Math.sin(th);

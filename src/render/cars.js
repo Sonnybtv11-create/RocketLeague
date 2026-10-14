@@ -95,11 +95,13 @@ export function createCarModel(ctx, opts) {
   const tyres = new THREE.InstancedMesh(wg.tyre, sh.tyre, 4);
   const rims = new THREE.InstancedMesh(wg.rim, sh.rim, 4);
   for (const im of [tyres, rims]) {
-    im.frustumCulled = false; im.castShadow = true; im.receiveShadow = false;
+    im.frustumCulled = false; im.receiveShadow = false;
     im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     carG.add(im);
   }
   tyres.name = 'tyres'; rims.name = 'rims';
+  tyres.castShadow = true; tyres.customDepthMaterial = sh.tyreDepth; // rims sit inside the tyres: no shadow
+  rims.castShadow = false;
   const tyreW = [body.tyre.wF / 100, body.tyre.wB / 100];
   const extra = [body.tyre.extraF, body.tyre.extraB];
 
@@ -163,9 +165,9 @@ export function createCarModel(ctx, opts) {
       const vis = !cv.isDemoed;
       carG.visible = vis;
       if (plate) {
-        const on = vis && !!(ctx.settings && ctx.settings.graphics && ctx.settings.graphics.nameplates !== false);
-        if (on) { _wp.set(cv.pos.x / 100, cv.pos.z / 100, cv.pos.y / 100); plate.update(_wp, cv.boost, ctx.camera, true); }
-        else plate.update(null, 0, null, false);
+        const on = vis && !(view && view.hideNameplates) && !!(ctx.settings && ctx.settings.graphics && ctx.settings.graphics.nameplates !== false);
+        if (on) { _wp.set(cv.pos.x / 100, cv.pos.z / 100, cv.pos.y / 100); plate.update(_wp, cv.boost, ctx.camera, true, view); }
+        else plate.update(null, 0, null, false, view);
       }
       if (!vis) return;
       applySimTransform(carG, cv.pos, cv.rot);
