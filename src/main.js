@@ -163,7 +163,10 @@ function onAction(name, down = true) {
   if (name === 'pause') {
     if (game.mode === 'menu') return;
     if (game.match && game.match.isEnded && game.match.isEnded()) return;
-    if (game.paused) api.resumeGame(); else pauseGame();
+    if (game.paused) {
+      if (ui.handleBack && ui.handleBack()) return; // Esc/B goes back one menu level first
+      api.resumeGame();
+    } else pauseGame();
   } else if (name === 'resetBall') {
     if (game.mode === 'freeplay') api.resetBall();
   } else if (name === 'debug') {
