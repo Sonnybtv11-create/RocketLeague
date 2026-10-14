@@ -1,1 +1,41 @@
-TURBO PITCH — header to be completed in the final pass.
+TURBO PITCH — a single-file car-soccer game with Rocket-League-accurate physics.
+Original title, cars, arena, sounds and UI; all assets are generated in code.
+Only external dependency: Three.js r186 (ES module from jsDelivr via the import map).
+
+CONTROLS (all remappable in Settings > Bindings; saved in localStorage)
+  Keyboard & mouse            Gamepad (standard mapping)
+  W / S   throttle / reverse   RT / LT   throttle / reverse
+  A / D   steer, air yaw        Left stick  steer / pitch / yaw
+  Arrows  air pitch / yaw       A          jump
+  Right mouse  jump             B          boost
+  Left mouse   boost            X          powerslide / air roll
+  Left Shift   powerslide / free air roll (A/D roll while held)
+  Q / E   air roll left/right   LB / RB    air roll left / right
+  Space   ball cam              Y          ball cam
+  Tab     scoreboard            Back/View  scoreboard
+  R       reset ball (free play) D-pad up  reset ball (free play)
+  Esc     pause                 Start      pause
+  F3      debug overlay + physics self-tests
+  Right stick / mouse (when enabled): free look
+
+PHYSICS SOURCES
+  * RocketSim by ZealanL (github.com/ZealanL/RocketSim, MIT License, (c) 2022 ZealanL):
+    RLConst.h, Car.cpp, CarConfig.cpp, Ball.cpp, Arena.cpp, BoostPad.cpp and btVehicleRL.cpp
+    were ported to JavaScript line by line (constants, curves, suspension, wheel friction
+    impulses, sticky forces, jump/dodge/air control, auto-flip/roll, boost, supersonic,
+    extra car->ball impulse, bump/demo rules, pad pickup volumes, kickoff/respawn spawns).
+  * Bullet 3.24 as modified by RocketSim: sequential-impulse contact solver (10 iterations,
+    split impulse with erp2 0.8, restitution threshold 0.2 bt/s, static friction=min /
+    restitution=max combine rules).
+  * RLBot / RLGym "useful game values" tables (arena dimensions, pad and spawn positions).
+  Units: Unreal Units (1 uu = 1 cm), Z-up, fixed 120 Hz; render converts to Three.js (Y-up, m).
+
+KEY CONSTANTS (see src/sim/const.js in the repository)
+  gravity -650; ball r 91.25, mass 30, drag 0.03, max 6000 uu/s, world friction/restitution
+  0.35/0.6; car mass 180, max 2300 uu/s, 5.5 rad/s; supersonic 2200 (2100 maintain, 1 s);
+  boost 33.33/s, accel 991.67 ground / 1058.33 air; throttle 1600 uu/s^2 to 1410;
+  brake 3500, coast 525; jump 291.67 + 1458.33 hold (0.025-0.2 s); dodge 500 (2.5x back,
+  1.9x side); flip torque 260/224 for 0.65 s; air torque (130,95,400)*2pi/65536*1000.
+
+VALUES THAT COULD NOT BE VERIFIED AGAINST THE REAL GAME (see the repository notes)
+  __UNVERIFIED__
