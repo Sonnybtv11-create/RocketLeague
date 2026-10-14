@@ -23,11 +23,12 @@ export class BoostPad {
   }
   reset() { this.isActive = true; this.cooldown = 0; this.prevLockedCarId = -1; this.curLockedCar = null; }
   preTick(dt) {
-    if (this.cooldown > 0) this.cooldown = Math.max(this.cooldown - dt, 0);
+    if (this.cooldown > 0) this.cooldown = Math.max(Math.fround(this.cooldown - Math.fround(dt)), 0);
     this.isActive = this.cooldown === 0;
     this.curLockedCar = null;
   }
   checkCollide(car) {
+    if (car.boost >= K.BOOST_MAX || car.isDemoed) return; // BoostPadGrid: full cars never take pads
     const p = car.body.pos;
     let colliding = false;
     if (this.prevLockedCarId === car.id) {
@@ -169,6 +170,9 @@ export class World {
 
     const ballSleeping = ball.isSleeping();
 
+    // velocities before forces (Bullet's restitution uses them)
+    for (const car of this.cars) { car.body.preVel = car.body.vel.clone(); car.body.preAng = car.body.angVel.clone(); }
+    bb.preVel = bb.vel.clone(); bb.preAng = bb.angVel.clone();
     // ---- stepSimulation: integrate velocities (forces + gravity) ----
     for (const car of this.cars) {
       if (car.isDemoed) { car.body.force.set(0, 0, 0); continue; }
@@ -192,7 +196,7 @@ export class World {
     const active = this.cars.filter((c) => !c.isDemoed);
     for (const car of active) {
       const wc = [];
-      carWorldContacts(car, 1.0, wc);
+      carWorldContacts(car, car.contactMargin, wc);
       for (const c of wc) {
         car.worldContact.hasContact = true;
         car.worldContact.normal = c.n;
@@ -200,7 +204,7 @@ export class World {
       }
     }
     for (const car of active) {
-      const c = carBallContact(car, bb, K.BALL_RADIUS, 1.0);
+      const c = carBallContact(car, bb, K.BALL_RADIUS, 1.905);
       if (!c) continue;
       this._onCarBallHit(car, c);
       // A = ball, B = car; normal from car to ball
@@ -209,7 +213,7 @@ export class World {
     for (let i = 0; i < active.length; i++) {
       for (let j = i + 1; j < active.length; j++) {
         const A = active[i], B = active[j];
-        const cc = carCarContacts(A, B, 1.0);
+        const cc = carCarContacts(A, B, Math.min(A.contactMargin, B.contactMargin));
         if (!cc.length) continue;
         for (const c of cc) {
           this._onCarCarContact(A, B, c);

@@ -38,10 +38,10 @@ export class Ball {
 
   worldContact() {
     const b = this.body;
-    const c = ballWorldContact(b, K.BALL_RADIUS, K.BALL_REST_Z, 0.05);
+    const c = ballWorldContact(b, K.BALL_RADIUS, K.BALL_REST_Z, 0.0);
     if (!c) return null;
     return {
-      a: b, b: null, pA: c.pA, pB: c.pA, n: c.n, depth: c.depth,
+      a: b, b: null, pA: c.pA, pB: c.pA, n: c.n, depth: c.depth, pushDepth: c.depth + K.BALL_WORLD_MARGIN,
       friction: K.BALL_FRICTION, restitution: K.BALL_RESTITUTION, kind: 'ballWorld',
     };
   }
@@ -79,6 +79,7 @@ export class BallPredictor {
 export function stepBallAlone(ball, dt) {
   const b = ball.body;
   if (b.vel.len2() === 0 && b.angVel.len2() === 0) return;
+  b.preVel = b.vel.clone(); b.preAng = b.angVel.clone();
   ball.integrateVelocity(dt);
   const c = ball.worldContact();
   if (c) solveContacts([c], dt);

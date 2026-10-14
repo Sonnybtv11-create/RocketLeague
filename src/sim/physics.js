@@ -6,6 +6,7 @@
 import { Vec3, RotMat, integrateRotation } from './math.js';
 import { arenaSDF, arenaNormal } from './arena.js';
 import { SOLVER_ITERATIONS, SOLVER_ERP2, RESTITUTION_VEL_THRESHOLD } from './const.js';
+const SPLIT_IMPULSE_TURN_ERP = 0.1; // btContactSolverInfo::m_splitImpulseTurnErp
 
 export class RigidBody {
   constructor(mass, inertiaDiag) {
@@ -322,10 +323,19 @@ export function solveContacts(contacts, dt) {
     c.kN = 1 / (denA + denB);
     const vrel = A.velAt(c.rA).sub(B ? B.velAt(c.rB) : new Vec3());
     const vn = vrel.dot(c.n);
-    let rest = Math.abs(vn) < RESTITUTION_VEL_THRESHOLD ? 0 : c.restitution * -vn;
+    // Bullet computes restitution from the velocity before this tick's forces/gravity
+    let vnR = vn;
+    if (A.preVel) {
+      const va = A.preVel.add(A.preAng.cross(c.rA));
+      const vb = B && B.preVel ? B.preVel.add(B.preAng.cross(c.rB)) : new Vec3();
+      vnR = va.sub(vb).dot(c.n);
+    }
+    let rest = Math.abs(vnR) < RESTITUTION_VEL_THRESHOLD ? 0 : c.restitution * -vnR;
     if (rest <= 0) rest = 0;
     c.target = rest;
-    c.push = c.depth > 0 ? 0 : -c.depth * SOLVER_ERP2 * invDt;
+    // ball-world contacts only push out below the true radius (the margin is speculative)
+    const pd = c.pushDepth !== undefined ? c.pushDepth : c.depth;
+    c.push = pd > 0 ? 0 : -pd * SOLVER_ERP2 * invDt;
     c.lambda = 0; c.pushLambda = 0;
     // tangent basis
     let t1 = vrel.sub(c.n.mul(vn));
@@ -360,13 +370,12 @@ export function solveContacts(contacts, dt) {
       const A = c.a, B = c.b;
       const vrel = A.velAt(c.rA).sub(B ? B.velAt(c.rB) : new Vec3());
       const maxF = c.friction * c.lambda;
+      // Bullet default solver mode: a single friction row along the initial slip direction
       let n1 = c.lt1 - c.kT1 * vrel.dot(c.t1);
-      let n2 = c.lt2 - c.kT2 * vrel.dot(c.t2);
-      const m = Math.hypot(n1, n2);
-      if (m > maxF) { n1 *= maxF / m; n2 *= maxF / m; }
-      const d1 = n1 - c.lt1, d2 = n2 - c.lt2;
-      c.lt1 = n1; c.lt2 = n2;
-      const imp = c.t1.mul(d1).add(c.t2.mul(d2));
+      if (n1 > maxF) n1 = maxF; else if (n1 < -maxF) n1 = -maxF;
+      const d1 = n1 - c.lt1;
+      c.lt1 = n1;
+      const imp = c.t1.mul(d1);
       A.applyImpulse(imp, c.rA);
       if (B) B.applyImpulse(imp.neg(), c.rB);
     }
@@ -401,7 +410,7 @@ export function integrateBody(b, dt) {
   b.pos.x += (b.vel.x + b.pushVel.x) * dt;
   b.pos.y += (b.vel.y + b.pushVel.y) * dt;
   b.pos.z += (b.vel.z + b.pushVel.z) * dt;
-  const w = b.angVel.add(b.turnVel);
+  const w = b.angVel.add(b.turnVel.mul(SPLIT_IMPULSE_TURN_ERP));
   b.rot = integrateRotation(b.rot, w, dt);
   b.pushVel.set(0, 0, 0);
   b.turnVel.set(0, 0, 0);

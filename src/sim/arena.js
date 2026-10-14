@@ -91,7 +91,11 @@ export function arenaSDF(x, y, z) {
       const others = profileDist(Math.min(X - ax, (DIAG - ax - ay) / SQ2), z);
       return Math.min(z, endFace, above, others);
     }
-    return profileDist(footprintDist(ax, ay, null), z);
+    let r = profileDist(footprintDist(ax, ay, null), z);
+    // Inside the back-wall ramp right next to the goal opening, free space (the mouth)
+    // is only (ax - GW) away through the ramp's end face.
+    if (r < 0 && ax >= GW && z < GH && (Y - ay) < RF) r = Math.max(r, -(ax - GW));
+    return r;
   }
   // beyond the goal line
   if (ax < GW && z < GH) {
@@ -99,7 +103,7 @@ export function arenaSDF(x, y, z) {
     return Math.min(GW - ax, GH - z, z, GD - ay);
   }
   // inside the solid back wall (around the goal): negative distance to free space
-  const toArena = ay - Y;
+  const toArena = -profileDist(Y - ay, z); // back to arena free space incl. the floor fillet
   const dx = Math.max(ax - GW, 0), dz = Math.max(z - GH, 0);
   const toGoal = Math.hypot(dx, dz);
   return -Math.min(toArena, toGoal) - 1e-3;
@@ -124,24 +128,26 @@ export function arenaRaycast(ox, oy, oz, dx, dy, dz, maxLen, outNormal) {
     if (outNormal) arenaNormal(ox, oy, oz, outNormal);
     return 0;
   }
-  for (let i = 0; i < 64; i++) {
-    if (d < 0.02) break;
+  let converged = false;
+  for (let i = 0; i < 96; i++) {
+    if (d < 0.02) { converged = true; break; }
+    const prevT = t;
     t += Math.max(d * 0.95, 0.05);
     if (t > maxLen) return -1;
     d = arenaSDF(ox + dx * t, oy + dy * t, oz + dz * t);
     if (d < 0) {
-      // overshoot: bisect back
-      let lo = t - Math.max(d * 0.95, 0.05) - 2, hi = t;
-      if (lo < 0) lo = 0;
-      for (let k = 0; k < 16; k++) {
+      // overshoot: bisect between the previous free point and here
+      let lo = prevT, hi = t;
+      for (let k = 0; k < 18; k++) {
         const mid = (lo + hi) * 0.5;
         if (arenaSDF(ox + dx * mid, oy + dy * mid, oz + dz * mid) > 0) lo = mid; else hi = mid;
       }
       t = hi;
+      converged = true;
       break;
     }
   }
-  if (t > maxLen) return -1;
+  if (!converged || t > maxLen) return -1;
   if (outNormal) arenaNormal(ox + dx * t, oy + dy * t, oz + dz * t, outNormal);
   return t;
 }

@@ -6,6 +6,13 @@ import { RigidBody, raySphere, rayCarBox } from './physics.js';
 import { arenaRaycast } from './arena.js';
 import { CAR_CONFIGS, wheelLayout } from './carconfig.js';
 import * as K from './const.js';
+
+// RL/RocketSim accumulate timers in float32; mirror that so tick boundaries match exactly.
+const f32 = Math.fround;
+const F = (v) => Math.fround(v);
+const addT = (t, dt) => f32(t + f32(dt));
+const subT = (t, dt) => f32(t - f32(dt));
+const clamp1 = (v) => (v > 1 ? 1 : v < -1 ? -1 : v);
 import { makeControls, EV } from '../contracts.js';
 
 const UP = new Vec3(0, 0, 1);
@@ -22,6 +29,9 @@ export class Car {
     this.config = CAR_CONFIGS[hitbox];
     const s = this.config.hitboxSize;
     this.halfSize = new Vec3(s.x / 2, s.y / 2, s.z / 2);
+    // Bullet contact breaking threshold: 0.02 bt * angular-motion disc (|halfExtents| + |offset|)
+    const o = this.config.hitboxOffset;
+    this.contactMargin = 0.02 * (this.halfSize.len() + Math.hypot(o.x, o.y, o.z));
     const m = K.CAR_MASS;
     // btBoxShape::calculateLocalInertia
     const inertia = new Vec3(
@@ -149,7 +159,6 @@ export class Car {
         w.suspRelVel = 0;
         w.clippedInv = 10;
       }
-      w.extraPushback = 0;
       if (isWorld) {
         const thresh = restLen + w.def.radius - K.SUSPENSION_SUBTRACTION;
         if (traceLen < thresh) {
@@ -254,11 +263,13 @@ export class Car {
   preTick(world, dt) {
     const ev = world.events;
     if (this.isDemoed) {
-      this.demoRespawnTimer = Math.max(this.demoRespawnTimer - dt, 0);
+      this.demoRespawnTimer = Math.max(subT(this.demoRespawnTimer, dt), 0);
       if (this.demoRespawnTimer === 0) world.respawnCar(this);
-      return;
+      if (this.isDemoed) return; // RocketSim continues the tick after respawning
     }
     const c = this.controls;
+    // CarControls::ClampFix
+    c.throttle = clamp1(c.throttle); c.steer = clamp1(c.steer); c.pitch = clamp1(c.pitch); c.yaw = clamp1(c.yaw); c.roll = clamp1(c.roll);
     const b = this.body;
 
     // updateVehicleFirst
@@ -397,10 +408,10 @@ export class Car {
     const wasBoosting = this.isBoosting;
     if (world.unlimitedBoost && !this.isBot) this.boost = 100;
     if (this.boost > 0) {
-      if (this.isBoosting) this.isBoosting = c.boost || this.boostingTime < K.BOOST_MIN_TIME;
+      if (this.isBoosting) this.isBoosting = c.boost || this.boostingTime < F(K.BOOST_MIN_TIME);
       else if (c.boost) this.isBoosting = true;
     } else this.isBoosting = false;
-    if (this.isBoosting) this.boostingTime += dt; else this.boostingTime = 0;
+    if (this.isBoosting) this.boostingTime = addT(this.boostingTime, dt); else this.boostingTime = 0;
     if (this.isBoosting) {
       this.boost = Math.max(this.boost - K.BOOST_USED_PER_SECOND * dt, 0);
       const acc = this.isOnGround ? K.BOOST_ACCEL_GROUND : K.BOOST_ACCEL_AIR;
@@ -415,7 +426,7 @@ export class Car {
   _updateJump(dt, jumpPressed, ev) {
     const b = this.body;
     if (this.isOnGround && !this.isJumping) {
-      if (this.hasJumped && this.jumpTime < K.JUMP_MIN_TIME + K.JUMP_RESET_TIME_PAD) {
+      if (this.hasJumped && this.jumpTime < F(K.JUMP_MIN_TIME + K.JUMP_RESET_TIME_PAD)) {
         // still leaving the ground
       } else {
         this.hasJumped = false;
@@ -423,7 +434,7 @@ export class Car {
       }
     }
     if (this.isJumping) {
-      this.isJumping = this.jumpTime < K.JUMP_MIN_TIME || (this.controls.jump && this.jumpTime < K.JUMP_MAX_TIME);
+      this.isJumping = this.jumpTime < F(K.JUMP_MIN_TIME) || (this.controls.jump && this.jumpTime < F(K.JUMP_MAX_TIME));
     } else if (this.isOnGround && jumpPressed) {
       this.isJumping = true;
       this.jumpTime = 0;
@@ -433,10 +444,10 @@ export class Car {
     if (this.isJumping) {
       this.hasJumped = true;
       let f = K.JUMP_ACCEL;
-      if (this.jumpTime < K.JUMP_MIN_TIME) f *= K.JUMP_PRE_MIN_ACCEL_SCALE;
+      if (this.jumpTime < F(K.JUMP_MIN_TIME)) f *= K.JUMP_PRE_MIN_ACCEL_SCALE;
       b.applyCentralForce(b.rot.up.mul(f * K.CAR_MASS));
     }
-    if (this.isJumping || this.hasJumped) this.jumpTime += dt;
+    if (this.isJumping || this.hasJumped) this.jumpTime = addT(this.jumpTime, dt);
   }
 
   _updateAirTorque(dt, updateAirControl) {
@@ -444,7 +455,7 @@ export class Car {
     const R = b.rot;
     const dirPitch = R.right.neg(), dirYaw = R.up, dirRoll = R.forward.neg();
     let doAirControl = false;
-    if (this.isFlipping) this.isFlipping = this.hasFlipped && this.flipTime < K.FLIP_TORQUE_TIME;
+    if (this.isFlipping) this.isFlipping = this.hasFlipped && this.flipTime < F(K.FLIP_TORQUE_TIME);
     if (this.isFlipping) {
       const rel = this.flipRelTorque.clone();
       if (!rel.isZero()) {
@@ -470,7 +481,7 @@ export class Car {
       if (c.pitch || c.yaw || c.roll) {
         if (this.isFlipping) pitchTorqueScale = 0;
         else if (this.hasFlipped) {
-          if (this.flipTime < K.FLIP_TORQUE_TIME + K.FLIP_PITCHLOCK_EXTRA_TIME) pitchTorqueScale = 0;
+          if (this.flipTime < F(K.FLIP_TORQUE_TIME + K.FLIP_PITCHLOCK_EXTRA_TIME)) pitchTorqueScale = 0;
         }
         torque = dirPitch.mul(c.pitch * pitchTorqueScale * K.CAR_AIR_CONTROL_TORQUE.pitch)
           .add(dirYaw.mul(c.yaw * K.CAR_AIR_CONTROL_TORQUE.yaw))
@@ -497,10 +508,10 @@ export class Car {
       this.flipTime = 0;
     } else {
       this.airTime += dt;
-      if (this.hasJumped && !this.isJumping) this.airTimeSinceJump += dt;
+      if (this.hasJumped && !this.isJumping) this.airTimeSinceJump = addT(this.airTimeSinceJump, dt);
       else this.airTimeSinceJump = 0;
 
-      if (jumpPressed && this.airTimeSinceJump < K.DOUBLEJUMP_MAX_DELAY) {
+      if (jumpPressed && this.airTimeSinceJump < F(K.DOUBLEJUMP_MAX_DELAY)) {
         const inputMag = Math.abs(c.yaw) + Math.abs(c.pitch) + Math.abs(c.roll);
         const isFlipInput = inputMag >= (this.dodgeDeadzone ?? this.config.dodgeDeadzone);
         let canUse = !this.hasDoubleJumped && !this.hasFlipped;
@@ -541,14 +552,14 @@ export class Car {
       }
     }
     if (this.isFlipping) {
-      this.flipTime += dt;
-      if (this.flipTime <= K.FLIP_TORQUE_TIME) {
-        if (this.flipTime >= K.FLIP_Z_DAMP_START && (b.vel.z < 0 || this.flipTime < K.FLIP_Z_DAMP_END)) {
+      this.flipTime = addT(this.flipTime, dt);
+      if (this.flipTime <= F(K.FLIP_TORQUE_TIME)) {
+        if (this.flipTime >= F(K.FLIP_Z_DAMP_START) && (b.vel.z < 0 || this.flipTime < F(K.FLIP_Z_DAMP_END))) {
           b.vel.z *= Math.pow(1 - K.FLIP_Z_DAMP_120, tickTimeScale);
         }
       }
     } else if (this.hasFlipped) {
-      this.flipTime += dt;
+      this.flipTime = addT(this.flipTime, dt);
     }
   }
 
@@ -558,7 +569,7 @@ export class Car {
       const ang = yprFromRotMat(b.rot);
       const absRoll = Math.abs(ang.roll);
       if (absRoll > K.CAR_AUTOFLIP_ROLL_THRESH) {
-        this.autoFlipTimer = K.CAR_AUTOFLIP_TIME * (absRoll / Math.PI);
+        this.autoFlipTimer = f32(K.CAR_AUTOFLIP_TIME * (absRoll / Math.PI));
         this.autoFlipTorqueScale = ang.roll > 0 ? 1 : -1;
         this.isAutoFlipping = true;
         b.applyCentralImpulse(b.rot.up.mul(-K.CAR_AUTOFLIP_IMPULSE * K.CAR_MASS));
@@ -570,7 +581,7 @@ export class Car {
         this.autoFlipTimer = 0;
       } else {
         b.angVel.addSelf(b.rot.forward.mul(K.CAR_AUTOFLIP_TORQUE * this.autoFlipTorqueScale * dt));
-        this.autoFlipTimer -= dt;
+        this.autoFlipTimer = subT(this.autoFlipTimer, dt);
       }
     }
   }
@@ -597,12 +608,12 @@ export class Car {
     const b = this.body;
     const speed2 = b.vel.len2();
     const wasSS = this.isSupersonic;
-    if (this.isSupersonic && this.supersonicTime < K.SUPERSONIC_MAINTAIN_MAX_TIME)
+    if (this.isSupersonic && this.supersonicTime < F(K.SUPERSONIC_MAINTAIN_MAX_TIME))
       this.isSupersonic = speed2 >= K.SUPERSONIC_MAINTAIN_MIN_SPEED ** 2;
     else this.isSupersonic = speed2 >= K.SUPERSONIC_START_SPEED ** 2;
-    if (this.isSupersonic) this.supersonicTime += dt; else this.supersonicTime = 0;
+    if (this.isSupersonic) this.supersonicTime = addT(this.supersonicTime, dt); else this.supersonicTime = 0;
     if (this.isSupersonic && !wasSS) world.events.push({ type: EV.SUPERSONIC_START, carId: this.id });
-    if (this.carContact.cooldownTimer > 0) this.carContact.cooldownTimer = Math.max(this.carContact.cooldownTimer - dt, 0);
+    if (this.carContact.cooldownTimer > 0) this.carContact.cooldownTimer = Math.max(subT(this.carContact.cooldownTimer, dt), 0);
     this.lastControls = { ...this.controls };
   }
 
@@ -618,7 +629,7 @@ export class Car {
 
   // Convenience for bots / UI
   hasFlipOrJump() {
-    return this.isOnGround || (!this.hasFlipped && !this.hasDoubleJumped && this.airTimeSinceJump < K.DOUBLEJUMP_MAX_DELAY);
+    return this.isOnGround || (!this.hasFlipped && !this.hasDoubleJumped && this.airTimeSinceJump < F(K.DOUBLEJUMP_MAX_DELAY));
   }
   hasFlipReset() { return !this.isOnGround && this.hasFlipOrJump() && !this.hasJumped; }
 }
