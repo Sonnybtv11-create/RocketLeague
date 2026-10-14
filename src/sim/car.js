@@ -25,6 +25,12 @@ export class Car {
     this.name = name;
     this.isBot = isBot;
     this.bodyId = bodyId;
+    // fields set by other modules, declared up front so all cars share one hidden class
+    this.accent = '#e8e8e8';
+    this.difficulty = null;
+    this.dodgeDeadzone = undefined;
+    this.kickoffSpawnIndex = -1;
+    this._lastScrapeTick = -100;
     this.hitbox = hitbox;
     this.config = CAR_CONFIGS[hitbox];
     const s = this.config.hitboxSize;

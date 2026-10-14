@@ -193,7 +193,7 @@ export const CSS = String.raw`
 .tp-shade-full { position: absolute; inset: 0; background: rgba(2, 4, 10, 0.62); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); }
 .tp-page { position: absolute; inset: 0; pointer-events: none; }
 .tp-page.anim { animation: tp-page-in 0.22s ease-out; }
-@keyframes tp-page-in { from { opacity: 0.7; transform: translateX(calc(var(--u) * -1.5)); } to { opacity: 1; transform: none; } }
+@keyframes tp-page-in { from { transform: translateX(calc(var(--u) * -1.5)); } to { transform: none; } }
 
 .tp-logo { position: absolute; left: calc(var(--u) * 4); top: calc(var(--u) * 8); width: calc(var(--u) * 44); }
 .tp-logo svg { width: 100%; height: auto; display: block; overflow: visible; filter: drop-shadow(0 calc(var(--u) * 0.5) calc(var(--u) * 1.4) rgba(0,0,0,.6)); }
