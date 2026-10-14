@@ -41,7 +41,11 @@ export const v3 = (x, y, z) => new Vec3(x, y, z);
 // Rotation matrix, row-major. Columns are the body axes in world space:
 // column 0 = forward, column 1 = right, column 2 = up (RocketSim convention).
 export class RotMat {
-  constructor(m) { this.m = m ? Float64Array.from(m) : new Float64Array([1, 0, 0, 0, 1, 0, 0, 0, 1]); }
+  constructor(m) {
+    const a = new Float64Array(9);
+    if (m) a.set(m); else { a[0] = 1; a[4] = 1; a[8] = 1; }
+    this.m = a;
+  }
   clone() { return new RotMat(this.m); }
   copy(o) { this.m.set(o.m); return this; }
   get forward() { const m = this.m; return new Vec3(m[0], m[3], m[6]); }
@@ -139,8 +143,8 @@ export class Curve {
     if (x <= p[0][0]) return p[0][1];
     for (let i = 1; i < p.length; i++) {
       if (x < p[i][0]) {
-        const [x0, y0] = p[i - 1], [x1, y1] = p[i];
-        return y0 + (y1 - y0) * ((x - x0) / (x1 - x0));
+        const a = p[i - 1], b = p[i];
+        return a[1] + (b[1] - a[1]) * ((x - a[0]) / (b[0] - a[0]));
       }
     }
     return p[p.length - 1][1];

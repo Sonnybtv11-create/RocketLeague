@@ -45,9 +45,13 @@ const ctx = {
   carConfigs: CAR_CONFIGS,
 };
 
+let _lastSize = '';
 function applyRenderScale() {
   const q = ctx.quality;
-  const pr = Math.min(devicePixelRatio || 1, 2) * q.renderScale * (settings.graphics.renderScale || 1);
+  const pr = Math.min(devicePixelRatio || 1, q.maxPixelRatio || 2) * q.renderScale * (settings.graphics.renderScale || 1);
+  const key = `${innerWidth}x${innerHeight}@${pr}`;
+  if (key === _lastSize) return; // avoid canvas / render-target reallocation when nothing changed
+  _lastSize = key;
   renderer.setPixelRatio(pr);
   renderer.setSize(innerWidth, innerHeight, false);
   camera.aspect = innerWidth / innerHeight;
@@ -65,7 +69,8 @@ const audio = createAudio({ settings });
 const ballModel = createBallModel(ctx);
 scene.add(ballModel.object3d);
 applyRenderScale();
-addEventListener('resize', applyRenderScale);
+let _resizeT = 0;
+addEventListener('resize', () => { clearTimeout(_resizeT); _resizeT = setTimeout(applyRenderScale, 120); });
 
 let carModels = new Map(); // carId -> model
 function syncCarModels(world) {
@@ -181,6 +186,7 @@ function onAction(name, down = true) {
 let debugOn = false;
 function pauseGame() { game.paused = true; input.setEnabled(false); ui.showPause(); audio.setPaused && audio.setPaused(true); }
 
+let _appliedQuality = settings.graphics.quality;
 const api = {
   startMatch(cfg) { settings.game.lastMode = { ...settings.game.lastMode, ...cfg }; saveAll(settings, stats); newSession(cfg, 'exhibition'); },
   startFreePlay(cfg = {}) { newSession({ teamSize: 1, ...cfg }, 'freeplay'); },
@@ -189,9 +195,12 @@ const api = {
   rematch() { if (game.cfg) newSession(game.cfg, game.mode === 'menu' ? 'exhibition' : game.mode); },
   settingsChanged() {
     applyRenderScale();
-    env.setQuality && env.setQuality(settings.graphics.quality);
-    post.setQuality && post.setQuality(settings.graphics.quality);
-    vfx.setQuality && vfx.setQuality(settings.graphics.quality);
+    if (settings.graphics.quality !== _appliedQuality) {
+      _appliedQuality = settings.graphics.quality;
+      env.setQuality && env.setQuality(settings.graphics.quality);
+      post.setQuality && post.setQuality(settings.graphics.quality);
+      vfx.setQuality && vfx.setQuality(settings.graphics.quality);
+    }
     audio.setVolumes && audio.setVolumes(settings.audio);
     for (const c of game.world ? game.world.cars : []) if (!c.isBot) c.dodgeDeadzone = settings.controls.dodgeDeadzone;
     if (game.world && game.mode === 'freeplay') game.world.unlimitedBoost = settings.game.freeplay.unlimitedBoost;
@@ -232,6 +241,9 @@ function updatePrediction() {
   const show = game.mode === 'freeplay' && settings.game.freeplay.predictionLine && game.world;
   predLine.visible = !!show;
   if (!show || predTick === game.world.tick) return;
+  // recompute only after a touch/bounce or every 0.25 s (the ball's path is deterministic otherwise)
+  const touched = game.world.ballTouchedThisTick.length > 0 || game.world.events.some((e) => e.type === EV.BALL_BOUNCE);
+  if (!touched && predTick >= 0 && game.world.tick - predTick < 30 && game.world.tick > predTick) return;
   predTick = game.world.tick;
   const b = game.world.ball.body;
   const pts = game.predictor.predict({ pos: b.pos, vel: b.vel, angVel: b.angVel }, 4, 4).map((p) => simToThree(p.pos));
@@ -278,6 +290,8 @@ function physicsTick() {
 
 function frame(now) {
   requestAnimationFrame(frame);
+  const cap = settings.graphics.fpsCap || 0;
+  if (cap > 0 && now - last < 1000 / cap - 1) return;
   let dt = (now - last) / 1000; last = now;
   if (dt > 0.25) dt = 0.25;
   fpsAcc += dt; fpsN++;

@@ -158,10 +158,12 @@ export const EV = Object.freeze({
 
 // ---- Quality presets -------------------------------------------------------
 export const QUALITY = Object.freeze({
-  low:    { name: 'Low',    shadowMap: 1024, particles: 0.35, renderScale: 0.75, bloom: false, ssao: false, crowd: 0.25, reflections: 0, antialias: false },
-  medium: { name: 'Medium', shadowMap: 2048, particles: 0.6,  renderScale: 1.0,  bloom: true,  ssao: false, crowd: 0.5,  reflections: 1, antialias: true },
-  high:   { name: 'High',   shadowMap: 2048, particles: 1.0,  renderScale: 1.0,  bloom: true,  ssao: false, crowd: 1.0,  reflections: 1, antialias: true },
-  ultra:  { name: 'Ultra',  shadowMap: 4096, particles: 1.5,  renderScale: 1.0,  bloom: true,  ssao: true,  crowd: 1.0,  reflections: 2, antialias: true },
+  // maxPixelRatio caps devicePixelRatio (Retina 2.0 is too many pixels for 120 Hz with MSAA+bloom);
+  // msaa = scene MSAA samples (0 = FXAA/none); bloomScale = bloom chain resolution relative to the canvas.
+  low:    { name: 'Low',    shadowMap: 1024, particles: 0.35, renderScale: 0.75, maxPixelRatio: 1.0,  msaa: 0, bloomScale: 0,   bloom: false, ssao: false, crowd: 0.25, reflections: 0, antialias: false },
+  medium: { name: 'Medium', shadowMap: 1024, particles: 0.6,  renderScale: 1.0,  maxPixelRatio: 1.25, msaa: 2, bloomScale: 0.5, bloom: true,  ssao: false, crowd: 0.5,  reflections: 1, antialias: true },
+  high:   { name: 'High',   shadowMap: 2048, particles: 1.0,  renderScale: 1.0,  maxPixelRatio: 1.5,  msaa: 4, bloomScale: 0.5, bloom: true,  ssao: false, crowd: 1.0,  reflections: 1, antialias: true },
+  ultra:  { name: 'Ultra',  shadowMap: 4096, particles: 1.5,  renderScale: 1.0,  maxPixelRatio: 2.0,  msaa: 4, bloomScale: 1.0, bloom: true,  ssao: true,  crowd: 1.0,  reflections: 2, antialias: true },
 });
 
 export const GAME_TITLE = 'TURBO PITCH';

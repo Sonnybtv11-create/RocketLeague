@@ -88,32 +88,45 @@ for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) for (let k = -1; k <
   BOX_SAMPLES.push([i, j, k]);
 }
 
+const _cand = [];
+for (let i = 0; i < 26; i++) _cand.push({ x: 0, y: 0, z: 0, d: 0, w: 0 });
 export function carWorldContacts(car, margin, out) {
   const b = car.body, hs = car.halfSize, off = car.config.hitboxOffset;
-  const R = b.rot;
-  let count = 0;
+  const m = b.rot.m, px = b.pos.x, py = b.pos.y, pz = b.pos.z;
   // quick reject: distance from hitbox centre
-  const cLocal = new Vec3(off.x, off.y, off.z);
-  const c = b.pos.add(R.mulVec(cLocal));
+  const cx = px + m[0] * off.x + m[1] * off.y + m[2] * off.z;
+  const cy = py + m[3] * off.x + m[4] * off.y + m[5] * off.z;
+  const cz = pz + m[6] * off.x + m[7] * off.y + m[8] * off.z;
   const bound = Math.sqrt(hs.x * hs.x + hs.y * hs.y + hs.z * hs.z);
-  const dc = arenaSDF(c.x, c.y, c.z);
-  if (dc > bound + margin) return 0;
-  const cand = [];
-  for (const s of BOX_SAMPLES) {
-    const local = new Vec3(off.x + s[0] * hs.x, off.y + s[1] * hs.y, off.z + s[2] * hs.z);
-    const p = b.pos.add(R.mulVec(local));
-    const d = arenaSDF(p.x, p.y, p.z);
-    if (d < margin) cand.push({ p, d, w: (s[0] !== 0) + (s[1] !== 0) + (s[2] !== 0) });
+  if (arenaSDF(cx, cy, cz) > bound + margin) return 0;
+  let n = 0;
+  for (let k = 0; k < BOX_SAMPLES.length; k++) {
+    const s = BOX_SAMPLES[k];
+    const lx = s[0] * hs.x, ly = s[1] * hs.y, lz = s[2] * hs.z;
+    const x = cx + m[0] * lx + m[1] * ly + m[2] * lz;
+    const y = cy + m[3] * lx + m[4] * ly + m[5] * lz;
+    const z = cz + m[6] * lx + m[7] * ly + m[8] * lz;
+    const d = arenaSDF(x, y, z);
+    if (d < margin) {
+      const c = _cand[n++];
+      c.x = x; c.y = y; c.z = z; c.d = d; c.w = (s[0] !== 0) + (s[1] !== 0) + (s[2] !== 0);
+    }
   }
-  if (!cand.length) return 0;
-  // keep corners first, then deepest, at most 8
-  cand.sort((u, v) => (u.d - v.d) || (v.w - u.w));
-  for (const c2 of cand.slice(0, 8)) {
-    arenaNormal(c2.p.x, c2.p.y, c2.p.z, _n);
-    out.push({ n: new Vec3(_n.x, _n.y, _n.z), depth: c2.d, pA: c2.p });
-    count++;
+  if (!n) return 0;
+  // keep deepest (corners first on ties), at most 8 — partial selection sort
+  const keep = Math.min(n, 8);
+  for (let i = 0; i < keep; i++) {
+    let bi = i;
+    for (let j = i + 1; j < n; j++) {
+      const u = _cand[j], v = _cand[bi];
+      if (u.d < v.d || (u.d === v.d && u.w > v.w)) bi = j;
+    }
+    if (bi !== i) { const t = _cand[i]; _cand[i] = _cand[bi]; _cand[bi] = t; }
+    const c = _cand[i];
+    arenaNormal(c.x, c.y, c.z, _n);
+    out.push({ n: new Vec3(_n.x, _n.y, _n.z), depth: c.d, pA: new Vec3(c.x, c.y, c.z) });
   }
-  return count;
+  return keep;
 }
 
 // OBB (car hitbox) vs sphere. Returns {n (from car to ball), depth, pCar, pBall} or null
