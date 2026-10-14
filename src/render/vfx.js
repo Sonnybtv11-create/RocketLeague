@@ -422,7 +422,7 @@ export function createVFX(ctx) {
     }
     // shockwave
     shocks.ring(c.x, Math.max(0.05, c.y - 0.3), c.z, 0, 1, 0, 0.5, 0.5, 8, 0.06, 1.0, [3, 1.6, 0.6], 3);
-    shocks.shell(c.x, c.y, c.z, 0.35, 0.5, 4.5, 0.35, [3, 1.6, 0.5], 3);
+    shocks.shell(c.x, c.y, c.z, 0.3, 0.4, 2.6, 0.2, [2.2, 1.2, 0.4], 3);
     // chunks
     const nChunks = 9;
     const tint = new THREE.Color().copy(pal.p).multiplyScalar(0.5).lerp(new THREE.Color(0.03, 0.03, 0.035), 0.5);
