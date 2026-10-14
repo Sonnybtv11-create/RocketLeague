@@ -19,6 +19,7 @@ export const DEFAULT_BINDINGS = {
     powerslide: ['ShiftLeft'],
     airRollLeft: ['KeyQ'],
     airRollRight: ['KeyE'],
+    freeLook: ['Mouse1'],      // hold + move mouse to look around
     ballCam: ['Space'],
     resetBall: ['KeyR'],
     scoreboard: ['Tab'],

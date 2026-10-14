@@ -25,6 +25,8 @@
 
 const DEG = Math.PI / 180;
 export const CLEARANCE = 32;
+// minimum fraction of the boom (distance/height) the camera keeps before it swings over/under the car
+export const MIN_BOOM = 0.65;
 const WORLD_UP = Object.freeze({ x: 0, y: 0, z: 1 });
 
 // ---- tiny vector helpers (plain objects) ---------------------------------------
@@ -165,7 +167,17 @@ export function createCarRig() {
     const worldW = b * (1 - s.surfLock);
     const upTarget = worldW > 0 ? slerpDir(carCamUp, WORLD_UP, worldW) : carCamUp;
     if (teleport) s.up = upTarget;
-    else s.up = norm(slerpDir(s.up, upTarget, expK(onSurface ? 9 : 3.2, dt)));
+    else {
+      // Big flips (falling off the ceiling, ball cam toggled upside down) roll about the
+      // heading axis instead of swinging the frame sideways through an arbitrary axis.
+      let ut = upTarget;
+      if (dot(s.up, upTarget) < 0) {
+        const hd = planarNorm(s.heading, s.up);
+        const pu = planar(upTarget, hd);
+        ut = len(pu) > 0.2 ? norm(pu) : rotAxis(s.up, hd, Math.PI / 2);
+      }
+      s.up = norm(slerpDir(s.up, ut, expK(onSurface ? 9 : 3.2, dt)));
+    }
     const up = s.up;
 
     // ---------------------------------------------------------------- heading targets
@@ -248,23 +260,44 @@ export function createCarRig() {
     const orbit = Math.min(s.pitchExtra, orbitMax);
     const viewPitchBase = angle + s.pitchExtra;
 
-    // ---------------------------------------------------------------- boom raise
-    // If the boom would still collapse (backing into the net / a corner, surface-locked ball
-    // cam under the crossbar...), swing it up over the car instead of pulling it into the car:
-    // the whole rig pitches down by `raise`, so the car keeps its place on screen.
-    let raiseT = 0;
+    // ---------------------------------------------------------------- boom swing
+    // If the boom would still collapse (backing into the net / a corner, ball cam under the
+    // ceiling, surface transitions...), swing it over (raise > 0) or under (raise < 0) the car
+    // instead of pulling it into the car: the whole rig pitches about the car, so the car keeps
+    // its place on screen. Candidates are tried in order of increasing |swing|, raising first.
+    // The smoothed swing may only lag while it keeps >= MIN_BOOM of the boom; otherwise it snaps to
+    // the smallest swing that does (the collision clamp is instant too).
+    const boomFrac = (r) => {
+      const pr = rigPos(pivot, heading, up, D, H, orbit - r);
+      const o = sub(pr, cpos), lo = len(o) || 1;
+      return clearanceLength(arena.sdf, arena.raycast, cpos, mul(o, 1 / lo), lo) / lo;
+    };
+    let raiseT = 0, raiseFloor = null;
+    s.raise = wrapPi(s.raise);
     if (arena && arena.sdf) {
       let best = -1, bestR = 0;
-      for (let r = 0; r <= 80 * DEG + 1e-9; r += 10 * DEG) {
-        const pr = rigPos(pivot, heading, up, D, H, orbit - r);
-        const o = sub(pr, cpos), lo = len(o) || 1;
-        const fr = clearanceLength(arena.sdf, arena.raycast, cpos, mul(o, 1 / lo), lo) / lo;
+      for (let k = 0; k <= 72; k++) {
+        const step = Math.ceil(k / 2) * 5 * DEG;
+        const r = k % 2 === 1 ? step : -step; // 0, +5, -5, +10, -10, ... full circle
+        if (k > 0 && step === 0) continue;
+        const fr = boomFrac(r);
         if (fr > best + 0.02) { best = fr; bestR = r; }
+        if (raiseFloor === null && fr >= MIN_BOOM) raiseFloor = r;
         if (fr >= 0.85) break;
       }
       raiseT = bestR;
+      if (raiseFloor === null) raiseFloor = bestR;
     }
-    s.raise = teleport ? raiseT : s.raise + (raiseT - s.raise) * expK(raiseT > s.raise ? 10 : 2.5, dt);
+    s.raise = teleport ? raiseT : s.raise + wrapPi(raiseT - s.raise) * expK(Math.abs(raiseT) > Math.abs(s.raise) ? 10 : 2.5, dt);
+    if (arena && arena.sdf && Math.abs(s.raise - raiseFloor) > 1e-6 && boomFrac(s.raise) < MIN_BOOM) {
+      // snap to the nearest acceptable swing from where the camera is now (minimal jump)
+      let snap = raiseFloor;
+      for (let k = 1; k <= 72; k++) {
+        const r = wrapPi(s.raise + (k % 2 === 1 ? 1 : -1) * Math.ceil(k / 2) * 5 * DEG);
+        if (boomFrac(r) >= MIN_BOOM) { snap = r; break; }
+      }
+      s.raise = snap;
+    }
 
     // ---------------------------------------------------------------- position + collision
     const ideal = rigPos(pivot, heading, up, D, H, orbit - s.raise);
@@ -277,6 +310,8 @@ export function createCarRig() {
     const scaleT = allowed / offLen;
     if (teleport || scaleT < s.boomScale) s.boomScale = scaleT;
     else s.boomScale += (scaleT - s.boomScale) * expK(4, dt);
+    // never ease back out from a collapsed boom when MIN_BOOM is available right now
+    if (s.boomScale < MIN_BOOM && scaleT > s.boomScale) s.boomScale = Math.min(scaleT, MIN_BOOM);
     let pos = add(origin, mul(dirC, offLen * s.boomScale));
     if (arena && arena.sdf) pos = pushOut(arena.sdf, pos);
 

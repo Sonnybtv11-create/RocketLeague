@@ -1,7 +1,8 @@
 // TURBO PITCH — input (camera & input agent).
 // createInput({ canvas, settings, onAction }) -> {
 //   poll(now), sampleTick() -> Controls, getLook() -> {x,y}, isBallCam(), setEnabled(bool),
-//   startRebind(action, 'kb'|'pad', cb(code|null)), cancelRebind(), lastDevice, dispose() }
+//   startRebind(action, 'kb'|'pad', cb(code|null)), cancelRebind(), resetBallCam(), lastDevice, dispose() }
+//   Mouse free-look: hold settings.bindings.kb.freeLook (default middle mouse, 'Mouse1') and move.
 //
 // Thin DOM layer over the pure, unit-tested core in ./core.js:
 //   * keyboard + mouse buttons -> timestamped edges (performance.now() at dispatch)
@@ -83,6 +84,7 @@ export function createInput({ canvas, settings, onAction }) {
     // only clicks that land on the game canvas (HUD is pointer-events:none) or while locked
     if (e.target !== canvas && !pointerLocked()) return;
     core.keyEvent(code, true, now());
+    if (e.button === 1) e.preventDefault(); // middle button (free-look): no autoscroll
     if (enabled && settings.controls && settings.controls.mouseAirPitch && !pointerLocked() && canvas.requestPointerLock) {
       try { lockRequested = true; const r = canvas.requestPointerLock(); if (r && r.catch) r.catch(() => { lockRequested = false; }); } catch (err) { lockRequested = false; }
     }
@@ -93,7 +95,9 @@ export function createInput({ canvas, settings, onAction }) {
     if (code) core.keyEvent(code, false, now());
   }, { capture: true });
   on(target, 'mousemove', (e) => {
-    if (!enabled || !pointerLocked()) return;
+    if (!enabled) return;
+    if (core.isFreeLookHeld()) { core.mouseLook(e.movementX || 0); return; } // free-look owns the mouse while held
+    if (!pointerLocked()) return;
     core.mouseMove(e.movementX || 0, e.movementY || 0);
   });
   on(canvas, 'contextmenu', (e) => e.preventDefault());
@@ -131,6 +135,7 @@ export function createInput({ canvas, settings, onAction }) {
     },
     getLook() { return core.getLook(); },
     isBallCam() { return core.isBallCam(); },
+    resetBallCam() { return core.resetBallCam(); },
     setEnabled(b) {
       enabled = !!b;
       core.setEnabled(enabled);

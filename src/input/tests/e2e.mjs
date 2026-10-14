@@ -121,12 +121,17 @@ try {
   await page2.evaluate(async () => {
     const m = await import('/src/sim/arena.js');
     window.__sdf = m.arenaSDF;
-    window.__minCam = { d: Infinity, at: null };
+    window.__minCam = { d: Infinity, at: null, carDist: Infinity };
     const loop = () => {
       const c = window.__camCtl && window.__camCtl.debug.simPos;
       if (c && window.__camCtl.debug.mode === 'car') {
         const d = m.arenaSDF(c.x, c.y, c.z);
-        if (d < window.__minCam.d) window.__minCam = { d, at: c };
+        if (d < window.__minCam.d) window.__minCam = { ...window.__minCam, d, at: c };
+        const g = window.__game; const car = g.world.getCar(g.playerCarId);
+        if (car && g.world.time > window.__minCamT0 + 0.3) {
+          const p = car.body.pos;
+          window.__minCam.carDist = Math.min(window.__minCam.carDist, Math.hypot(c.x - p.x, c.y - p.y, c.z - p.z));
+        }
       }
       requestAnimationFrame(loop);
     };
@@ -137,26 +142,31 @@ try {
     { name: 'side wall', x: 3300, y: 0, yaw: 0 },
     { name: 'back wall beside goal', x: -1800, y: 4300, yaw: Math.PI / 2 },
     { name: 'into goal', x: 0, y: 4300, yaw: Math.PI / 2 },
+    { name: 'reversing into the net', x: 0, y: 4700, yaw: -Math.PI / 2, reverse: true },
   ];
   for (const sc of scenarios) {
     await page2.evaluate((sc) => {
       const g = window.__game; const car = g.world.getCar(g.playerCarId);
       car.setSpawn(sc.x, sc.y, 17, sc.yaw, 100);
-      car.body.vel.set(Math.cos(sc.yaw) * 1400, Math.sin(sc.yaw) * 1400, 0);
-      window.__minCam = { d: Infinity, at: null };
+      const sp = sc.reverse ? -900 : 1400;
+      car.body.vel.set(Math.cos(sc.yaw) * sp, Math.sin(sc.yaw) * sp, 0);
+      window.__minCam = { d: Infinity, at: null, carDist: Infinity };
+      window.__minCamT0 = g.world.time; // ignore the teleport frames
     }, sc);
-    await page2.keyboard.down('KeyW');
+    const key = sc.reverse ? 'KeyS' : 'KeyW';
+    await page2.keyboard.down(key);
     await page2.mouse.move(640, 420);
-    await page2.mouse.down({ button: 'left' }); // boost up the wall
+    if (!sc.reverse) await page2.mouse.down({ button: 'left' }); // boost up the wall
     await waitSim(page2, 1.2);
-    await page2.mouse.up({ button: 'left' });
+    if (!sc.reverse) await page2.mouse.up({ button: 'left' });
     await waitSim(page2, 1.0);
     const state = await page2.evaluate(() => {
       const g = window.__game; const c = g.world.getCar(g.playerCarId);
       return { min: window.__minCam, car: { x: c.body.pos.x, y: c.body.pos.y, z: c.body.pos.z, upz: c.up.z } };
     });
     if (sc.name === 'side wall') { mkdirSync(SHOTS, { recursive: true }); await page2.screenshot({ path: `${SHOTS}/e2e_wall.png` }); }
-    await page2.keyboard.up('KeyW');
+    await page2.keyboard.up(key);
+    check(`ball cam keeps a usable boom (${sc.name})`, state.min.carDist >= 150, `min car-camera distance ${state.min.carDist.toFixed(0)} uu`);
     check(`camera clearance > 20 uu (${sc.name})`, state.min.d > 20, `min SDF ${state.min.d.toFixed(1)} uu; car at (${state.car.x.toFixed(0)}, ${state.car.y.toFixed(0)}, ${state.car.z.toFixed(0)}) up.z ${state.car.upz.toFixed(2)}`);
   }
   await page2.close();

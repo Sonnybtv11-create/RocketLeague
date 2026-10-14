@@ -31,7 +31,11 @@ export const TICK_MS = 1000 / 120;
 export const CONTROL_ACTIONS = ['throttle', 'reverse', 'steerLeft', 'steerRight', 'pitchUp', 'pitchDown',
   'yawLeft', 'yawRight', 'jump', 'boost', 'powerslide', 'airRollLeft', 'airRollRight'];
 // actions forwarded to onAction immediately
-export const UI_ACTIONS = ['ballCam', 'resetBall', 'scoreboard', 'pause', 'debug'];
+export const UI_ACTIONS = ['ballCam', 'resetBall', 'scoreboard', 'pause', 'debug', 'freeLook'];
+// Mouse free-look: hold this binding (default middle mouse button) and move the mouse to swivel
+// the car camera around the car (spec §7). Works without pointer lock and never touches the
+// car controls, so it does not interfere with mouse air pitch being off (or on).
+export const DEFAULT_FREELOOK_BINDING = ['Mouse1'];
 // gamepad bindings that are axes rather than buttons
 export const PAD_AXIS_ACTIONS = ['steerAxis', 'pitchAxis', 'lookX', 'lookY'];
 
@@ -49,7 +53,7 @@ export function deadzone1(v, dz) {
 }
 // 2D stick deadzone. shape 'cross' = per-axis (RL's default feel), 'radial' = circular.
 export function deadzone2(x, y, dz, shape) {
-  if (shape === 'radial') {
+  if (shape === 'radial' || shape === 'circle') { // UI writes 'circle'
     const m = Math.hypot(x, y);
     if (m <= dz) return [0, 0];
     const s = Math.min((m - dz) / (1 - dz), 1) / m;
@@ -108,6 +112,8 @@ export function createInputCore({ settings, onAction } = {}) {
 
   // mouse virtual stick
   let mouseAccX = 0, mouseAccY = 0, mouseX = 0, mouseY = 0;
+  // mouse free-look: held flag + accumulated swivel angle (rad, + = look right)
+  let freeLookHeld = false, lookAngle = 0;
 
   // rebind capture
   let rebind = null; // {action, device, cb, padBaseline}
@@ -123,6 +129,7 @@ export function createInputCore({ settings, onAction } = {}) {
       const v = kb[k];
       if (Array.isArray(v) ? v.includes(code) : v === code) out.push(k);
     }
+    if (kb.freeLook === undefined && DEFAULT_FREELOOK_BINDING.includes(code)) out.push('freeLook');
     return out;
   }
 
@@ -193,6 +200,10 @@ export function createInputCore({ settings, onAction } = {}) {
       case 'debug': if (down) fire('debug', true); break;
       case 'scoreboard': if (enabled || !down) fire('scoreboard', down); break;
       case 'ballCam': if (enabled || !down) ballCamInput(down); break;
+      case 'freeLook':
+        freeLookHeld = down && enabled;
+        if (!down) lookAngle = 0; // released -> camera swings back behind the car
+        break;
       default: break;
     }
   }
@@ -208,6 +219,14 @@ export function createInputCore({ settings, onAction } = {}) {
       ballCam = !ballCam;
       fire('ballCam', ballCam);
     }
+  }
+
+  // mouse movement while the free-look binding is held
+  function mouseLook(dx) {
+    if (!freeLookHeld || !enabled) return;
+    lastDevice = 'kb';
+    const sens = ctl().mouseSensitivity ?? 1;
+    lookAngle = clamp(lookAngle + dx * 0.006 * sens, -Math.PI, Math.PI);
   }
 
   function mouseMove(dx, dy) {
@@ -228,6 +247,7 @@ export function createInputCore({ settings, onAction } = {}) {
     for (const code of [...kbHeld]) applyKbEdge(code, false);
     kbHeld.clear();
     mouseAccX = mouseAccY = mouseX = mouseY = 0;
+    freeLookHeld = false; lookAngle = 0;
     void t;
   }
 
@@ -431,18 +451,31 @@ export function createInputCore({ settings, onAction } = {}) {
   }
 
   return {
-    keyEvent, mouseMove, releaseAll, setPad, beginFrame, sampleTick, startRebind, cancelRebind,
+    keyEvent, mouseMove, mouseLook, releaseAll, setPad, beginFrame, sampleTick, startRebind, cancelRebind,
     setEnabled(b) {
       enabled = !!b;
-      if (!enabled) { mouseX = mouseY = mouseAccX = mouseAccY = 0; for (const n of CONTROL_ACTIONS) act[n].pending.length = 0; }
+      if (!enabled) {
+        mouseX = mouseY = mouseAccX = mouseAccY = 0; freeLookHeld = false; lookAngle = 0;
+        for (const n of CONTROL_ACTIONS) act[n].pending.length = 0;
+      }
     },
     isEnabled: () => enabled,
     isBallCam: () => ballCam,
     setBallCam(v) { ballCam = !!v; },
+    // re-apply settings.camera.ballCamDefault (called by main at each session start)
+    resetBallCam() {
+      ballCam = settings && settings.camera ? settings.camera.ballCamDefault !== false : true;
+      ballCamHeld = false;
+      return ballCam;
+    },
+    isFreeLookHeld: () => freeLookHeld,
+    // {x, y} in right-stick convention: x + = look right, y + = stick pulled back (look behind)
     getLook() {
       if (!enabled) return { x: 0, y: 0 };
       const invX = settings && settings.camera && settings.camera.invertSwivel ? -1 : 1;
-      return { x: padLook.x * invX, y: padLook.y };
+      if (padLook.x || padLook.y) return { x: padLook.x * invX, y: padLook.y };
+      if (freeLookHeld || lookAngle) return { x: Math.sin(lookAngle) * invX, y: -Math.cos(lookAngle) };
+      return { x: 0, y: 0 };
     },
     get lastDevice() { return lastDevice; },
     isRebinding: () => !!rebind,

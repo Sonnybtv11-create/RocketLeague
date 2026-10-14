@@ -745,6 +745,7 @@ export function createVFX(ctx) {
           if (!car) return;
           const f = car.body.rot.forward;
           car.body.vel.set(f.x * speed, f.y * speed, f.z * speed);
+          car.boost = 100;
         },
         // jump the effect clock forward (to screenshot an effect mid-flight on slow machines)
         advance(sec) {

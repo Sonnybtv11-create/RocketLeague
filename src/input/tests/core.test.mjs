@@ -286,3 +286,43 @@ test('releaseAll (blur) releases held keys and scoreboard', () => {
   assert.equal(frame(core, 1020, 1)[0].throttle, 0);
   assert.ok(actions.some(([n, d]) => n === 'scoreboard' && d === false));
 });
+
+test('mouse free-look: hold middle mouse + move swivels, release recentres, no effect on controls', () => {
+  const { core, settings } = mk();
+  frame(core, 1000, 1);
+  core.mouseLook(300); // not held: ignored
+  assert.deepEqual(core.getLook(), { x: 0, y: 0 });
+  core.keyEvent('Mouse1', true, 1001);
+  core.mouseLook(262); // 262 px * 0.006 = ~90 deg right
+  let l = core.getLook();
+  assert.ok(l.x > 0.99 && Math.abs(l.y) < 0.05, `look right ${JSON.stringify(l)}`);
+  core.mouseLook(1000); // clamps at looking straight back
+  l = core.getLook();
+  assert.ok(Math.abs(l.x) < 1e-9 && l.y > 0.99, 'clamped to behind');
+  const c = frame(core, 1010, 1)[0];
+  assert.equal(c.yaw, 0); assert.equal(c.pitch, 0); assert.equal(c.boost, false); assert.equal(c.jump, false);
+  core.keyEvent('Mouse1', false, 1011);
+  assert.deepEqual(core.getLook(), { x: 0, y: 0 }, 'released -> recentred');
+  settings.bindings.kb.freeLook = ['KeyF']; // rebindable
+  core.keyEvent('Mouse1', true, 1012); core.mouseLook(100);
+  assert.deepEqual(core.getLook(), { x: 0, y: 0 });
+  core.keyEvent('Mouse1', false, 1013);
+  core.keyEvent('KeyF', true, 1014); core.mouseLook(-100);
+  assert.ok(core.getLook().x < 0, 'KeyF free-look, mouse left = look left');
+});
+
+test('resetBallCam re-applies settings.camera.ballCamDefault', () => {
+  const { core, settings } = mk();
+  core.keyEvent('Space', true, 1); core.keyEvent('Space', false, 2);
+  assert.equal(core.isBallCam(), false);
+  assert.equal(core.resetBallCam(), true);
+  assert.equal(core.isBallCam(), true);
+  settings.camera.ballCamDefault = false;
+  core.resetBallCam();
+  assert.equal(core.isBallCam(), false);
+});
+
+test("deadzone shape 'circle' is an alias of 'radial'", () => {
+  assert.deepEqual(deadzone2(0.15, 0.15, 0.2, 'circle'), deadzone2(0.15, 0.15, 0.2, 'radial'));
+  assert.notDeepEqual(deadzone2(0.15, 0.15, 0.2, 'circle'), [0, 0]);
+});

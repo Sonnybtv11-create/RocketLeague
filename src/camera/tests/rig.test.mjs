@@ -175,3 +175,77 @@ test('spectator & replay targets stay inside the arena', () => {
     }
   }
 });
+
+test('ball cam on walls / ceiling / in the net keeps a usable boom (camera never collapses into the car)', () => {
+  const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z);
+  const cases = [
+    // driving up the +X side wall (normal -X), heading up / along the wall
+    { name: 'side wall up', car: carView(v(4096 - 17, -800, 900), v(0, 0, 1), v(-1, 0, 0), v(0, 0, 1200)) },
+    { name: 'side wall along', car: carView(v(4096 - 17, 1500, 1200), v(0, 1, 0), v(-1, 0, 0), v(0, 1500, 0)) },
+    { name: '-X side wall low', car: carView(v(-4096 + 17, 2000, 400), v(0, 0.3, 1), v(1, 0, 0), v(0, 400, 1200)) },
+    // upside down on the ceiling
+    { name: 'ceiling', car: carView(v(1000, -1500, 2044 - 17), v(0, 1, 0), v(0, 0, -1), v(0, 1300, 0)) },
+    // back wall beside the goal
+    { name: 'back wall', car: carView(v(-2000, 5120 - 17, 900), v(0, 0, 1), v(0, -1, 0), v(0, 0, 1000)) },
+    // reversed into the back of the net, facing out (ball cam boom points into the net)
+    { name: 'in the net (backed in)', car: carView(v(0, 5900, 17), v(0, -1, 0), v(0, 0, 1)) },
+    { name: 'in the net (facing net)', car: carView(v(300, 5850, 17), v(0, 1, 0), v(0, 0, 1)) },
+    // corner, facing out of the corner
+    { name: 'corner backed in', car: carView(v(3300, 4300, 17), v(-1, -1, 0), v(0, 0, 1)) },
+  ];
+  const balls = [v(0, 0, 93), v(-2500, -3000, 600), v(0, 3000, 1400)];
+  let minD = Infinity;
+  for (const c of cases) {
+    for (const bp of balls) {
+      for (const ballCam of [true, false]) {
+        const rig = createCarRig();
+        const pose = run(rig, c.car, { pos: bp }, { ballCam }, 150);
+        const d = dist(pose.pos, c.car.pos);
+        minD = Math.min(minD, d);
+        const clr = arenaSDF(pose.pos.x, pose.pos.y, pose.pos.z);
+        assert.ok(d >= 150, `${c.name} ballCam=${ballCam} ball=${JSON.stringify(bp)}: camera only ${d.toFixed(0)} uu from the car`);
+        assert.ok(clr > 20, `${c.name}: camera clearance ${clr.toFixed(1)}`);
+        // the car must stay in front of the camera (visible), not behind / beside it
+        const toCar = v(c.car.pos.x - pose.pos.x, c.car.pos.y - pose.pos.y, c.car.pos.z - pose.pos.z);
+        assert.ok(dot(n(toCar), pose.dir) > 0.3, `${c.name} ballCam=${ballCam}: car not in view`);
+      }
+    }
+  }
+  console.log(`  minimum car-camera distance on walls/ceiling/net: ${minD.toFixed(0)} uu`);
+});
+
+test('ball cam boom survives driving floor -> ramp -> wall -> ceiling -> falling off (frame by frame)', () => {
+  // car path in the x-z cross-section of the +X side wall: floor, floor fillet (r 256), wall,
+  // ceiling fillet, ceiling, then a fall from the ceiling. 1380 uu/s at 60 fps. Ball at centre.
+  const R = 256, X = 4096, Hc = 2044, o = 17, sp = 23;
+  const pts = [];
+  const push = (x, z, nx, nz, tx, tz, air = false) => pts.push({ x, z, nx, nz, tx, tz, air });
+  for (let x = 2900; x < X - R; x += sp) push(x, o, 0, 1, 1, 0);
+  for (let a = 0; a < Math.PI / 2; a += sp / (R - o)) { // floor fillet
+    const nx = -Math.sin(a), nz = Math.cos(a);
+    push(X - R + (R - o) * Math.sin(a), R - (R - o) * Math.cos(a), nx, nz, Math.cos(a), Math.sin(a));
+  }
+  for (let z = R; z < Hc - R; z += sp) push(X - o, z, -1, 0, 0, 1);
+  for (let a = 0; a < Math.PI / 2; a += sp / (R - o)) { // ceiling fillet
+    const nx = -Math.cos(a), nz = -Math.sin(a);
+    push(X - R + (R - o) * Math.cos(a), Hc - R + (R - o) * Math.sin(a), nx, nz, -Math.sin(a), Math.cos(a));
+  }
+  for (let x = X - R; x > 2600; x -= sp) push(x, Hc - o, 0, -1, -1, 0);
+  { // fall off the ceiling for 1 s under gravity (still upside down)
+    const x0 = pts[pts.length - 1].x;
+    for (let i = 1; i <= 60; i++) { const t = i / 60; push(x0 - sp * i, Hc - o - 325 * t * t, 0, -1, -1, 0, true); }
+  }
+  for (const ballCam of [true, false]) {
+    const rig = createCarRig();
+    let minD = Infinity, at = null;
+    pts.forEach((p, i) => {
+      const car = carView(v(p.x, 0, p.z), v(p.tx, 0, p.tz), v(p.nx, 0, p.nz), v(p.tx * 1380, 0, p.tz * 1380), p.air ? 0 : 4);
+      const pose = rig.update(car, { pos: v(0, 0, 93) }, CAM, { ballCam }, 1 / 60, 16 / 9, arena);
+      const d = Math.hypot(pose.pos.x - p.x, pose.pos.y, pose.pos.z - p.z);
+      if (i > 5 && d < minD) { minD = d; at = { x: p.x, z: p.z }; }
+      assert.ok(arenaSDF(pose.pos.x, pose.pos.y, pose.pos.z) > 20);
+    });
+    console.log(`  ballCam=${ballCam}: min car-camera distance along the path ${minD.toFixed(0)} uu`);
+    assert.ok(minD >= 150, `ballCam=${ballCam}: boom collapsed to ${minD.toFixed(0)} uu at ${JSON.stringify(at)}`);
+  }
+});
