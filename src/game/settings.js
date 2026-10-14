@@ -60,6 +60,7 @@ export const DEFAULT_SETTINGS = {
     mouseSensitivity: 1.0,
     kbAirRollMode: 'yaw',   // A/D: 'yaw' in air (default) ; with powerslide held = roll
     invertPitch: false,
+    kbThrottlePitch: true,  // W/S also pitch the car in the air (RL keyboard default)
   },
   bindings: JSON.parse(JSON.stringify(DEFAULT_BINDINGS)),
   graphics: { quality: 'high', motionBlur: false, fpsCap: 0, showFps: false, nameplates: true, renderScale: 1.0 },

@@ -157,6 +157,7 @@ function menuScene() {
 
 // ---------------------------------------------------------------- input / UI
 const input = createInput({ canvas, settings, onAction });
+game.input = input;
 function onAction(name, down = true) {
   audio.unlock && audio.unlock();
   if (name === 'pause') {
