@@ -345,7 +345,7 @@ export function createStadium(ctx) {
   // outer ground
   const groundGeo = track(new THREE.CircleGeometry(900, 48));
   groundGeo.rotateX(-Math.PI / 2);
-  const groundMat = track(new THREE.MeshStandardMaterial({ color: 0x4f6b45, roughness: 1 }));
+  const groundMat = track(new THREE.MeshStandardMaterial({ color: 0x4a4d53, roughness: 1 })); // concourse / plaza
   const ground = new THREE.Mesh(groundGeo, groundMat);
   ground.position.y = -0.3;
   group.add(ground);
