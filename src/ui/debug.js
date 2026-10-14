@@ -41,7 +41,8 @@ export function createDebug({ api }) {
     await new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0)));
     try {
       const results = await api.runSelfTests(addLine);
-      if (Array.isArray(results)) {
+      const lastTxt = resBox.lastChild ? resBox.lastChild.textContent : '';
+      if (Array.isArray(results) && !/\d+\/\d+ passed/.test(lastTxt)) {
         const pass = results.filter((r) => r.pass).length;
         addLine(`SUMMARY: ${pass}/${results.length} passed${pass === results.length ? ' ✔' : ''}`);
       }

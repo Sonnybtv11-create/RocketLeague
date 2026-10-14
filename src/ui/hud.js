@@ -164,7 +164,8 @@ export function createHUD({ api, settings }) {
     goalEl.append(
       h('div.tp-goal-band.' + teamCls(team), h('div.tp-goal-title', `${TEAM_NAME[team]} SCORES!`)),
       h('div.tp-goal-sub',
-        h('span', h('span.lbl', e.ownGoal ? 'OWN GOAL' : 'GOAL'), h('span.v.' + teamCls(scorer ? scorer.team : team), scorer ? scorer.name : '—')),
+        h('span', h('span.lbl', 'GOAL'), h('span.v.' + teamCls(scorer ? scorer.team : team), scorer ? scorer.name : '—')),
+        e.ownGoal ? h('span', h('span.v', { style: { color: 'var(--gold-l)' } }, 'OWN GOAL')) : null,
         assist ? h('span', h('span.lbl', 'ASSIST'), h('span.v.' + teamCls(assist.team), assist.name)) : null,
         h('span', h('span.lbl', 'SPEED'), h('span.v', `${kmh} KM/H`))));
     setShown(goalEl, true);
@@ -195,7 +196,7 @@ export function createHUD({ api, settings }) {
           const sc = carInfo(e.scorerId, view);
           const as = e.assistId !== undefined && e.assistId !== null && e.assistId >= 0 ? carInfo(e.assistId, view) : null;
           const teamName = TEAM_NAME[e.team === 1 ? 1 : 0];
-          const gl = e.ownGoal ? 'OWN GOAL' : 'GOAL';
+          const gl = e.ownGoal ? 'GOAL · OWN GOAL' : 'GOAL';
           let html = sc ? `${pill(sc)}${ICONS.goal}<span class="ev">${gl}</span>` : `<span class="nm ${teamCls(e.team)}">${teamName}</span>${ICONS.goal}<span class="ev">${gl}</span>`;
           if (as) html += `<span class="ev">ASSIST</span>${nameSpan(as)}`;
           addFeed(html);
@@ -293,10 +294,11 @@ export function createHUD({ api, settings }) {
           const team = lg.team === 1 ? 1 : 0;
           const kmh = Math.round((lg.ballSpeed || 0) * 0.036);
           replayCard.append(
-            h('div.hd', lg.ownGoal ? 'OWN GOAL BY' : 'GOAL BY'),
+            h('div.hd', 'GOAL BY'),
             h('div.bar.' + teamCls(team), h('div.who', lg.scorerName || TEAM_NAME[team]),
               lg.assistName ? h('div.ast', `Assist: ${lg.assistName}`) : null),
-            h('div.meta', h('span', `${kmh}`, h('small', 'KM/H')), h('span', TEAM_NAME[team], h('small', 'SCORES'))));
+            h('div.meta', h('span', `${kmh}`, h('small', 'KM/H')), h('span', TEAM_NAME[team], h('small', 'SCORES')),
+              lg.ownGoal ? h('span', { style: { color: 'var(--gold-l)' } }, 'OWN GOAL') : null));
         }
         replaySkip.innerHTML = '';
         replaySkip.append('Press ', h('span.tp-key' + (pad ? '.pad' : ''), keyTxt), ' / click to skip');

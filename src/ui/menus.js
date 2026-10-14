@@ -44,6 +44,8 @@ export function createMenus({ api, settings, stats, onOpenChange }) {
   let endView = null;
   let tipIdx = 0, tipT = 0, tipEl = null;
   let settingsTab = 'camera';
+  let rebindEndT = -1e9;
+  let backHandledAt = -1e9;
 
   const input = () => (api.getInput ? api.getInput() : null);
   const changed = () => { api.settingsChanged && api.settingsChanged(); };
@@ -172,7 +174,7 @@ export function createMenus({ api, settings, stats, onOpenChange }) {
 <path d="M132 34 l14 10 -5.5 16.5 h-17 l-5.5 -16.5 z" fill="#1a2440"/>
 <path d="M132 12 v22 M146 44 l21 -7 M140.5 60.5 l12 17 M123.5 60.5 l-12 17 M118 44 l-21 -7" stroke="#1a2440" stroke-width="3"/>
 <text x="178" y="80" font-size="76" font-weight="900" font-style="italic" fill="url(#tpLgW)" stroke="#0a1430" stroke-width="2" paint-order="stroke" textLength="268" lengthAdjust="spacingAndGlyphs">TURBO</text>
-<text x="172" y="122" font-size="40" font-weight="800" font-style="italic" fill="url(#tpLgO)" stroke="#2a1000" stroke-width="1.5" paint-order="stroke" textLength="268" lengthAdjust="spacing" letter-spacing="14">PITCH</text>
+<text x="176" y="123" font-size="46" font-weight="900" font-style="italic" fill="url(#tpLgO)" stroke="#2a1000" stroke-width="1.5" paint-order="stroke" textLength="266" lengthAdjust="spacingAndGlyphs" letter-spacing="6">PITCH</text>
 </svg>`;
     return h('div.tp-logo', { html: svg, 'aria-label': GAME_TITLE });
   }
@@ -279,7 +281,7 @@ export function createMenus({ api, settings, stats, onOpenChange }) {
         refresh();
       };
       p.append(title('Garage', 'Body · hitbox · paint'));
-      const panel = h('div.tp-panel.tp-scroll', { style: { right: 'calc(var(--u) * 3)', top: 'calc(var(--u) * 4)', width: 'calc(var(--u) * 52)', bottom: 'calc(var(--u) * 8)', padding: 'calc(var(--u) * 2.4) calc(var(--u) * 2.6)' } });
+      const panel = h('div.tp-panel.tp-scroll', { style: { right: 'calc(var(--u) * 3)', top: 'calc(var(--u) * 4)', width: 'calc(var(--u) * 52)', maxHeight: 'calc(100% - var(--u) * 12)', padding: 'calc(var(--u) * 2.4) calc(var(--u) * 2.6)' } });
       const nameIn = h('input.tp-input', { type: 'text', maxlength: '16', value: g.playerName || 'Player', 'data-nav': '', 'data-key': 'name', spellcheck: 'false' });
       nameIn.addEventListener('input', () => { g.playerName = nameIn.value.replace(/[^\w .\-]/g, '').slice(0, 16) || 'Player'; });
       nameIn.addEventListener('change', () => { api.saveSettings && api.saveSettings(); });
@@ -576,6 +578,7 @@ export function createMenus({ api, settings, stats, onOpenChange }) {
     try {
       inp.startRebind(action, device, (res) => {
         if (!rebinding || rebinding.action !== action || rebinding.device !== device) return;
+        rebindEndT = performance.now();
         applyRebindResult(action, device, res);
         closeModal();
         changed();
@@ -602,6 +605,7 @@ export function createMenus({ api, settings, stats, onOpenChange }) {
     nav.pageChanged();
   }
   function cancelRebind() {
+    rebindEndT = performance.now();
     const inp = input();
     if (rebinding && inp && inp.cancelRebind) { try { inp.cancelRebind(); } catch (e) { /* ignore */ } }
     closeModal();
@@ -610,6 +614,8 @@ export function createMenus({ api, settings, stats, onOpenChange }) {
   // ------------------------------------------------------------------ keyboard (Esc = back, arrows = navigate)
   function onKeyDown(e) {
     if (ctx === null) return;
+    // the key that just finished / cancelled a rebind must not also navigate the menu
+    if (performance.now() - rebindEndT < 200) { e.preventDefault(); return; }
     if (modal) {
       if (e.code === 'Escape' || e.key === 'Escape') { e.preventDefault(); e.stopImmediatePropagation(); cancelRebind(); }
       return; // everything else belongs to the rebind capture
@@ -617,6 +623,7 @@ export function createMenus({ api, settings, stats, onOpenChange }) {
     const tgt = e.target;
     const typing = tgt && tgt.tagName === 'INPUT' && tgt.type === 'text';
     if (e.code === 'Escape') {
+      if (performance.now() - backHandledAt < 50) { e.preventDefault(); return; } // main already routed it via handleBack()
       if (typing) { e.preventDefault(); e.stopImmediatePropagation(); tgt.blur(); return; }
       // root of the pause menu: let the game's own pause toggle resume play
       if (ctx === 'pause' && stack.length <= 1) return;
@@ -637,6 +644,17 @@ export function createMenus({ api, settings, stats, onOpenChange }) {
     showPause() { open('pause', 'pause'); },
     showEnd(mv) { endView = mv; open('end', 'end'); },
     hide,
+    // "Back" request routed from the game (Esc / pause action). Returns true when consumed
+    // (rebind cancelled, sub-page popped, end screen) and false when the caller should act (e.g. resume).
+    handleBack() {
+      if (ctx === null) return false;
+      backHandledAt = performance.now();
+      if (modal) { cancelRebind(); return true; }
+      if (stack.length > 1) { back(false); return true; }
+      if (ctx === 'end' || ctx === 'main') return true;
+      backHandledAt = -1e9;
+      return false;
+    },
     isOpen() { return ctx !== null; },
     context() { return ctx; },
     update(dt) {

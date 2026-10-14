@@ -71,6 +71,8 @@ export function createUI({ root, api, settings, stats }) {
       hud.setScoreboard(!!on);
     },
     isMenuOpen() { return menus.isOpen(); },
+    // Optional hook for main's pause/Esc handling: true = the UI consumed it (closed a sub-menu or a rebind prompt).
+    handleBack() { return menus.handleBack(); },
     setDebug(on) { debug.setOn(on); root.classList.toggle('dbg', !!on); },
     dispose() {
       menus.dispose();
