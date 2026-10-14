@@ -5006,6 +5006,55 @@ var DEFAULT_BINDINGS = {
     lookY: "a3"
   }
 };
+var CONTROL_PRESETS = {
+  kbm: {
+    name: "Keyboard & mouse",
+    hint: "Right click jump, left click boost (game defaults)",
+    kb: DEFAULT_BINDINGS.kb,
+    controls: { mouseAirPitch: false, kbThrottlePitch: true }
+  },
+  macbook: {
+    name: "MacBook",
+    hint: "Keyboard only, no trackpad: Space jump, J boost, I / K pitch, L ball cam",
+    kb: {
+      throttle: ["KeyW"],
+      reverse: ["KeyS"],
+      steerLeft: ["KeyA"],
+      steerRight: ["KeyD"],
+      pitchUp: ["KeyK", "ArrowDown"],
+      pitchDown: ["KeyI", "ArrowUp"],
+      yawLeft: ["ArrowLeft"],
+      yawRight: ["ArrowRight"],
+      jump: ["Space"],
+      boost: ["KeyJ"],
+      powerslide: ["ShiftLeft"],
+      airRollLeft: ["KeyQ"],
+      airRollRight: ["KeyE"],
+      freeLook: ["KeyU"],
+      ballCam: ["KeyL"],
+      resetBall: ["KeyR"],
+      scoreboard: ["Tab"],
+      pause: ["Escape"]
+    },
+    controls: { mouseAirPitch: false, kbThrottlePitch: true }
+  }
+};
+function applyControlPreset(settings2, id) {
+  const p = CONTROL_PRESETS[id];
+  if (!p) return false;
+  settings2.bindings.kb = JSON.parse(JSON.stringify(p.kb));
+  Object.assign(settings2.controls, p.controls);
+  settings2.controls.preset = id;
+  return true;
+}
+function currentControlPreset(settings2) {
+  const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  for (const [id, p] of Object.entries(CONTROL_PRESETS)) {
+    const kb = settings2.bindings.kb;
+    if (Object.keys(p.kb).every((k) => same(kb[k], p.kb[k]))) return id;
+  }
+  return "custom";
+}
 var DEFAULT_SETTINGS = {
   camera: {
     fov: 110,
@@ -5034,8 +5083,10 @@ var DEFAULT_SETTINGS = {
     kbAirRollMode: "yaw",
     // A/D: 'yaw' in air (default) ; with powerslide held = roll
     invertPitch: false,
-    kbThrottlePitch: true
+    kbThrottlePitch: true,
     // W/S also pitch the car in the air (RL keyboard default)
+    preset: "kbm"
+    // control layout: 'kbm' | 'macbook' (see CONTROL_PRESETS)
   },
   bindings: JSON.parse(JSON.stringify(DEFAULT_BINDINGS)),
   graphics: { quality: "high", motionBlur: false, fpsCap: 0, showFps: false, nameplates: true, renderScale: 1 },
@@ -13846,6 +13897,21 @@ function createMenus({ api: api2, settings: settings2, stats: stats2, onOpenChan
     });
     return h("div.tp-row", h("div.nm", label, hint ? h("small", hint) : null), t, val);
   }
+  function presetRow() {
+    const cur = currentControlPreset(settings2);
+    const opts = Object.entries(CONTROL_PRESETS).map(([id, p]) => [id, p.name]);
+    const hint = cur === "custom" ? "Custom bindings — pick a layout to reset the keyboard" : CONTROL_PRESETS[cur].hint;
+    return h(
+      "div.tp-row",
+      h("div.nm", "Control layout", h("small", hint)),
+      seg(opts, cur, (v) => {
+        applyControlPreset(settings2, v);
+        changed();
+        refresh();
+      }, { key: "s:control-layout" }),
+      h("div.val")
+    );
+  }
   function segRow(label, obj, key, options, hint) {
     return h(
       "div.tp-row",
@@ -14361,6 +14427,8 @@ function createMenus({ api: api2, settings: settings2, stats: stats2, onOpenChan
         changed();
       }
       b.append(
+        h("div.tp-sect", "Layout"),
+        presetRow(),
         h("div.tp-sect", "Gamepad"),
         sliderRow("Controller deadzone", c, "deadzone", 0, 0.5, 0.01, f2),
         segRow("Deadzone shape", c, "deadzoneShape", [["cross", "Cross"], ["radial", "Circle"]]),
@@ -14385,7 +14453,7 @@ function createMenus({ api: api2, settings: settings2, stats: stats2, onOpenChan
         grid.appendChild(bindCell(a, "kb", a in kb ? keyList(kb[a]) : null));
         grid.appendChild(bindCell(a, "pad", a in pad ? padName(pad[a]) : null));
       }
-      b.append(h("div.tp-sect", "Click a binding, then press the new key / button"), grid);
+      b.append(h("div.tp-sect", "Layout"), presetRow(), h("div.tp-sect", "Click a binding, then press the new key / button"), grid);
     },
     graphics(b) {
       const g = settings2.graphics;

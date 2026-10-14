@@ -45,6 +45,61 @@ export const DEFAULT_BINDINGS = {
   },
 };
 
+// One-click control layouts (Settings › Controls). Each sets the keyboard bindings plus a
+// couple of keyboard options; gamepad bindings are untouched.
+export const CONTROL_PRESETS = {
+  kbm: {
+    name: 'Keyboard & mouse',
+    hint: 'Right click jump, left click boost (game defaults)',
+    kb: DEFAULT_BINDINGS.kb,
+    controls: { mouseAirPitch: false, kbThrottlePitch: true },
+  },
+  macbook: {
+    name: 'MacBook',
+    hint: 'Keyboard only, no trackpad: Space jump, J boost, I / K pitch, L ball cam',
+    kb: {
+      throttle: ['KeyW'],
+      reverse: ['KeyS'],
+      steerLeft: ['KeyA'],
+      steerRight: ['KeyD'],
+      pitchUp: ['KeyK', 'ArrowDown'],
+      pitchDown: ['KeyI', 'ArrowUp'],
+      yawLeft: ['ArrowLeft'],
+      yawRight: ['ArrowRight'],
+      jump: ['Space'],
+      boost: ['KeyJ'],
+      powerslide: ['ShiftLeft'],
+      airRollLeft: ['KeyQ'],
+      airRollRight: ['KeyE'],
+      freeLook: ['KeyU'],
+      ballCam: ['KeyL'],
+      resetBall: ['KeyR'],
+      scoreboard: ['Tab'],
+      pause: ['Escape'],
+    },
+    controls: { mouseAirPitch: false, kbThrottlePitch: true },
+  },
+};
+
+export function applyControlPreset(settings, id) {
+  const p = CONTROL_PRESETS[id];
+  if (!p) return false;
+  settings.bindings.kb = JSON.parse(JSON.stringify(p.kb));
+  Object.assign(settings.controls, p.controls);
+  settings.controls.preset = id;
+  return true;
+}
+
+// Which preset the current keyboard bindings match ('custom' after any rebind)
+export function currentControlPreset(settings) {
+  const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  for (const [id, p] of Object.entries(CONTROL_PRESETS)) {
+    const kb = settings.bindings.kb;
+    if (Object.keys(p.kb).every((k) => same(kb[k], p.kb[k]))) return id;
+  }
+  return 'custom';
+}
+
 export const DEFAULT_SETTINGS = {
   camera: {
     fov: 110, distance: 270, height: 100, angle: -4, stiffness: 0.45,
@@ -62,6 +117,7 @@ export const DEFAULT_SETTINGS = {
     kbAirRollMode: 'yaw',   // A/D: 'yaw' in air (default) ; with powerslide held = roll
     invertPitch: false,
     kbThrottlePitch: true,  // W/S also pitch the car in the air (RL keyboard default)
+    preset: 'kbm',          // control layout: 'kbm' | 'macbook' (see CONTROL_PRESETS)
   },
   bindings: JSON.parse(JSON.stringify(DEFAULT_BINDINGS)),
   graphics: { quality: 'high', motionBlur: false, fpsCap: 0, showFps: false, nameplates: true, renderScale: 1.0 },

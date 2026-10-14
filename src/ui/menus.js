@@ -2,7 +2,7 @@
 // controls help, lifetime stats, pause menu and end-of-match screen. Mouse-first, with keyboard
 // arrows / gamepad spatial navigation (see nav.js).
 import { CAR_BODIES, GAME_TITLE, TEAM_COLORS } from '../contracts.js';
-import { DEFAULT_SETTINGS, DEFAULT_BINDINGS } from '../game/settings.js';
+import { DEFAULT_SETTINGS, DEFAULT_BINDINGS, CONTROL_PRESETS, applyControlPreset, currentControlPreset } from '../game/settings.js';
 import { CAR_CONFIGS } from '../sim/carconfig.js';
 import { h, esc, keyName, keyList, padName, TEAM_NAME } from './dom.js';
 import { buildScoreboard, mvpPlayer } from './scoreboard.js';
@@ -134,6 +134,14 @@ export function createMenus({ api, settings, stats, onOpenChange }) {
       after && after();
     });
     return h('div.tp-row', h('div.nm', label, hint ? h('small', hint) : null), t, val);
+  }
+  // Control layout picker: Keyboard & mouse / MacBook (keyboard only)
+  function presetRow() {
+    const cur = currentControlPreset(settings);
+    const opts = Object.entries(CONTROL_PRESETS).map(([id, p]) => [id, p.name]);
+    const hint = cur === 'custom' ? 'Custom bindings — pick a layout to reset the keyboard' : CONTROL_PRESETS[cur].hint;
+    return h('div.tp-row', h('div.nm', 'Control layout', h('small', hint)),
+      seg(opts, cur, (v) => { applyControlPreset(settings, v); changed(); refresh(); }, { key: 's:control-layout' }), h('div.val'));
   }
   function segRow(label, obj, key, options, hint) {
     return h('div.tp-row', h('div.nm', label, hint ? h('small', hint) : null),
@@ -513,7 +521,9 @@ export function createMenus({ api, settings, stats, onOpenChange }) {
     controls(b) {
       const c = settings.controls;
       if (c.deadzoneShape === 'circle') { c.deadzoneShape = 'radial'; changed(); } // older saves
-      b.append(h('div.tp-sect', 'Gamepad'),
+      b.append(h('div.tp-sect', 'Layout'),
+        presetRow(),
+        h('div.tp-sect', 'Gamepad'),
         sliderRow('Controller deadzone', c, 'deadzone', 0, 0.5, 0.01, f2),
         segRow('Deadzone shape', c, 'deadzoneShape', [['cross', 'Cross'], ['radial', 'Circle']]),
         sliderRow('Dodge deadzone', c, 'dodgeDeadzone', 0.1, 0.9, 0.01, f2),
@@ -536,7 +546,7 @@ export function createMenus({ api, settings, stats, onOpenChange }) {
         grid.appendChild(bindCell(a, 'kb', a in kb ? keyList(kb[a]) : null));
         grid.appendChild(bindCell(a, 'pad', a in pad ? padName(pad[a]) : null));
       }
-      b.append(h('div.tp-sect', 'Click a binding, then press the new key / button'), grid);
+      b.append(h('div.tp-sect', 'Layout'), presetRow(), h('div.tp-sect', 'Click a binding, then press the new key / button'), grid);
     },
     graphics(b) {
       const g = settings.graphics;
