@@ -60,7 +60,9 @@ Renderer: WebGLRenderer, sRGB output, ACES tone mapping, PCFSoft shadow maps ena
   players: [{carId, name, team, isBot, goals, assists, saves, shots, demos, score}],
   lastGoal: {team, scorerId, scorerName, assistId, assistName, ballSpeed} | null,
   winner (0|1|null), mvpId, replayActive, ballHidden (true while the ball has exploded after a goal —
-  the ball renderer hides ball + shadow), waitingForBallToLand (zero-second rule active) }
+  the ball renderer hides ball + shadow; bots/cameras should ignore the ball then), waitingForBallToLand (zero-second rule active),
+  isKickoffPause (clock waiting for first touch), lastGoal.ownGoal }
+  countdown is -1 when nothing is shown. EV.stat carries {carId, kind, points, label, team, name}; skip '+0' popups.
 ```
 
 `info` passed to `ui.update`: `{ fps, playerCarId, tick, ballCam, inputDevice, mode ('menu'|'exhibition'|'freeplay'), paused, playerCar (CarView), world }`

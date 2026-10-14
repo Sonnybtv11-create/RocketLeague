@@ -17,7 +17,7 @@ try { ({ chromium } = require('playwright')); } catch { ({ chromium } = require(
 const args = process.argv.slice(2);
 const query = args[0] || '';
 const out = args[1] || 'shots/shot.png';
-const opt = Object.fromEntries(args.slice(2).filter((a) => a.startsWith('--')).map((a) => { const [k, v] = a.slice(2).split('='); return [k, v ?? true]; }));
+const opt = Object.fromEntries(args.slice(2).filter((a) => a.startsWith('--')).map((a) => { const i = a.indexOf('='); return i < 0 ? [a.slice(2), true] : [a.slice(2, i), a.slice(i + 1)]; }));
 const W = Number(opt.w || 1920), H = Number(opt.h || 1080), WAIT = Number(opt.wait || 2500);
 const root = resolve('.');
 const types = { '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript', '.json': 'application/json', '.png': 'image/png', '.css': 'text/css' };
