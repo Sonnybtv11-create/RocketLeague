@@ -68,7 +68,7 @@ Renderer: WebGLRenderer, sRGB output, ACES tone mapping, PCFSoft shadow maps ena
 `info` passed to `ui.update`: `{ fps, playerCarId, tick, ballCam, inputDevice, mode ('menu'|'exhibition'|'freeplay'), paused, playerCar (CarView), world }`
 
 `api` given to the UI by main.js:
-`startMatch(cfg {teamSize, difficulty, teammateDifficulty, opponentDifficulty, playerTeam, bodyId, accent, durationSec}), startFreePlay(cfg), resumeGame(), quitToMenu(), rematch(), settingsChanged(), saveSettings(), getInput(), getSettings(), getStats(), runSelfTests(onLine) → Promise<results>, setPreviewCar(bodyId, accent, team), skipReplay(), resetBall(), getGame(), isFreePlay()`
+`startMatch(cfg {teamSize, blueSize?, orangeSize? (uneven teams), difficulty, teammateDifficulty, opponentDifficulty, playerTeam, bodyId, accent, durationSec}), startFreePlay(cfg), resumeGame(), quitToMenu(), rematch(), settingsChanged(), saveSettings(), getInput(), getSettings(), getStats(), runSelfTests(onLine) → Promise<results>, setPreviewCar(bodyId, accent, team), skipReplay(), resetBall(), getGame(), isFreePlay()`
 
 Settings schema: `src/game/settings.js` (`DEFAULT_SETTINGS`, `DEFAULT_BINDINGS`). Modules read `settings` live; the UI mutates it then calls `api.settingsChanged()`.
 

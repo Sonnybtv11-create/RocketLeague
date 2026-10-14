@@ -197,6 +197,15 @@ export class World {
     for (const car of active) {
       const wc = [];
       carWorldContacts(car, car.contactMargin, wc);
+      if (wc.length) {
+        // hitbox scraping a surface (not wheels): emit at most ~10 Hz per car
+        const c0 = wc[0];
+        const vt = car.body.vel.sub(c0.n.mul(car.body.vel.dot(c0.n))).len();
+        if (vt > 300 && this.tick - (car._lastScrapeTick ?? -100) >= 12) {
+          car._lastScrapeTick = this.tick;
+          this.events.push({ type: EV.WALL_SCRAPE, carId: car.id, pos: c0.pA.clone(), speed: vt });
+        }
+      }
       for (const c of wc) {
         car.worldContact.hasContact = true;
         car.worldContact.normal = c.n;

@@ -116,7 +116,8 @@ function newSession(cfg, mode) {
     const names = [...BOT_NAMES].sort(() => Math.random() - 0.5);
     const bodies = CAR_BODIES.map((b) => b.id);
     for (let t = 0; t < 2; t++) {
-      const n = teamSize - (player && player.team === t ? 1 : 0);
+      const size = t === 0 ? (cfg.blueSize || teamSize) : (cfg.orangeSize || teamSize);
+      const n = Math.max(0, size - (player && player.team === t ? 1 : 0));
       for (let i = 0; i < n; i++) {
         const bid = bodies[Math.floor(Math.random() * bodies.length)];
         const diff = (t === playerTeam ? cfg.teammateDifficulty : cfg.opponentDifficulty) || cfg.difficulty || 'pro';
