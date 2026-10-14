@@ -155,7 +155,7 @@ export function createPads(ctx) {
     meshes = {
       bigBase: mk(bigBaseGeometry(), metal, big.length, true),
       bigGlow: mk(bigGlowGeometry(), glowMat, big.length),
-      bigOrb: mk(new THREE.SphereGeometry(0.62, 28, 18), orbMat, big.length),
+      bigOrb: mk(new THREE.SphereGeometry(0.5, 28, 18), orbMat, big.length),
       bigFlame: mk(flameGeometry(), flameMat, big.length),
       smallBase: mk(smallBaseGeometry(), metal, small.length, true),
       smallGlow: mk(smallGlowGeometry(), glowMat, small.length),

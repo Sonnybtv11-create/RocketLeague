@@ -36,7 +36,8 @@ function fitText(g, text, x, y, maxW, size, weight = 'bold') {
 }
 
 export const TEAM_CSS = ['#2f78ff', '#ff7c1c'];
-export const TEAM_PAINT = ['#2457c8', '#e2691a']; // field paint (slightly muted)
+export const TEAM_PAINT = ['#2457c8', '#f27a1a']; // field paint
+const PAINT_ALPHA = [1.0, 1.3]; // orange needs more coverage to not read as brown over green
 export const TEAM_CSS_LIGHT = ['#7fb2ff', '#ffb36e'];
 
 // ------------------------------------------------------------------ field
@@ -86,7 +87,8 @@ export function makeFieldTextures(renderer) {
     g.beginPath();
     g.rect(-2500, s > 0 ? 3250 : -5120, 5000, 5120 - 3250);
     g.clip();
-    g.fillStyle = col; g.globalAlpha = 0.5;
+    const pa = PAINT_ALPHA[team];
+    g.fillStyle = col; g.globalAlpha = 0.5 * pa;
     for (let k = -12; k < 12; k++) {
       const off = k * 420;
       for (const side of [-1, 1]) {
@@ -102,7 +104,7 @@ export function makeFieldTextures(renderer) {
     }
     g.restore();
     // solid goal area
-    g.fillStyle = col; g.globalAlpha = 0.55;
+    g.fillStyle = col; g.globalAlpha = Math.min(1, 0.55 * pa);
     g.fillRect(-1500, s > 0 ? 4250 : -5120, 3000, 870);
     // goal mouth strip
     g.globalAlpha = 0.95;
