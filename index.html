@@ -12480,26 +12480,22 @@ var CSS = String.raw`
 /* ================================================================ HUD */
 .tp-hud { z-index: 1; }
 .tp-hud.sb-open .tp-goal, .tp-hud.sb-open .tp-pops, .tp-hud.sb-open .tp-count, .tp-hud.sb-open .tp-demoed { visibility: hidden; }
-.tp-bug { position: absolute; top: 0; left: 50%; transform: translateX(-50%); display: flex; align-items: flex-start;
-  height: calc(var(--u) * 7.8); filter: drop-shadow(0 calc(var(--u) * 0.3) calc(var(--u) * 0.8) rgba(0, 0, 0, 0.55)); }
-.tp-bug-team { position: relative; width: calc(var(--u) * 7.6); height: 100%; display: flex; align-items: center; justify-content: center;
-  font-size: calc(var(--u) * 5.6); font-weight: 800; font-style: italic; color: #fff; font-variant-numeric: tabular-nums; line-height: 1; padding-top: calc(var(--u) * 0.2);
-  -webkit-text-stroke: calc(var(--u) * 0.14) rgba(0, 18, 60, 0.55); paint-order: stroke fill; letter-spacing: -0.02em; }
-.tp-bug-team.b { background: linear-gradient(180deg, #6a97ff 0%, #2f6cf0 45%, #1d48c4 100%);
-  clip-path: polygon(0 0, 100% 0, 100% 100%, 14% 100%); text-shadow: 0 0 calc(var(--u) * 1.2) rgba(160, 200, 255, 0.95), 0 calc(var(--u) * 0.25) calc(var(--u) * 0.5) rgba(0, 20, 80, 0.6); }
-.tp-bug-team.o { background: linear-gradient(180deg, #ffad66 0%, #ff8a2a 45%, #e0620c 100%);
-  clip-path: polygon(0 0, 100% 0, 86% 100%, 0 100%); text-shadow: 0 0 calc(var(--u) * 1.2) rgba(255, 210, 160, 0.95), 0 calc(var(--u) * 0.25) calc(var(--u) * 0.5) rgba(90, 30, 0, 0.6);
-  -webkit-text-stroke-color: rgba(80, 25, 0, 0.55); }
-.tp-bug-team::after { content: ''; position: absolute; left: 0; right: 0; top: 0; height: 45%; background: linear-gradient(180deg, rgba(255,255,255,.28), rgba(255,255,255,0)); pointer-events: none; }
-.tp-bug-clock { position: relative; width: calc(var(--u) * 17.5); height: 86%; display: flex; align-items: center; justify-content: center;
-  background: linear-gradient(90deg, #142a63 0%, #0a0f1e 18%, #070a14 50%, #0a0f1e 82%, #5a2a10 100%);
-  font-size: calc(var(--u) * 4.9); font-weight: 500; letter-spacing: 0.08em; color: #fff; font-variant-numeric: tabular-nums;
-  text-shadow: 0 0 calc(var(--u) * 0.8) rgba(170, 200, 255, 0.45);
-  border-bottom: calc(var(--u) * 0.25) solid rgba(255, 255, 255, 0.18); }
+.tp-bug { position: absolute; top: 0; left: 50%; transform: translateX(-50%); display: flex; align-items: stretch;
+  height: calc(var(--u) * 6.6); filter: drop-shadow(0 calc(var(--u) * 0.25) calc(var(--u) * 0.6) rgba(0, 0, 0, 0.5)); }
+.tp-bug-team { position: relative; width: calc(var(--u) * 8.2); display: flex; align-items: center; justify-content: center;
+  font-size: calc(var(--u) * 4.7); font-weight: 700; color: #fff; font-variant-numeric: tabular-nums; line-height: 1; padding-top: calc(var(--u) * 0.15);
+  text-shadow: 0 calc(var(--u) * 0.15) calc(var(--u) * 0.3) rgba(0, 0, 0, 0.35); }
+.tp-bug-team.b { background: linear-gradient(180deg, #4f8cff 0%, #2a66ee 55%, #1f52d0 100%);
+  clip-path: polygon(0 0, 100% 0, 100% 100%, calc(var(--u) * 2) 100%); padding-left: calc(var(--u) * 1.4); }
+.tp-bug-team.o { background: linear-gradient(180deg, #ffa24d 0%, #ff8226 55%, #e8690f 100%);
+  clip-path: polygon(0 0, 100% 0, calc(100% - var(--u) * 2) 100%, 0 100%); padding-right: calc(var(--u) * 1.4); }
+.tp-bug-team::after { content: ''; position: absolute; left: 0; right: 0; top: 0; height: calc(var(--u) * 0.3); background: rgba(255, 255, 255, 0.35); pointer-events: none; }
+.tp-bug-clock { position: relative; width: calc(var(--u) * 15.5); display: flex; align-items: center; justify-content: center;
+  background: linear-gradient(180deg, rgba(40, 46, 62, 0.96) 0%, rgba(18, 22, 32, 0.96) 100%);
+  font-size: calc(var(--u) * 4.5); font-weight: 600; letter-spacing: 0.05em; color: #fff; font-variant-numeric: tabular-nums; padding-top: calc(var(--u) * 0.15);
+  box-shadow: inset 0 calc(var(--u) * 0.3) 0 rgba(255, 255, 255, 0.12); }
 .tp-bug-clock.ot { color: var(--gold-l); }
-.tp-bug-glow { position: absolute; top: 55%; width: calc(var(--u) * 11); height: calc(var(--u) * 6); border-radius: 50%; pointer-events: none; filter: blur(calc(var(--u) * 1.4)); opacity: 0.75; z-index: -1; }
-.tp-bug-glow.b { left: calc(var(--u) * -1.6); background: radial-gradient(closest-side, rgba(60, 130, 255, 0.95), rgba(60, 130, 255, 0)); }
-.tp-bug-glow.o { right: calc(var(--u) * -1.6); background: radial-gradient(closest-side, rgba(255, 140, 40, 0.95), rgba(255, 140, 40, 0)); }
+.tp-bug-glow { display: none; }
 .tp-bug-tag { position: absolute; top: 100%; left: 50%; transform: translateX(-50%); margin-top: calc(var(--u) * 0.5);
   padding: calc(var(--u) * 0.25) calc(var(--u) * 1.4); white-space: nowrap; font-size: max(11px, calc(var(--u) * 1.6)); font-weight: 700;
   letter-spacing: 0.16em; color: #1a1000; background: linear-gradient(90deg, #ffb340, #ffd970);
@@ -12511,15 +12507,20 @@ var CSS = String.raw`
   clip-path: polygon(0 0, 100% 0, calc(100% - calc(var(--u) * 2)) 100%, calc(var(--u) * 2) 100%); }
 
 /* boost meter */
-.tp-boost { position: absolute; right: calc(var(--u) * 3.8); bottom: calc(var(--u) * 3); width: calc(var(--u) * 24); height: calc(var(--u) * 24); }
-.tp-boost svg { width: 100%; height: 100%; overflow: visible; filter: drop-shadow(0 0 calc(var(--u) * 0.6) rgba(0, 0, 0, 0.6)); }
-.tp-boost .tk { stroke: rgba(150, 175, 230, 0.28); stroke-width: 6.2; stroke-linecap: butt; }
-.tp-boost .tk.on { stroke: url(#tpBoostGrad); }
-.tp-boost.full .tk.on { stroke: #fff6e0; }
-.tp-boost .num { fill: #fff; font-family: var(--f); font-size: 60px; font-weight: 300; letter-spacing: 2px; }
-.tp-boost.low .num { fill: #8fb8ff; }
-.tp-boost .lbl { fill: #6fa8ff; font-family: var(--f); font-size: 12px; letter-spacing: 3px; font-weight: 600; }
-.tp-boost.active svg { filter: drop-shadow(0 0 calc(var(--u) * 1.2) rgba(255, 150, 40, 0.55)); }
+.tp-boost { position: absolute; right: calc(var(--u) * 3.2); bottom: calc(var(--u) * 2.4); width: calc(var(--u) * 27); height: calc(var(--u) * 27); }
+.tp-boost svg { width: 100%; height: 100%; overflow: visible; }
+.tp-boost .ring { fill: none; stroke: rgba(214, 128, 34, 0.75); stroke-width: 1.3; }
+.tp-boost .deco { fill: none; stroke: rgba(214, 128, 34, 0.6); stroke-width: 1.2; }
+.tp-boost .seg { fill: rgba(255, 150, 40, 0.025); }
+.tp-boost .seg.on { fill: url(#tpBoostBar); }
+.tp-boost .edge { fill: none; stroke: rgba(255, 255, 255, 0.92); stroke-width: 1.3; }
+.tp-boost .dg path { fill: none; stroke-linecap: round; stroke-linejoin: round; }
+.tp-boost .dg.main path { stroke: #ffb12c; stroke-width: 3; }
+.tp-boost .dg.ghost path { stroke: rgba(150, 70, 0, 0.75); stroke-width: 3; }
+.tp-boost.full .seg.on { fill: #ffd25a; }
+.tp-boost.full .dg.main path { stroke: #ffd060; }
+.tp-boost.low .dg.main path { stroke: #c97a1c; }
+.tp-boost.active .seg.on { filter: drop-shadow(0 0 2px rgba(255, 160, 40, 0.9)); }
 
 /* event feed */
 .tp-feed { position: absolute; top: calc(var(--u) * 2.2); right: calc(var(--u) * 2.2); display: flex; flex-direction: column; align-items: flex-end; gap: calc(var(--u) * 0.6); }
@@ -12652,6 +12653,60 @@ var CSS = String.raw`
 .tp-logo { position: absolute; left: calc(var(--u) * 4); top: calc(var(--u) * 8); width: calc(var(--u) * 44); }
 .tp-logo svg { width: 100%; height: auto; display: block; overflow: visible; filter: drop-shadow(0 calc(var(--u) * 0.5) calc(var(--u) * 1.4) rgba(0,0,0,.6)); }
 .tp-logo .tag { margin-top: calc(var(--u) * 0.6); padding-left: calc(var(--u) * 1.2); font-size: calc(var(--u) * 1.5); letter-spacing: 0.42em; color: rgba(255,255,255,.7); text-transform: uppercase; }
+
+/* main menu (stadium style) */
+.tp-mm-shade { position: absolute; inset: 0; background: linear-gradient(0deg, rgba(0, 0, 0, 0.55) 0%, rgba(0, 0, 0, 0) 22%), linear-gradient(270deg, rgba(0, 0, 0, 0.35) 0%, rgba(0, 0, 0, 0) 40%); }
+.tp-mm { position: absolute; left: calc(var(--u) * 5.4); top: 48.5%; pointer-events: auto; }
+.tp-mm-list { position: relative; display: flex; flex-direction: column; gap: calc(var(--u) * 0.32); width: calc(var(--u) * 29.6); }
+.tp-mm-item { position: relative; display: flex; align-items: center; gap: calc(var(--u) * 1); height: calc(var(--u) * 3.5); width: calc(var(--u) * 29.6);
+  padding: 0 calc(var(--u) * 2.2); border: 0; margin: 0; cursor: pointer; outline: none;
+  font-family: var(--f); font-size: calc(var(--u) * 2.05); font-weight: 400; letter-spacing: 0.03em; text-transform: uppercase; color: #e9edf2; text-align: left;
+  background: linear-gradient(90deg, rgba(20, 22, 26, 0.84), rgba(26, 28, 33, 0.76));
+  clip-path: polygon(calc(var(--u) * 0.9) 0, 100% 0, calc(100% - var(--u) * 0.9) 100%, 0 100%); transition: background 0.1s, color 0.1s; }
+.tp-mm-item .ab { display: none; width: calc(var(--u) * 2.1); height: calc(var(--u) * 2.1); border-radius: 50%; flex: none; align-items: center; justify-content: center;
+  font-style: normal; font-size: calc(var(--u) * 1.25); font-weight: 700; color: #fff; background: radial-gradient(circle at 40% 35%, #8ee39a, #2f9e4a); border: calc(var(--u) * 0.18) solid rgba(255,255,255,.75); }
+.tp-mm-item.active, .tp-mm-item:hover, .tp-mm-item.tp-focus { background: linear-gradient(90deg, #eaf6ff 0%, #c4e5fb 55%, #9fd2f5 100%); color: #1d4f8f; }
+.tp-mm-item.active .ab, .tp-mm-item.tp-focus .ab { display: flex; }
+.tp-mm-sub { position: absolute; left: calc(var(--u) * 32.4); top: 0; display: flex; flex-direction: column; gap: calc(var(--u) * 0.32); }
+.tp-mm-item.subi { color: #b9bec6; background: linear-gradient(90deg, rgba(30, 32, 37, 0.66), rgba(34, 36, 41, 0.5)); }
+.tp-mm-item.subi:hover, .tp-mm-item.subi.tp-focus { background: linear-gradient(90deg, #eaf6ff 0%, #c4e5fb 55%, #9fd2f5 100%); color: #1d4f8f; }
+.tp-mm-desc { margin-top: calc(var(--u) * 1.6); font-size: calc(var(--u) * 1.95); color: #f4f6f8; text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9), 0 0 calc(var(--u) * 1) rgba(0, 0, 0, 0.6); white-space: nowrap; }
+.tp-mm-news { position: absolute; right: calc(var(--u) * 7.4); top: calc(var(--u) * 8.8); width: calc(var(--u) * 53); max-width: 34vw; bottom: calc(var(--u) * 13.4);
+  display: flex; flex-direction: column; background: rgba(10, 14, 24, 0.95); border-radius: calc(var(--u) * 0.6); overflow: hidden; pointer-events: auto;
+  box-shadow: 0 calc(var(--u) * 1) calc(var(--u) * 3) rgba(0, 0, 0, 0.55); }
+.tp-mm-news .art { position: relative; flex: none; height: 56%; display: flex; flex-direction: column; align-items: center; justify-content: center; overflow: hidden;
+  background: radial-gradient(ellipse at 50% 70%, rgba(40, 130, 150, 0.55), rgba(10, 30, 45, 0) 60%),
+    repeating-linear-gradient(60deg, rgba(120, 220, 230, 0.05) 0 2px, transparent 2px 26px), repeating-linear-gradient(-60deg, rgba(120, 220, 230, 0.05) 0 2px, transparent 2px 26px),
+    linear-gradient(180deg, #0c1a2a, #0a1622 60%, #08111b); }
+.tp-mm-news .lg { width: 52%; }
+.tp-mm-news .lg svg { width: 100%; height: auto; display: block; filter: drop-shadow(0 calc(var(--u) * 0.4) calc(var(--u) * 1) rgba(0,0,0,.6)); }
+.tp-mm-news .ready { margin-top: calc(var(--u) * 1.6); font-size: calc(var(--u) * 2.2); letter-spacing: 0.08em; color: #6fe3d6; text-shadow: 0 0 calc(var(--u) * 1) rgba(80, 230, 210, 0.6); }
+.tp-mm-news .big { margin-top: calc(var(--u) * 0.2); font-size: calc(var(--u) * 7.6); font-weight: 800; line-height: 0.95; letter-spacing: 0.02em; color: #e6eef5;
+  background: linear-gradient(180deg, #ffffff, #b9c8d6); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
+.tp-mm-news .big2 { font-size: calc(var(--u) * 3.4); font-weight: 800; letter-spacing: 0.02em; color: #fff; align-self: flex-end; margin-right: 9%; }
+.tp-mm-news .chips { display: flex; gap: calc(var(--u) * 2.4); margin-top: calc(var(--u) * 2); font-size: calc(var(--u) * 1.5); font-weight: 700; letter-spacing: 0.12em; color: #cfd8e3; }
+.tp-mm-news .txt { flex: 1; min-height: 0; overflow: hidden; padding: calc(var(--u) * 2) calc(var(--u) * 2.2); font-size: calc(var(--u) * 1.5); line-height: 1.42; color: #e8edf3; }
+.tp-mm-news h4 { margin: 0 0 calc(var(--u) * 0.6); font-size: calc(var(--u) * 1.75); font-weight: 700; }
+.tp-mm-news p { margin: 0 0 calc(var(--u) * 1.4); }
+.tp-mm-news .dots { display: flex; gap: calc(var(--u) * 0.6); }
+.tp-mm-news .dots i { width: calc(var(--u) * 2.2); height: calc(var(--u) * 0.35); background: rgba(255, 255, 255, 0.22); }
+.tp-mm-news .dots i.on { background: #6fe3d6; }
+.tp-mm-band { position: absolute; left: 0; right: 0; bottom: calc(var(--u) * 4.6); height: calc(var(--u) * 7.2); display: flex; align-items: flex-end; justify-content: space-between;
+  padding: 0 calc(var(--u) * 4.4) calc(var(--u) * 0.4); background: linear-gradient(0deg, rgba(4, 10, 20, 0.7), rgba(4, 10, 20, 0.15)); pointer-events: auto; }
+.tp-mm-player { display: flex; align-items: flex-end; gap: calc(var(--u) * 1.2); }
+.tp-mm-player .av { width: calc(var(--u) * 6.2); height: calc(var(--u) * 6.2); display: flex; align-items: center; justify-content: center; font-size: calc(var(--u) * 3.2); font-weight: 800;
+  border: calc(var(--u) * 0.3) solid #59c8ff; box-shadow: 0 0 calc(var(--u) * 1) rgba(89, 200, 255, 0.55); }
+.tp-mm-player .nm { font-size: calc(var(--u) * 2.5); color: #e6f2ff; letter-spacing: 0.01em; line-height: 1.1; }
+.tp-mm-player .rk { display: flex; align-items: center; gap: calc(var(--u) * 0.8); margin-top: calc(var(--u) * 0.3); font-size: calc(var(--u) * 1.3); font-weight: 700; color: #f2e3a8; letter-spacing: 0.06em; }
+.tp-mm-player .lv { min-width: calc(var(--u) * 3.6); padding: calc(var(--u) * 0.1) calc(var(--u) * 0.7); text-align: center; border-radius: calc(var(--u) * 0.9);
+  background: linear-gradient(180deg, #fff2c4, #e8cf7c); color: #6a4a10; font-size: calc(var(--u) * 1.9); font-weight: 700; }
+.tp-mm-player .who { padding-bottom: calc(var(--u) * 0.2); }
+.tp-btn.tp-mm-mini { height: calc(var(--u) * 3); font-size: calc(var(--u) * 1.4); padding: 0 calc(var(--u) * 1.6); margin-left: calc(var(--u) * 1.4); margin-bottom: calc(var(--u) * 0.3); background: rgba(10, 14, 22, 0.7); }
+.tp-mm-hints { display: flex; gap: calc(var(--u) * 2.4); font-size: calc(var(--u) * 1.6); letter-spacing: 0.08em; color: #e8edf3; text-transform: uppercase; padding-bottom: calc(var(--u) * 0.8); }
+.tp-mm-ticker { position: absolute; left: 0; right: 0; bottom: 0; height: calc(var(--u) * 4.6); display: flex; align-items: center; justify-content: space-between;
+  padding: 0 calc(var(--u) * 2) 0 calc(var(--u) * 61); background: rgba(3, 7, 14, 0.82); border-top: 1px solid rgba(89, 200, 255, 0.25);
+  font-size: calc(var(--u) * 1.9); color: #4f9fe0; letter-spacing: 0.02em; }
+.tp-mm-ticker .l { text-transform: uppercase; }
 
 .tp-nav.right { left: auto; right: calc(var(--u) * 3.2); top: 26%; }
 .tp-side.below { top: calc(26% + var(--u) * 33.5); width: calc(var(--u) * 35); padding: calc(var(--u) * 1.4) calc(var(--u) * 2); }
@@ -13121,6 +13176,21 @@ var ICONS = {
   assist: '<svg class="ico" viewBox="0 0 24 24"><path d="M3 13l6-1 4-6 2 1-2.5 5H20v3h-8l-5 4-2-1 2.5-3H3z" fill="#cfe0ff"/></svg>',
   chat: '<svg class="ico" viewBox="0 0 24 24"><path d="M3 5h18v11H9l-5 4v-4H3z" fill="#cfe0ff"/></svg>'
 };
+var DIGIT_W = 40;
+var DIGIT_H = 32;
+var DIGIT_GAP = 9;
+var DIGIT_PATHS = {
+  0: "M5 0H35Q40 0 40 5V27Q40 32 35 32H5Q0 32 0 27V5Q0 0 5 0Z",
+  1: "M13 5L21 0V32",
+  2: "M0 0H35Q40 0 40 5V11Q40 16 35 16H5Q0 16 0 21V32H40",
+  3: "M0 0H35Q40 0 40 5V11Q40 16 35 16H10M35 16Q40 16 40 21V27Q40 32 35 32H0",
+  4: "M0 0V11Q0 16 5 16H40M34 0V32",
+  5: "M40 0H0V16H35Q40 16 40 21V27Q40 32 35 32H0",
+  6: "M40 0H5Q0 0 0 5V27Q0 32 5 32H35Q40 32 40 27V21Q40 16 35 16H0",
+  7: "M0 0H40L17 32",
+  8: "M5 0H35Q40 0 40 5V27Q40 32 35 32H5Q0 32 0 27V5Q0 0 5 0ZM0 16H40",
+  9: "M40 11Q40 16 35 16H5Q0 16 0 11V5Q0 0 5 0H35Q40 0 40 5V27Q40 32 35 32H0"
+};
 function teamCls(t) {
   return t === 1 ? "t1" : "t0";
 }
@@ -13133,42 +13203,83 @@ function createHUD({ api: api2, settings: settings2 }) {
   const waitTag = h("div.tp-bug-tag.wait.tp-hidden", "WAITING FOR THE BALL TO HIT THE GROUND");
   const bug = h("div.tp-bug", h("div.tp-bug-glow.b"), h("div.tp-bug-glow.o"), bugBlue, bugClock, bugOrange, bugTag, waitTag);
   const fpBug = h("div.tp-bug-fp.tp-hidden", "FREE PLAY");
-  const N_TICKS = 34, START = 220, SWEEP = 260;
-  const svg = s("svg", { viewBox: "-100 -100 200 200" });
-  const defs = s("defs");
-  const grad = s("linearGradient", { id: "tpBoostGrad", x1: "0", y1: "1", x2: "0.3", y2: "0" });
-  grad.appendChild(s("stop", { offset: "0", "stop-color": "#ff7a10" }));
-  grad.appendChild(s("stop", { offset: "1", "stop-color": "#ffc040" }));
-  defs.appendChild(grad);
-  const disc = s("radialGradient", { id: "tpBoostDisc", cx: "50%", cy: "40%", r: "60%" });
-  disc.appendChild(s("stop", { offset: "0", "stop-color": "#1d3fb8", "stop-opacity": "0.95" }));
-  disc.appendChild(s("stop", { offset: "0.75", "stop-color": "#0b1a5a", "stop-opacity": "0.92" }));
-  disc.appendChild(s("stop", { offset: "1", "stop-color": "#050a24", "stop-opacity": "0.9" }));
-  defs.appendChild(disc);
-  svg.appendChild(defs);
-  svg.appendChild(s("circle", { cx: 0, cy: 0, r: 70, fill: "url(#tpBoostDisc)" }));
-  svg.appendChild(s("circle", { cx: 0, cy: 0, r: 70, fill: "none", stroke: "rgba(120,170,255,0.45)", "stroke-width": 1.5 }));
+  const N_SEG = 60, START = 180, SWEEP = 270;
+  const R_IN = 57, R_BAR0 = 62, R_BAR1 = 75;
+  const pol = (r, a) => [Math.sin(a * Math.PI / 180) * r, -Math.cos(a * Math.PI / 180) * r];
   const arcPath = (r, a0, a1) => {
-    const p = (a) => [Math.sin(a * Math.PI / 180) * r, -Math.cos(a * Math.PI / 180) * r];
-    const [x0, y0] = p(a0), [x1, y1] = p(a1);
+    const [x0, y0] = pol(r, a0), [x1, y1] = pol(r, a1);
     return `M ${x0.toFixed(2)} ${y0.toFixed(2)} A ${r} ${r} 0 ${a1 - a0 > 180 ? 1 : 0} 1 ${x1.toFixed(2)} ${y1.toFixed(2)}`;
   };
-  svg.appendChild(s("path", { d: arcPath(75, START, START + SWEEP), fill: "none", stroke: "rgba(255,255,255,0.18)", "stroke-width": 1.2 }));
-  const ticks = [];
-  for (let i = 0; i < N_TICKS; i++) {
-    const a = (START + SWEEP * (i + 0.5) / N_TICKS) * Math.PI / 180;
-    const big = i % 5 === 4;
-    const r0 = 79, r1 = big ? 97 : 94;
-    const ln = s("line", { class: "tk", x1: (Math.sin(a) * r0).toFixed(2), y1: (-Math.cos(a) * r0).toFixed(2), x2: (Math.sin(a) * r1).toFixed(2), y2: (-Math.cos(a) * r1).toFixed(2) });
-    ticks.push(ln);
-    svg.appendChild(ln);
+  const svg = s("svg", { viewBox: "-100 -100 200 200" });
+  const defs = s("defs");
+  const shade = s("radialGradient", { id: "tpBoostShade", cx: "50%", cy: "50%", r: "50%" });
+  shade.appendChild(s("stop", { offset: "0", "stop-color": "#000", "stop-opacity": "0.72" }));
+  shade.appendChild(s("stop", { offset: "0.66", "stop-color": "#000", "stop-opacity": "0.6" }));
+  shade.appendChild(s("stop", { offset: "1", "stop-color": "#000", "stop-opacity": "0" }));
+  defs.appendChild(shade);
+  const barGrad = s("linearGradient", { id: "tpBoostBar", x1: "0", y1: "1", x2: "0", y2: "0" });
+  barGrad.appendChild(s("stop", { offset: "0", "stop-color": "#ff8d10" }));
+  barGrad.appendChild(s("stop", { offset: "1", "stop-color": "#ffc23a" }));
+  defs.appendChild(barGrad);
+  const glow = s("filter", { id: "tpBoostGlow", x: "-50%", y: "-50%", width: "200%", height: "200%" });
+  glow.appendChild(s("feGaussianBlur", { in: "SourceGraphic", stdDeviation: "2.2", result: "b" }));
+  const merge2 = s("feMerge");
+  merge2.appendChild(s("feMergeNode", { in: "b" }));
+  merge2.appendChild(s("feMergeNode", { in: "SourceGraphic" }));
+  glow.appendChild(merge2);
+  defs.appendChild(glow);
+  svg.appendChild(defs);
+  svg.appendChild(s("circle", { cx: 0, cy: 0, r: 98, fill: "url(#tpBoostShade)" }));
+  svg.appendChild(s("circle", { class: "ring", cx: 0, cy: 0, r: R_IN }));
+  svg.appendChild(s("path", { class: "deco", d: arcPath(R_BAR1 - 4, 300, 420) }));
+  for (const [a, len3] of [[315, 9], [0, 15], [45, 9]]) {
+    const [x0, y0] = pol(R_BAR1 - 4, a), [x1, y1] = pol(R_BAR1 - 4 + len3, a);
+    svg.appendChild(s("line", { class: "deco", x1: x0.toFixed(2), y1: y0.toFixed(2), x2: x1.toFixed(2), y2: y1.toFixed(2) }));
   }
-  const boostNum = s("text", { class: "num", x: 0, y: 14, "text-anchor": "middle" }, "33");
-  const boostLbl = s("text", { class: "lbl", x: 0, y: 40, "text-anchor": "middle" }, "BOOST");
-  svg.appendChild(boostNum);
-  svg.appendChild(boostLbl);
+  const segs = [];
+  const segW = SWEEP / N_SEG;
+  for (let i = 0; i < N_SEG; i++) {
+    const a0 = START + i * segW + segW * 0.2, a1 = START + (i + 1) * segW - segW * 0.2;
+    const [ax, ay] = pol(R_BAR0, a0), [bx, by] = pol(R_BAR1, a0), [cx, cy] = pol(R_BAR1, a1), [dx, dy] = pol(R_BAR0, a1);
+    const seg = s("path", { class: "seg", d: `M${ax.toFixed(2)} ${ay.toFixed(2)} L${bx.toFixed(2)} ${by.toFixed(2)} A${R_BAR1} ${R_BAR1} 0 0 1 ${cx.toFixed(2)} ${cy.toFixed(2)} L${dx.toFixed(2)} ${dy.toFixed(2)} A${R_BAR0} ${R_BAR0} 0 0 0 ${ax.toFixed(2)} ${ay.toFixed(2)}Z` });
+    segs.push(seg);
+    svg.appendChild(seg);
+  }
+  const edge = s("path", { class: "edge", d: "" });
+  svg.appendChild(edge);
+  const digitsGhost = s("g", { class: "dg ghost" });
+  const digitsMain = s("g", { class: "dg main", filter: "url(#tpBoostGlow)" });
+  svg.appendChild(digitsGhost);
+  svg.appendChild(digitsMain);
   const boostEl = h("div.tp-boost", svg);
-  let boostDisp = 33, boostShownInt = -1, boostTicksOn = -1;
+  let boostDisp = 33, boostShownInt = -1, boostSegsOn = -1;
+  function setBoostDigits(n) {
+    const str = String(n);
+    const sc = str.length >= 3 ? 0.56 : 0.8;
+    const w = str.length * DIGIT_W + (str.length - 1) * DIGIT_GAP;
+    const d = [...str].map((ch, k) => `<path transform="translate(${k * (DIGIT_W + DIGIT_GAP)} 0)" d="${DIGIT_PATHS[ch]}"/>`).join("");
+    const tf = (dx, dy) => `translate(${-w * sc / 2 + dx} ${-DIGIT_H * sc / 2 + dy}) scale(${sc})`;
+    digitsGhost.setAttribute("transform", tf(3.2, 2.6));
+    digitsMain.setAttribute("transform", tf(0, 0));
+    digitsGhost.innerHTML = d;
+    digitsMain.innerHTML = d;
+  }
+  function setBoostSegs(on) {
+    for (let i = 0; i < N_SEG; i++) setClass(segs[i], "on", i < on);
+    if (on <= 0) {
+      edge.setAttribute("d", "");
+      return;
+    }
+    const aEnd = START + on * segW;
+    let d = arcPath(R_BAR0 - 2.2, START, Math.min(aEnd, START + SWEEP - 0.01));
+    for (let q = 1; q < 4; q++) {
+      const a = START + SWEEP * q / 4;
+      if (a > aEnd) break;
+      const [x0, y0] = pol(R_BAR0 - 6, a), [x1, y1] = pol(R_BAR0 - 2.2, a);
+      d += ` M${x0.toFixed(2)} ${y0.toFixed(2)} L${x1.toFixed(2)} ${y1.toFixed(2)}`;
+    }
+    edge.setAttribute("d", d);
+  }
   const feed = h("div.tp-feed");
   const feedItems = [];
   const pops = h("div.tp-pops");
@@ -13449,12 +13560,12 @@ function createHUD({ api: api2, settings: settings2 }) {
       const iv = Math.round(boostDisp);
       if (iv !== boostShownInt) {
         boostShownInt = iv;
-        boostNum.textContent = String(iv);
+        setBoostDigits(iv);
       }
-      const on = Math.round(boostDisp / 100 * N_TICKS);
-      if (on !== boostTicksOn) {
-        for (let i = 0; i < N_TICKS; i++) setClass(ticks[i], "on", i < on);
-        boostTicksOn = on;
+      const on = Math.ceil(boostDisp / 100 * N_SEG - 0.01);
+      if (on !== boostSegsOn) {
+        boostSegsOn = on;
+        setBoostSegs(on);
       }
       setClass(boostEl, "full", iv >= 100);
       setClass(boostEl, "low", iv < 1);
@@ -13574,6 +13685,7 @@ function createNav({ getScope, onBack }) {
     focused = el;
     if (!el) return;
     el.classList.add("tp-focus");
+    el.dispatchEvent(new CustomEvent("tp-navfocus", { bubbles: true }));
     const row = el.closest(".tp-row");
     if (row) row.classList.add("tp-focus-row");
     try {
@@ -13653,6 +13765,10 @@ function createNav({ getScope, onBack }) {
       clearFocus();
       focused = null;
       prev = null;
+    },
+    focusEl(el) {
+      active = true;
+      setFocus(el);
     },
     pageChanged() {
       focused = null;
@@ -14001,29 +14117,146 @@ function createMenus({ api: api2, settings: settings2, stats: stats2, onOpenChan
 </svg>`;
     return h("div.tp-logo", { html: svg, "aria-label": GAME_TITLE });
   }
+  function logoSvg() {
+    return logo().innerHTML;
+  }
   const PAGES = {
     main(p) {
-      p.append(h("div.tp-shade-r"), h("div.tp-head", { style: { height: "calc(var(--u) * 30)" } }), logo());
-      const navEl = h(
-        "div.tp-nav.right",
-        btn("Play", () => push("play"), { sub: "Exhibition" }),
-        btn("LAN Play", () => push("lan"), { sub: "Same network" }),
-        btn("Free Play", () => push("freeplay"), { sub: "Training" }),
-        btn("Garage", () => push("garage"), { sub: "Car & paint" }),
-        btn("Settings", () => push("settings")),
-        btn("Controls", () => push("controls"), { sub: "Help" }),
-        btn("Stats", () => push("stats"), { sub: "Career" })
+      const lanHost2 = () => {
+        api2.lanHost();
+        push("lanhost");
+      };
+      const ITEMS = [
+        {
+          key: "lan",
+          label: "Play LAN",
+          desc: "Play with friends on the same network.",
+          sub: [["Host game", lanHost2], ["Join game", () => push("lanjoin")], ["How it works", () => push("lan")]]
+        },
+        { key: "exh", label: "Exhibition", desc: "Play an offline match against bots.", go: () => push("play") },
+        {
+          key: "train",
+          label: "Training",
+          desc: "Practice on your own with the ball prediction line and unlimited boost.",
+          sub: [
+            ["Free play", () => api2.startFreePlay({ bodyId: settings2.game.carBody, accent: settings2.game.accent, playerTeam: settings2.game.team })],
+            ["Free play options", () => push("freeplay")]
+          ]
+        },
+        { key: "garage", label: "Garage", desc: "Change your car body, paint and player name.", go: () => push("garage") },
+        {
+          key: "extras",
+          label: "Extras",
+          desc: "Career stats and the full controls guide.",
+          sub: [["Career stats", () => push("stats")], ["Controls guide", () => push("controls")]]
+        },
+        { key: "opt", label: "Options", desc: "Camera, controls, video and audio settings.", go: () => push("settings") }
+      ];
+      p.append(h("div.tp-mm-shade"));
+      const list = h("div.tp-mm-list");
+      const subWrap = h("div.tp-mm-sub");
+      const desc = h("div.tp-mm-desc");
+      const rows = [];
+      const setActive = (it, row) => {
+        if (mmActive === it.key && subWrap.dataset.key === it.key) return;
+        mmActive = it.key;
+        for (const r of rows) r.classList.toggle("active", r === row);
+        desc.textContent = it.desc;
+        subWrap.dataset.key = it.key;
+        subWrap.innerHTML = "";
+        if (it.sub) {
+          subWrap.style.top = `${row.offsetTop}px`;
+          it.sub.forEach(([label, fn], k) => subWrap.appendChild(h("button.tp-mm-item.subi", {
+            type: "button",
+            "data-nav": "",
+            "data-key": `mm-${it.key}-${k}`,
+            onclick: (e) => {
+              e.preventDefault();
+              fn();
+            }
+          }, h("span", label))));
+        }
+      };
+      for (const it of ITEMS) {
+        const row = h("button.tp-mm-item", {
+          type: "button",
+          "data-nav": "",
+          "data-key": "mm-" + it.key,
+          "data-mm": it.key,
+          onclick: (e) => {
+            e.preventDefault();
+            setActive(it, row);
+            if (it.go) {
+              it.go();
+              return;
+            }
+            const first = subWrap.querySelector("[data-nav]");
+            if (first) nav.focusEl ? nav.focusEl(first) : first.focus();
+          }
+        }, h("i.ab", "A"), h("span", it.label));
+        row.addEventListener("mouseenter", () => setActive(it, row));
+        row.addEventListener("tp-navfocus", () => setActive(it, row));
+        rows.push(row);
+        list.appendChild(row);
+      }
+      list.appendChild(subWrap);
+      const listWrap = h("div.tp-mm", list, desc);
+      p.appendChild(listWrap);
+      mmSetActive = (key) => {
+        const k = ITEMS.findIndex((x) => x.key === key);
+        if (k >= 0) setActive(ITEMS[k], rows[k]);
+      };
+      requestAnimationFrame(() => mmSetActive(mmActive && ITEMS.some((x) => x.key === mmActive) ? mmActive : "lan"));
+      mmSetActive(mmActive || "lan");
+      const news = h(
+        "div.tp-mm-news",
+        h(
+          "div.art",
+          h("div.lg", { html: logoSvg() }),
+          h("div.ready", "‹ GET READY ›"),
+          h("div.big", "SEASON 1"),
+          h("div.big2", "LAN PLAY IS HERE."),
+          h("div.chips", h("span", "6-DIGIT CODES"), h("span", "NO INSTALL"), h("span", "UP TO 6 PLAYERS"))
+        ),
+        h(
+          "div.txt",
+          h("h4", "How to play together:"),
+          h(
+            "p",
+            "On one computer choose ",
+            h("b", "Play LAN › Host game"),
+            " to get a 6-digit game code. Everyone else on the same Wi-Fi picks ",
+            h("b", "Join game"),
+            " and types it in. The host runs the match and bots can fill any empty spots."
+          ),
+          tipEl = h("div.tip")
+        )
       );
-      p.appendChild(navEl);
-      tipEl = h("div.tp-side.below");
       renderTip();
-      p.appendChild(tipEl);
-      const f = h(
-        "div.tp-footer",
-        playerCard(),
-        h("div.hint", h("span", "Mouse"), h("span", "Arrows + Enter"), h("span", h("span.tp-key.pad", "A"), " / ", h("span.tp-key.pad", "B"), " gamepad"))
+      p.appendChild(news);
+      const st = stats2 || {};
+      const xp = (st.matches || 0) * 40 + (st.wins || 0) * 60 + (st.goals || 0) * 25 + (st.saves || 0) * 15 + (st.assists || 0) * 15;
+      const level = 1 + Math.floor(Math.sqrt(xp / 30));
+      const RANKS = [[50, "Legend"], [40, "Master"], [30, "Expert"], [20, "Veteran"], [10, "Pro"], [5, "Semi-Pro"], [0, "Rookie"]];
+      const rank = RANKS.find(([lv]) => level >= lv)[1];
+      const team = settings2.game.team === 1 ? 1 : 0;
+      p.append(
+        h(
+          "div.tp-mm-band",
+          h(
+            "div.tp-mm-player",
+            h("div.av", { style: { background: TEAM_COLORS[team].css } }, String(settings2.game.playerName || "P").slice(0, 1).toUpperCase()),
+            h(
+              "div.who",
+              h("div.nm", settings2.game.playerName || "Player"),
+              h("div.rk", h("span.lv", String(level)), h("span", rank.toUpperCase()))
+            ),
+            btn("Garage", () => push("garage"), { key: "mm-band-garage", cls: "tp-mm-mini" })
+          ),
+          h("div.tp-mm-hints", h("span", h("span.tp-key", "↑↓"), " / mouse to choose"), h("span", h("span.tp-key", "Enter"), " or ", h("span.tp-key.pad", "A"), " to select"))
+        ),
+        h("div.tp-mm-ticker", h("span.l", `WELCOME TO ${GAME_TITLE.toUpperCase()}!`), h("span.r", "Host a LAN game and share the 6-digit code"))
       );
-      p.appendChild(f);
     },
     play(p) {
       const lm = settings2.game.lastMode || {};
@@ -14627,6 +14860,8 @@ function createMenus({ api: api2, settings: settings2, stats: stats2, onOpenChan
   };
   let playCfg = null;
   let lanCfg = null;
+  let mmActive = null;
+  let mmSetActive = null;
   const lanDrafts = {};
   const lanBusy = {};
   function codeBox(value, opts = {}) {
@@ -14684,9 +14919,8 @@ function createMenus({ api: api2, settings: settings2, stats: stats2, onOpenChan
     const [t, b] = TIPS[tipIdx % TIPS.length];
     tipEl.innerHTML = "";
     tipEl.append(
-      h("div.hd", "Pro tip"),
-      h("div.ttl", t),
-      h("div.body", b),
+      h("h4", `Pro tip: ${t}`),
+      h("p", b),
       h("div.dots", TIPS.map((_, i) => h("i" + (i === tipIdx % TIPS.length ? ".on" : ""))))
     );
   }
@@ -19699,7 +19933,9 @@ var game = {
 };
 window.__game = game;
 window.__render = { renderer, scene, camera, ctx };
-var MENU_CAR_SHIFT = -90;
+var MENU_CAR_SHIFT = -40;
+var MENU_CAM_ANGLE = -0.8;
+var MENU_CAM_DIST = 290;
 var BOT_NAMES = ["Nova", "Blitz", "Comet", "Rook", "Viper", "Echo", "Jolt", "Titan", "Pulse", "Drift"];
 var DEFAULT_DODGE_DEADZONE = 0.5;
 function rosterOf(world) {
@@ -19780,7 +20016,7 @@ function menuScene() {
   const bodyId = settings.game.carBody;
   const car = world.addCar({ team: settings.game.team || 0, hitbox: bodyHitbox(bodyId), bodyId, name: settings.game.playerName, isBot: false });
   car.accent = settings.game.accent;
-  car.setSpawn(0, -600, CAR_SPAWN_REST_Z, Math.PI / 2 + 0.6);
+  car.setSpawn(-900, -1500, CAR_SPAWN_REST_Z, Math.PI / 2 + 0.6);
   world.ball.reset(0, 2600, BALL_KICKOFF_Z);
   for (let i = 0; i < 60; i++) world.step();
   game.world = world;
@@ -20232,12 +20468,13 @@ function frame(now2) {
       n++;
     }
     view = interpolateFrames(game.prevFrame, game.curFrame, game.acc / TICK_TIME);
-    const t = now2 / 1e3 * 0.18;
     const car = view.cars[0];
-    const R = 380, cx = Math.cos(t), cy = Math.sin(t);
+    const heading = Math.atan2(car.forward.y, car.forward.x);
+    const t = heading + MENU_CAM_ANGLE + Math.sin(now2 / 1e3 * 0.22) * 0.1;
+    const R = MENU_CAM_DIST, cx = Math.cos(t), cy = Math.sin(t);
     const side = MENU_CAR_SHIFT;
     const tx = car.pos.x + -cy * side, ty = car.pos.y + cx * side;
-    camOpts = { mode: "fixed", fixed: { fov: 34, pos: { x: car.pos.x + cx * R, y: car.pos.y + cy * R, z: 110 }, target: { x: tx, y: ty, z: 35 } } };
+    camOpts = { mode: "fixed", fixed: { fov: 38, pos: { x: car.pos.x + cx * R, y: car.pos.y + cy * R, z: 118 }, target: { x: tx, y: ty, z: 34 } } };
   } else if (!game.paused || game.lan) {
     if (game.match && game.match.frameUpdate) game.match.frameUpdate(dt);
     const inReplay = game.match && game.match.state === "replay";

@@ -102,7 +102,9 @@ const game = {
 window.__game = game; // debug / automation hook
 window.__render = { renderer, scene, camera, ctx };
 
-const MENU_CAR_SHIFT = -90; // uu; negative moves the car left on screen
+const MENU_CAR_SHIFT = -40;   // uu; negative moves the car left on screen
+const MENU_CAM_ANGLE = -0.8;  // camera bearing relative to the car's heading (rad): nose towards screen-left
+const MENU_CAM_DIST = 290;
 const BOT_NAMES = ['Nova', 'Blitz', 'Comet', 'Rook', 'Viper', 'Echo', 'Jolt', 'Titan', 'Pulse', 'Drift'];
 
 const DEFAULT_DODGE_DEADZONE = 0.5;
@@ -178,7 +180,7 @@ function menuScene() {
   const bodyId = settings.game.carBody;
   const car = world.addCar({ team: settings.game.team || 0, hitbox: bodyHitbox(bodyId), bodyId, name: settings.game.playerName, isBot: false });
   car.accent = settings.game.accent;
-  car.setSpawn(0, -600, K.CAR_SPAWN_REST_Z, Math.PI / 2 + 0.6);
+  car.setSpawn(-900, -1500, K.CAR_SPAWN_REST_Z, Math.PI / 2 + 0.6); // clear of boost pads, stands behind
   world.ball.reset(0, 2600, K.BALL_KICKOFF_Z);
   for (let i = 0; i < 60; i++) world.step();
   game.world = world; game.match = null; game.mode = 'menu'; game.bots = new Map(); game.playerCarId = car.id;
@@ -492,14 +494,15 @@ function frame(now) {
     let n = 0;
     while (game.acc >= K.TICK_TIME && n < 8) { w.step(); game.prevFrame = game.curFrame; game.curFrame = captureFrame(w, null); game.acc -= K.TICK_TIME; n++; }
     view = interpolateFrames(game.prevFrame, game.curFrame, game.acc / K.TICK_TIME);
-    // showroom turntable: car ~35-40% of screen width, framed in the left part of the screen
-    const t = now / 1000 * 0.18;
+    // showroom: fixed three-quarter front view (nose towards screen-left) with a slow gentle sway,
+    // car large and left of centre so the menu list overlaps its lower left like the classic stadium menu
     const car = view.cars[0];
-    const R = 380, cx = Math.cos(t), cy = Math.sin(t);
-    // shift the look target sideways (perpendicular to the view) so the car sits left of centre
+    const heading = Math.atan2(car.forward.y, car.forward.x);
+    const t = heading + MENU_CAM_ANGLE + Math.sin(now / 1000 * 0.22) * 0.1;
+    const R = MENU_CAM_DIST, cx = Math.cos(t), cy = Math.sin(t);
     const side = MENU_CAR_SHIFT;
     const tx = car.pos.x + (-cy) * side, ty = car.pos.y + cx * side;
-    camOpts = { mode: 'fixed', fixed: { fov: 34, pos: { x: car.pos.x + cx * R, y: car.pos.y + cy * R, z: 110 }, target: { x: tx, y: ty, z: 35 } } };
+    camOpts = { mode: 'fixed', fixed: { fov: 38, pos: { x: car.pos.x + cx * R, y: car.pos.y + cy * R, z: 118 }, target: { x: tx, y: ty, z: 34 } } };
   } else if (!game.paused || game.lan) {
     if (game.match && game.match.frameUpdate) game.match.frameUpdate(dt);
     const inReplay = game.match && game.match.state === 'replay';

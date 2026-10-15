@@ -188,26 +188,99 @@ export function createMenus({ api, settings, stats, onOpenChange }) {
 </svg>`;
     return h('div.tp-logo', { html: svg, 'aria-label': GAME_TITLE });
   }
+  function logoSvg() { return logo().innerHTML; }
 
   // ------------------------------------------------------------------ pages
   const PAGES = {
     main(p) {
-      p.append(h('div.tp-shade-r'), h('div.tp-head', { style: { height: 'calc(var(--u) * 30)' } }), logo());
-      const navEl = h('div.tp-nav.right',
-        btn('Play', () => push('play'), { sub: 'Exhibition' }),
-        btn('LAN Play', () => push('lan'), { sub: 'Same network' }),
-        btn('Free Play', () => push('freeplay'), { sub: 'Training' }),
-        btn('Garage', () => push('garage'), { sub: 'Car & paint' }),
-        btn('Settings', () => push('settings')),
-        btn('Controls', () => push('controls'), { sub: 'Help' }),
-        btn('Stats', () => push('stats'), { sub: 'Career' }));
-      p.appendChild(navEl);
-      tipEl = h('div.tp-side.below');
+      // Classic stadium main menu: slanted list bottom-left with a submenu opening to the right,
+      // a description line, a news panel on the right and the player band along the bottom.
+      const lanHost = () => { api.lanHost(); push('lanhost'); };
+      const ITEMS = [
+        { key: 'lan', label: 'Play LAN', desc: 'Play with friends on the same network.',
+          sub: [['Host game', lanHost], ['Join game', () => push('lanjoin')], ['How it works', () => push('lan')]] },
+        { key: 'exh', label: 'Exhibition', desc: 'Play an offline match against bots.', go: () => push('play') },
+        { key: 'train', label: 'Training', desc: 'Practice on your own with the ball prediction line and unlimited boost.',
+          sub: [['Free play', () => api.startFreePlay({ bodyId: settings.game.carBody, accent: settings.game.accent, playerTeam: settings.game.team })],
+            ['Free play options', () => push('freeplay')]] },
+        { key: 'garage', label: 'Garage', desc: 'Change your car body, paint and player name.', go: () => push('garage') },
+        { key: 'extras', label: 'Extras', desc: 'Career stats and the full controls guide.',
+          sub: [['Career stats', () => push('stats')], ['Controls guide', () => push('controls')]] },
+        { key: 'opt', label: 'Options', desc: 'Camera, controls, video and audio settings.', go: () => push('settings') },
+      ];
+      p.append(h('div.tp-mm-shade'));
+      const list = h('div.tp-mm-list');
+      const subWrap = h('div.tp-mm-sub');
+      const desc = h('div.tp-mm-desc');
+      const rows = [];
+      const setActive = (it, row) => {
+        if (mmActive === it.key && subWrap.dataset.key === it.key) return;
+        mmActive = it.key;
+        for (const r of rows) r.classList.toggle('active', r === row);
+        desc.textContent = it.desc;
+        subWrap.dataset.key = it.key;
+        subWrap.innerHTML = '';
+        if (it.sub) {
+          subWrap.style.top = `${row.offsetTop}px`;
+          it.sub.forEach(([label, fn], k) => subWrap.appendChild(h('button.tp-mm-item.subi', {
+            type: 'button', 'data-nav': '', 'data-key': `mm-${it.key}-${k}`, onclick: (e) => { e.preventDefault(); fn(); },
+          }, h('span', label))));
+        }
+      };
+      for (const it of ITEMS) {
+        const row = h('button.tp-mm-item', { type: 'button', 'data-nav': '', 'data-key': 'mm-' + it.key, 'data-mm': it.key,
+          onclick: (e) => {
+            e.preventDefault();
+            setActive(it, row);
+            if (it.go) { it.go(); return; }
+            const first = subWrap.querySelector('[data-nav]');
+            if (first) nav.focusEl ? nav.focusEl(first) : first.focus();
+          } }, h('i.ab', 'A'), h('span', it.label));
+        row.addEventListener('mouseenter', () => setActive(it, row));
+        row.addEventListener('tp-navfocus', () => setActive(it, row));
+        rows.push(row);
+        list.appendChild(row);
+      }
+      list.appendChild(subWrap);
+      const listWrap = h('div.tp-mm', list, desc);
+      p.appendChild(listWrap);
+      mmSetActive = (key) => { const k = ITEMS.findIndex((x) => x.key === key); if (k >= 0) setActive(ITEMS[k], rows[k]); };
+      // needs layout for offsetTop
+      requestAnimationFrame(() => mmSetActive(mmActive && ITEMS.some((x) => x.key === mmActive) ? mmActive : 'lan'));
+      mmSetActive(mmActive || 'lan');
+
+      // news panel
+      const news = h('div.tp-mm-news',
+        h('div.art',
+          h('div.lg', { html: logoSvg() }),
+          h('div.ready', '‹ GET READY ›'),
+          h('div.big', 'SEASON 1'),
+          h('div.big2', 'LAN PLAY IS HERE.'),
+          h('div.chips', h('span', '6-DIGIT CODES'), h('span', 'NO INSTALL'), h('span', 'UP TO 6 PLAYERS'))),
+        h('div.txt',
+          h('h4', 'How to play together:'),
+          h('p', 'On one computer choose ', h('b', 'Play LAN › Host game'), ' to get a 6-digit game code. Everyone else on the same Wi-Fi picks ',
+            h('b', 'Join game'), ' and types it in. The host runs the match and bots can fill any empty spots.'),
+          (tipEl = h('div.tip'))));
       renderTip();
-      p.appendChild(tipEl);
-      const f = h('div.tp-footer', playerCard(),
-        h('div.hint', h('span', 'Mouse'), h('span', 'Arrows + Enter'), h('span', h('span.tp-key.pad', 'A'), ' / ', h('span.tp-key.pad', 'B'), ' gamepad')));
-      p.appendChild(f);
+      p.appendChild(news);
+
+      // bottom band: player card + hints, then the ticker
+      const st = stats || {};
+      const xp = (st.matches || 0) * 40 + (st.wins || 0) * 60 + (st.goals || 0) * 25 + (st.saves || 0) * 15 + (st.assists || 0) * 15;
+      const level = 1 + Math.floor(Math.sqrt(xp / 30));
+      const RANKS = [[50, 'Legend'], [40, 'Master'], [30, 'Expert'], [20, 'Veteran'], [10, 'Pro'], [5, 'Semi-Pro'], [0, 'Rookie']];
+      const rank = RANKS.find(([lv]) => level >= lv)[1];
+      const team = settings.game.team === 1 ? 1 : 0;
+      p.append(
+        h('div.tp-mm-band',
+          h('div.tp-mm-player',
+            h('div.av', { style: { background: TEAM_COLORS[team].css } }, String(settings.game.playerName || 'P').slice(0, 1).toUpperCase()),
+            h('div.who', h('div.nm', settings.game.playerName || 'Player'),
+              h('div.rk', h('span.lv', String(level)), h('span', rank.toUpperCase()))),
+            btn('Garage', () => push('garage'), { key: 'mm-band-garage', cls: 'tp-mm-mini' })),
+          h('div.tp-mm-hints', h('span', h('span.tp-key', '↑↓'), ' / mouse to choose'), h('span', h('span.tp-key', 'Enter'), ' or ', h('span.tp-key.pad', 'A'), ' to select'))),
+        h('div.tp-mm-ticker', h('span.l', `WELCOME TO ${GAME_TITLE.toUpperCase()}!`), h('span.r', 'Host a LAN game and share the 6-digit code')));
     },
 
     play(p) {
@@ -594,6 +667,8 @@ export function createMenus({ api, settings, stats, onOpenChange }) {
   };
   let playCfg = null;
   let lanCfg = null;
+  let mmActive = null;          // main menu: highlighted item key
+  let mmSetActive = null;
   const lanDrafts = {};       // slot id / 'join' -> pasted code being typed
   const lanBusy = {};
 
@@ -632,7 +707,7 @@ export function createMenus({ api, settings, stats, onOpenChange }) {
     if (!tipEl) return;
     const [t, b] = TIPS[tipIdx % TIPS.length];
     tipEl.innerHTML = '';
-    tipEl.append(h('div.hd', 'Pro tip'), h('div.ttl', t), h('div.body', b),
+    tipEl.append(h('h4', `Pro tip: ${t}`), h('p', b),
       h('div.dots', TIPS.map((_, i) => h('i' + (i === tipIdx % TIPS.length ? '.on' : '')))));
   }
 

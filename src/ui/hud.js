@@ -25,6 +25,21 @@ const ICONS = {
   chat: '<svg class="ico" viewBox="0 0 24 24"><path d="M3 5h18v11H9l-5 4v-4H3z" fill="#cfe0ff"/></svg>',
 };
 
+// Single-stroke boost digits (40 x 32 units, rounded corners), drawn as SVG paths so they look the same everywhere
+const DIGIT_W = 40, DIGIT_H = 32, DIGIT_GAP = 9;
+const DIGIT_PATHS = {
+  0: 'M5 0H35Q40 0 40 5V27Q40 32 35 32H5Q0 32 0 27V5Q0 0 5 0Z',
+  1: 'M13 5L21 0V32',
+  2: 'M0 0H35Q40 0 40 5V11Q40 16 35 16H5Q0 16 0 21V32H40',
+  3: 'M0 0H35Q40 0 40 5V11Q40 16 35 16H10M35 16Q40 16 40 21V27Q40 32 35 32H0',
+  4: 'M0 0V11Q0 16 5 16H40M34 0V32',
+  5: 'M40 0H0V16H35Q40 16 40 21V27Q40 32 35 32H0',
+  6: 'M40 0H5Q0 0 0 5V27Q0 32 5 32H35Q40 32 40 27V21Q40 16 35 16H0',
+  7: 'M0 0H40L17 32',
+  8: 'M5 0H35Q40 0 40 5V27Q40 32 35 32H5Q0 32 0 27V5Q0 0 5 0ZM0 16H40',
+  9: 'M40 11Q40 16 35 16H5Q0 16 0 11V5Q0 0 5 0H35Q40 0 40 5V27Q40 32 35 32H0',
+};
+
 function teamCls(t) { return t === 1 ? 't1' : 't0'; }
 
 export function createHUD({ api, settings }) {
@@ -40,41 +55,81 @@ export function createHUD({ api, settings }) {
   const fpBug = h('div.tp-bug-fp.tp-hidden', 'FREE PLAY');
 
   // ---------------------------------------------------------- boost meter
-  const N_TICKS = 34, START = 220, SWEEP = 260;
-  const svg = s('svg', { viewBox: '-100 -100 200 200' });
-  const defs = s('defs');
-  const grad = s('linearGradient', { id: 'tpBoostGrad', x1: '0', y1: '1', x2: '0.3', y2: '0' });
-  grad.appendChild(s('stop', { offset: '0', 'stop-color': '#ff7a10' }));
-  grad.appendChild(s('stop', { offset: '1', 'stop-color': '#ffc040' }));
-  defs.appendChild(grad);
-  const disc = s('radialGradient', { id: 'tpBoostDisc', cx: '50%', cy: '40%', r: '60%' });
-  disc.appendChild(s('stop', { offset: '0', 'stop-color': '#1d3fb8', 'stop-opacity': '0.95' }));
-  disc.appendChild(s('stop', { offset: '0.75', 'stop-color': '#0b1a5a', 'stop-opacity': '0.92' }));
-  disc.appendChild(s('stop', { offset: '1', 'stop-color': '#050a24', 'stop-opacity': '0.9' }));
-  defs.appendChild(disc);
-  svg.appendChild(defs);
-  svg.appendChild(s('circle', { cx: 0, cy: 0, r: 70, fill: 'url(#tpBoostDisc)' }));
-  svg.appendChild(s('circle', { cx: 0, cy: 0, r: 70, fill: 'none', stroke: 'rgba(120,170,255,0.45)', 'stroke-width': 1.5 }));
-  // thin inner track arc
+  // Classic gauge: soft dark disc, thin inner ring, segmented bars filling clockwise from 6 o'clock with a
+  // white edge line, thin ticks across the top and big glowing single-stroke digits with a dim offset copy.
+  const N_SEG = 60, START = 180, SWEEP = 270;           // degrees, 0 = up, clockwise
+  const R_IN = 57, R_BAR0 = 62, R_BAR1 = 75;
+  const pol = (r, a) => [Math.sin(a * Math.PI / 180) * r, -Math.cos(a * Math.PI / 180) * r];
   const arcPath = (r, a0, a1) => {
-    const p = (a) => [Math.sin(a * Math.PI / 180) * r, -Math.cos(a * Math.PI / 180) * r];
-    const [x0, y0] = p(a0), [x1, y1] = p(a1);
+    const [x0, y0] = pol(r, a0), [x1, y1] = pol(r, a1);
     return `M ${x0.toFixed(2)} ${y0.toFixed(2)} A ${r} ${r} 0 ${a1 - a0 > 180 ? 1 : 0} 1 ${x1.toFixed(2)} ${y1.toFixed(2)}`;
   };
-  svg.appendChild(s('path', { d: arcPath(75, START, START + SWEEP), fill: 'none', stroke: 'rgba(255,255,255,0.18)', 'stroke-width': 1.2 }));
-  const ticks = [];
-  for (let i = 0; i < N_TICKS; i++) {
-    const a = (START + (SWEEP * (i + 0.5)) / N_TICKS) * Math.PI / 180;
-    const big = i % 5 === 4;
-    const r0 = 79, r1 = big ? 97 : 94;
-    const ln = s('line', { class: 'tk', x1: (Math.sin(a) * r0).toFixed(2), y1: (-Math.cos(a) * r0).toFixed(2), x2: (Math.sin(a) * r1).toFixed(2), y2: (-Math.cos(a) * r1).toFixed(2) });
-    ticks.push(ln); svg.appendChild(ln);
+  const svg = s('svg', { viewBox: '-100 -100 200 200' });
+  const defs = s('defs');
+  const shade = s('radialGradient', { id: 'tpBoostShade', cx: '50%', cy: '50%', r: '50%' });
+  shade.appendChild(s('stop', { offset: '0', 'stop-color': '#000', 'stop-opacity': '0.72' }));
+  shade.appendChild(s('stop', { offset: '0.66', 'stop-color': '#000', 'stop-opacity': '0.6' }));
+  shade.appendChild(s('stop', { offset: '1', 'stop-color': '#000', 'stop-opacity': '0' }));
+  defs.appendChild(shade);
+  const barGrad = s('linearGradient', { id: 'tpBoostBar', x1: '0', y1: '1', x2: '0', y2: '0' });
+  barGrad.appendChild(s('stop', { offset: '0', 'stop-color': '#ff8d10' }));
+  barGrad.appendChild(s('stop', { offset: '1', 'stop-color': '#ffc23a' }));
+  defs.appendChild(barGrad);
+  const glow = s('filter', { id: 'tpBoostGlow', x: '-50%', y: '-50%', width: '200%', height: '200%' });
+  glow.appendChild(s('feGaussianBlur', { in: 'SourceGraphic', stdDeviation: '2.2', result: 'b' }));
+  const merge = s('feMerge');
+  merge.appendChild(s('feMergeNode', { in: 'b' })); merge.appendChild(s('feMergeNode', { in: 'SourceGraphic' }));
+  glow.appendChild(merge);
+  defs.appendChild(glow);
+  svg.appendChild(defs);
+  svg.appendChild(s('circle', { cx: 0, cy: 0, r: 98, fill: 'url(#tpBoostShade)' }));
+  // decoration: inner ring, thin outer arc across the top with three ticks
+  svg.appendChild(s('circle', { class: 'ring', cx: 0, cy: 0, r: R_IN }));
+  svg.appendChild(s('path', { class: 'deco', d: arcPath(R_BAR1 - 4, 300, 420) }));
+  for (const [a, len] of [[315, 9], [0, 15], [45, 9]]) {
+    const [x0, y0] = pol(R_BAR1 - 4, a), [x1, y1] = pol(R_BAR1 - 4 + len, a);
+    svg.appendChild(s('line', { class: 'deco', x1: x0.toFixed(2), y1: y0.toFixed(2), x2: x1.toFixed(2), y2: y1.toFixed(2) }));
   }
-  const boostNum = s('text', { class: 'num', x: 0, y: 14, 'text-anchor': 'middle' }, '33');
-  const boostLbl = s('text', { class: 'lbl', x: 0, y: 40, 'text-anchor': 'middle' }, 'BOOST');
-  svg.appendChild(boostNum); svg.appendChild(boostLbl);
+  // segmented bars (annular sectors)
+  const segs = [];
+  const segW = SWEEP / N_SEG;
+  for (let i = 0; i < N_SEG; i++) {
+    const a0 = START + i * segW + segW * 0.2, a1 = START + (i + 1) * segW - segW * 0.2;
+    const [ax, ay] = pol(R_BAR0, a0), [bx, by] = pol(R_BAR1, a0), [cx, cy] = pol(R_BAR1, a1), [dx, dy] = pol(R_BAR0, a1);
+    const seg = s('path', { class: 'seg', d: `M${ax.toFixed(2)} ${ay.toFixed(2)} L${bx.toFixed(2)} ${by.toFixed(2)} A${R_BAR1} ${R_BAR1} 0 0 1 ${cx.toFixed(2)} ${cy.toFixed(2)} L${dx.toFixed(2)} ${dy.toFixed(2)} A${R_BAR0} ${R_BAR0} 0 0 0 ${ax.toFixed(2)} ${ay.toFixed(2)}Z` });
+    segs.push(seg); svg.appendChild(seg);
+  }
+  // white edge line following the lit bars, with notches every quarter of the sweep
+  const edge = s('path', { class: 'edge', d: '' });
+  svg.appendChild(edge);
+  // digits
+  const digitsGhost = s('g', { class: 'dg ghost' });
+  const digitsMain = s('g', { class: 'dg main', filter: 'url(#tpBoostGlow)' });
+  svg.appendChild(digitsGhost); svg.appendChild(digitsMain);
   const boostEl = h('div.tp-boost', svg);
-  let boostDisp = 33, boostShownInt = -1, boostTicksOn = -1;
+  let boostDisp = 33, boostShownInt = -1, boostSegsOn = -1;
+  function setBoostDigits(n) {
+    const str = String(n);
+    const sc = str.length >= 3 ? 0.56 : 0.8;
+    const w = str.length * DIGIT_W + (str.length - 1) * DIGIT_GAP;
+    const d = [...str].map((ch, k) => `<path transform="translate(${k * (DIGIT_W + DIGIT_GAP)} 0)" d="${DIGIT_PATHS[ch]}"/>`).join('');
+    const tf = (dx, dy) => `translate(${(-w * sc) / 2 + dx} ${(-DIGIT_H * sc) / 2 + dy}) scale(${sc})`;
+    digitsGhost.setAttribute('transform', tf(3.2, 2.6)); digitsMain.setAttribute('transform', tf(0, 0));
+    digitsGhost.innerHTML = d; digitsMain.innerHTML = d;
+  }
+  function setBoostSegs(on) {
+    for (let i = 0; i < N_SEG; i++) setClass(segs[i], 'on', i < on);
+    if (on <= 0) { edge.setAttribute('d', ''); return; }
+    const aEnd = START + on * segW;
+    let d = arcPath(R_BAR0 - 2.2, START, Math.min(aEnd, START + SWEEP - 0.01));
+    for (let q = 1; q < 4; q++) {
+      const a = START + (SWEEP * q) / 4;
+      if (a > aEnd) break;
+      const [x0, y0] = pol(R_BAR0 - 6, a), [x1, y1] = pol(R_BAR0 - 2.2, a);
+      d += ` M${x0.toFixed(2)} ${y0.toFixed(2)} L${x1.toFixed(2)} ${y1.toFixed(2)}`;
+    }
+    edge.setAttribute('d', d);
+  }
 
   // ---------------------------------------------------------- feed / popups / overlays
   const feed = h('div.tp-feed');
@@ -320,12 +375,9 @@ export function createHUD({ api, settings }) {
       boostDisp += (target - boostDisp) * Math.min(1, dt * 14);
       if (Math.abs(target - boostDisp) < 0.05) boostDisp = target;
       const iv = Math.round(boostDisp);
-      if (iv !== boostShownInt) { boostShownInt = iv; boostNum.textContent = String(iv); }
-      const on = Math.round((boostDisp / 100) * N_TICKS);
-      if (on !== boostTicksOn) {
-        for (let i = 0; i < N_TICKS; i++) setClass(ticks[i], 'on', i < on);
-        boostTicksOn = on;
-      }
+      if (iv !== boostShownInt) { boostShownInt = iv; setBoostDigits(iv); }
+      const on = Math.ceil((boostDisp / 100) * N_SEG - 0.01);
+      if (on !== boostSegsOn) { boostSegsOn = on; setBoostSegs(on); }
       setClass(boostEl, 'full', iv >= 100);
       setClass(boostEl, 'low', iv < 1);
       setClass(boostEl, 'active', !!pc.isBoosting && target > 0);

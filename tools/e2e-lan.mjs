@@ -49,15 +49,15 @@ const t0 = Date.now();
 // host: open the lobby page through the menus and make an invite
 await host.evaluate(() => { window.__api.getSettings().game.playerName = 'Hosty'; });
 await join.evaluate(() => { window.__api.getSettings().game.playerName = 'Joiny'; });
-await host.click('text=LAN Play');
-await host.click('text=Host a game');
+await host.click('text=Play LAN');
+await host.click('text=Host game');
 if (longCodes) {
   await host.click('text=Invite with a long code');
   await host.waitForFunction(() => window.__api.lanState().slots.some((s) => s.status === 'waiting'));
   const invite = await host.evaluate(() => window.__api.lanState().slots[0].code);
   check(/^TP1[zp]\./.test(invite), `long invite code (${invite.length} chars)`);
-  await join.click('text=LAN Play');
-  await join.click('text=Join a game');
+  await join.click('text=Play LAN');
+  await join.click('text=Join game');
   await join.fill('input.tp-codein', invite);
   await join.click('button:has-text("Join")');
   await join.waitForFunction(() => { const s = window.__api.lanState(); return s.client && s.client.status === 'waiting'; });
@@ -70,8 +70,8 @@ if (longCodes) {
   const st = await host.evaluate(() => window.__api.lanState());
   check(/^\d{6}$/.test(st.code), `game code "${st.code}" ${st.relayError || ''} (${Date.now() - t0} ms)`);
   if (shots) { mkdirSync('shots', { recursive: true }); await host.screenshot({ path: 'shots/lan-host-code.png' }); }
-  await join.click('text=LAN Play');
-  await join.click('text=Join a game');
+  await join.click('text=Play LAN');
+  await join.click('text=Join game');
   // a wrong code first: should say no game was found
   const wrong = String((Number(st.code) + 1) % 900000 + 100000);
   await join.fill('input.tp-codein', wrong);

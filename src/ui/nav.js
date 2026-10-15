@@ -25,6 +25,7 @@ export function createNav({ getScope, onBack }) {
     focused = el;
     if (!el) return;
     el.classList.add('tp-focus');
+    el.dispatchEvent(new CustomEvent('tp-navfocus', { bubbles: true }));
     const row = el.closest('.tp-row');
     if (row) row.classList.add('tp-focus-row');
     try { el.scrollIntoView({ block: 'nearest', inline: 'nearest' }); } catch (e) { /* old browsers */ }
@@ -92,6 +93,7 @@ export function createNav({ getScope, onBack }) {
 
   return {
     reset() { clearFocus(); focused = null; prev = null; },
+    focusEl(el) { active = true; setFocus(el); },
     pageChanged() {
       focused = null;
       prev = null;
