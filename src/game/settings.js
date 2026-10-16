@@ -120,7 +120,7 @@ export const DEFAULT_SETTINGS = {
     preset: 'kbm',          // control layout: 'kbm' | 'macbook' (see CONTROL_PRESETS)
   },
   bindings: JSON.parse(JSON.stringify(DEFAULT_BINDINGS)),
-  graphics: { quality: 'high', motionBlur: false, fpsCap: 0, showFps: false, nameplates: true, renderScale: 1.0 },
+  graphics: { quality: 'high', motionBlur: false, fpsCap: 0, showFps: false, nameplates: true, renderScale: 1.0, grass: true },
   audio: { master: 0.8, sfx: 0.9, crowd: 0.7, music: 0.0 },
   game: {
     playerName: 'Player', carBody: 'vector', accent: '#e8e8e8', team: 0,

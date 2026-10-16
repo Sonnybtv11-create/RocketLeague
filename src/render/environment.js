@@ -1,5 +1,5 @@
 // OWNER: Arena & environment agent.
-// createEnvironment(ctx) -> { object3d, update(view, frameDt), setQuality(name), dispose() }
+// createEnvironment(ctx) -> { object3d, update(view, frameDt), setQuality(name), setGrass(on), dispose() }
 //
 // Builds the whole stadium: arena shell generated from the collision SDF
 // parameters (render/env/arenaMesh.js, verified by render/env/check-sdf.mjs),
@@ -127,6 +127,53 @@ export function createEnvironment(ctx) {
   floor.receiveShadow = true;
   floor.name = 'pitch';
   root.add(floor);
+
+  // 3D grass: stacked "shell" copies of the pitch a few cm apart; each layer keeps only the parts of
+  // blades tall enough to reach it, so the turf looks fuzzy up close. Grows only on grass (not on the
+  // painted lines, hex aprons or concrete), fades out with distance, receives shadows. Toggle: Settings ›
+  // Graphics › Grass.
+  const GRASS_H = 0.05, GRASS_LAYERS = 12;
+  const grassMat = track(new THREE.MeshStandardMaterial({ map: field.map, roughness: 0.95, metalness: 0.0, envMapIntensity: 0.3 }));
+  grassMat.onBeforeCompile = (sh) => {
+    sh.vertexShader = sh.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying float vShell;\nvarying vec2 vBlade;')
+      .replace('#include <begin_vertex>', `#include <begin_vertex>
+      vShell = instanceMatrix[3][1] / ${GRASS_H.toFixed(3)};
+      vBlade = position.xz * 38.0;`);
+    sh.fragmentShader = sh.fragmentShader
+      .replace('#include <common>', `#include <common>
+      varying float vShell;
+      varying vec2 vBlade;
+      float gHash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }`)
+      .replace('#include <clipping_planes_fragment>', `#include <clipping_planes_fragment>
+      float gDist = length(vViewPosition);
+      float gReach = 1.0 - smoothstep(9.0, 26.0, gDist);
+      if (vShell > gReach) discard;`)
+      .replace('#include <map_fragment>', `#include <map_fragment>
+      {
+        float grassy = smoothstep(0.035, 0.09, diffuseColor.g - max(diffuseColor.r, diffuseColor.b));
+        vec2 cell = floor(vBlade);
+        vec2 f = fract(vBlade) - 0.5 + (vec2(gHash(cell + 3.1), gHash(cell + 7.7)) - 0.5) * 0.35;
+        float hgt = (0.35 + 0.65 * gHash(cell)) * grassy * gReach;
+        if (vShell > hgt) discard;
+        float r = 0.4 * pow(1.0 - vShell / max(hgt, 0.001), 0.8);
+        if (dot(f, f) > r * r) discard;
+        diffuseColor.rgb *= mix(0.62, 1.12, vShell / max(hgt, 0.001));
+      }`);
+  };
+  grassMat.customProgramCacheKey = () => 'tp-grass';
+  const grass = new THREE.InstancedMesh(geos.floor, grassMat, GRASS_LAYERS);
+  {
+    const m4 = new THREE.Matrix4();
+    for (let i = 0; i < GRASS_LAYERS; i++) grass.setMatrixAt(i, m4.makeTranslation(0, ((i + 1) / GRASS_LAYERS) * GRASS_H, 0));
+  }
+  grass.receiveShadow = true;
+  grass.frustumCulled = false;
+  grass.name = 'grass';
+  grass.renderOrder = -1;
+  root.add(grass);
+  const setGrass = (on) => { grass.visible = !!on; };
+  setGrass(!ctx.settings || !ctx.settings.graphics || ctx.settings.graphics.grass !== false);
 
   // lower walls (solid, team trims + ad boards): both halves in one mesh, the
   // team picks its half of the texture atlas through the uv.
@@ -305,6 +352,7 @@ export function createEnvironment(ctx) {
       stadium.update(view, dt, ctx.camera);
     },
     setQuality,
+    setGrass,
     dispose() {
       pads.dispose(); goals.dispose(); stadium.dispose(); skyline.dispose();
       for (const d of disposables) d.dispose && d.dispose();

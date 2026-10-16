@@ -5089,7 +5089,7 @@ var DEFAULT_SETTINGS = {
     // control layout: 'kbm' | 'macbook' (see CONTROL_PRESETS)
   },
   bindings: JSON.parse(JSON.stringify(DEFAULT_BINDINGS)),
-  graphics: { quality: "high", motionBlur: false, fpsCap: 0, showFps: false, nameplates: true, renderScale: 1 },
+  graphics: { quality: "high", motionBlur: false, fpsCap: 0, showFps: false, nameplates: true, renderScale: 1, grass: true },
   audio: { master: 0.8, sfx: 0.9, crowd: 0.7, music: 0 },
   game: {
     playerName: "Player",
@@ -7371,6 +7371,45 @@ function createEnvironment(ctx2) {
   floor.receiveShadow = true;
   floor.name = "pitch";
   root.add(floor);
+  const GRASS_H = 0.05, GRASS_LAYERS = 12;
+  const grassMat = track(new THREE10.MeshStandardMaterial({ map: field.map, roughness: 0.95, metalness: 0, envMapIntensity: 0.3 }));
+  grassMat.onBeforeCompile = (sh) => {
+    sh.vertexShader = sh.vertexShader.replace("#include <common>", "#include <common>\nvarying float vShell;\nvarying vec2 vBlade;").replace("#include <begin_vertex>", `#include <begin_vertex>
+      vShell = instanceMatrix[3][1] / ${GRASS_H.toFixed(3)};
+      vBlade = position.xz * 38.0;`);
+    sh.fragmentShader = sh.fragmentShader.replace("#include <common>", `#include <common>
+      varying float vShell;
+      varying vec2 vBlade;
+      float gHash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }`).replace("#include <clipping_planes_fragment>", `#include <clipping_planes_fragment>
+      float gDist = length(vViewPosition);
+      float gReach = 1.0 - smoothstep(9.0, 26.0, gDist);
+      if (vShell > gReach) discard;`).replace("#include <map_fragment>", `#include <map_fragment>
+      {
+        float grassy = smoothstep(0.035, 0.09, diffuseColor.g - max(diffuseColor.r, diffuseColor.b));
+        vec2 cell = floor(vBlade);
+        vec2 f = fract(vBlade) - 0.5 + (vec2(gHash(cell + 3.1), gHash(cell + 7.7)) - 0.5) * 0.35;
+        float hgt = (0.35 + 0.65 * gHash(cell)) * grassy * gReach;
+        if (vShell > hgt) discard;
+        float r = 0.4 * pow(1.0 - vShell / max(hgt, 0.001), 0.8);
+        if (dot(f, f) > r * r) discard;
+        diffuseColor.rgb *= mix(0.62, 1.12, vShell / max(hgt, 0.001));
+      }`);
+  };
+  grassMat.customProgramCacheKey = () => "tp-grass";
+  const grass = new THREE10.InstancedMesh(geos.floor, grassMat, GRASS_LAYERS);
+  {
+    const m4 = new THREE10.Matrix4();
+    for (let i = 0; i < GRASS_LAYERS; i++) grass.setMatrixAt(i, m4.makeTranslation(0, (i + 1) / GRASS_LAYERS * GRASS_H, 0));
+  }
+  grass.receiveShadow = true;
+  grass.frustumCulled = false;
+  grass.name = "grass";
+  grass.renderOrder = -1;
+  root.add(grass);
+  const setGrass = (on) => {
+    grass.visible = !!on;
+  };
+  setGrass(!ctx2.settings || !ctx2.settings.graphics || ctx2.settings.graphics.grass !== false);
   {
     const tx = makeLowerWallAtlas(renderer2);
     track(tx.map);
@@ -7551,6 +7590,7 @@ function createEnvironment(ctx2) {
       stadium.update(view, dt, ctx2.camera);
     },
     setQuality,
+    setGrass,
     dispose() {
       pads.dispose();
       goals.dispose();
@@ -15329,6 +15369,7 @@ function createMenus({ api: api2, settings: settings2, stats: stats2, onOpenChan
         segRow("Quality preset", g, "quality", [["low", "Low"], ["medium", "Medium"], ["high", "High"], ["ultra", "Ultra"]], "Shadows, particles, post-processing, crowd"),
         sliderRow("Render scale", g, "renderScale", 0.5, 1.5, 0.05, pct),
         toggleRow("Motion blur", g, "motionBlur"),
+        toggleRow("Grass", g, "grass", "3D grass blades on the pitch. Turn off for more FPS on slower computers"),
         h("div.tp-sect", "Interface"),
         toggleRow("Nameplates", g, "nameplates", "Player names above cars"),
         toggleRow("Show FPS", g, "showFps")
@@ -20558,6 +20599,7 @@ var api = {
       post.setQuality && post.setQuality(settings.graphics.quality);
       vfx.setQuality && vfx.setQuality(settings.graphics.quality);
     }
+    env.setGrass && env.setGrass(settings.graphics.grass !== false);
     audio.setVolumes && audio.setVolumes(settings.audio);
     for (const c of game.world ? game.world.cars : []) if (!c.isBot) c.dodgeDeadzone = settings.controls.dodgeDeadzone;
     if (game.world && game.mode === "freeplay") game.world.unlimitedBoost = settings.game.freeplay.unlimitedBoost;

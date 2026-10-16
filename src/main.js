@@ -308,6 +308,7 @@ const api = {
       post.setQuality && post.setQuality(settings.graphics.quality);
       vfx.setQuality && vfx.setQuality(settings.graphics.quality);
     }
+    env.setGrass && env.setGrass(settings.graphics.grass !== false);
     audio.setVolumes && audio.setVolumes(settings.audio);
     for (const c of game.world ? game.world.cars : []) if (!c.isBot) c.dodgeDeadzone = settings.controls.dodgeDeadzone;
     if (game.world && game.mode === 'freeplay') game.world.unlimitedBoost = settings.game.freeplay.unlimitedBoost;

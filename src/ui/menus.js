@@ -757,6 +757,7 @@ export function createMenus({ api, settings, stats, onOpenChange }) {
         segRow('Quality preset', g, 'quality', [['low', 'Low'], ['medium', 'Medium'], ['high', 'High'], ['ultra', 'Ultra']], 'Shadows, particles, post-processing, crowd'),
         sliderRow('Render scale', g, 'renderScale', 0.5, 1.5, 0.05, pct),
         toggleRow('Motion blur', g, 'motionBlur'),
+        toggleRow('Grass', g, 'grass', '3D grass blades on the pitch. Turn off for more FPS on slower computers'),
         h('div.tp-sect', 'Interface'),
         toggleRow('Nameplates', g, 'nameplates', 'Player names above cars'),
         toggleRow('Show FPS', g, 'showFps'));
