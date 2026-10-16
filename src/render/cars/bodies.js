@@ -143,17 +143,18 @@ const BODY_SPECS = {
         p2w: [[x0, 29], [-44, 34.5], [-30, 36.5], [0, 36], [30, 34.5], [55, 33.5], [70, 30], [x1, 23.5]],
         p2y: [[x0, 11], [-40, 10], [0, 9], [60, 8], [x1, 7]],
         p3w: [[x0, 27], [-44, 33], [-30, 35], [0, 34.5], [30, 33], [60, 30.5], [72, 26], [x1, 19.5]],
-        p3y: [[x0, 26], [-42, 26.5], [-20, 25.5], [10, 23.5], [32, 21.5], [60, 17], [x1, 11.5]],
-        p4w: [[x0, 23], [-44, 27.5], [-38, 27], [-24, 24.5], [8, 24.5], [26, 29], [33, 29], [60, 27], [x1, 16]],
-        p4y: [[x0, 28.5], [-44, 31.5], [-38, 33], [-24, 37.5], [8, 37.5], [28, 25], [32, 22.2], [60, 17.6], [x1, 12]],
-        p5: [[x0, 30], [-44, 33], [-38, 35], [-24, 40], [-5, 40.3], [8, 39.6], [31, 23.5], [45, 21.5], [62, 18], [x1, 12.5]],
+        // Octane-style stance: tall rounded cabin, upright screen, short high nose
+        p3y: [[x0, 26], [-42, 26.5], [-20, 25.5], [10, 24.5], [32, 23], [60, 18.5], [x1, 12.5]],
+        p4w: [[x0, 23], [-44, 27.5], [-38, 27], [-24, 24.5], [12, 24.5], [26, 29], [33, 29], [60, 27], [x1, 16]],
+        p4y: [[x0, 28.5], [-44, 31.5], [-38, 33], [-24, 38.5], [12, 39.5], [28, 27.5], [32, 25], [60, 19.8], [x1, 13.5]],
+        p5: [[x0, 30], [-44, 33], [-38, 35.5], [-24, 41.2], [-5, 43], [12, 42.2], [30, 26], [45, 23.5], [62, 20], [x1, 14]],
       };
       const loft = new Loft({
-        section: sectionFn(t, W, 3.2), xs: stations(x0, x1, 2, [-40, -38, -24, 8, 9, 26, 31, 33, 72, 74]),
+        section: sectionFn(t, W, 3.2), xs: stations(x0, x1, 2, [-40, -38, -24, 12, 13, 26, 30, 33, 72, 74]),
         tension: [0, 0.35, 0.1, 0.45, 0.4, 0],
         classify: classifier([
-          { seg: 3, x0: -38, x1: 26, slot: 'glass' },
-          { seg: 4, x0: 9, x1: 31, slot: 'glass' },
+          { seg: 3, x0: -38, x1: 28, slot: 'glass' },
+          { seg: 4, x0: 13, x1: 30, slot: 'glass' },
           { seg: 4, x0: -40, x1: -24, slot: 'glass' },
           { seg: [1, 2], x0: 72, x1: 80, slot: 'trim' },  // grille / lower fascia
           { seg: 1, x0: -60, x1: -44, slot: 'trim' },     // rear diffuser
@@ -171,7 +172,7 @@ const BODY_SPECS = {
       // front pods & rear haunches
       const [wf, wb] = W;
       fender(ps, 'paint', wf, { rin: 15.8, rout: 18.8, z0: 26, z1: 40.5, a0: -0.12, a1: Math.PI - 0.02 });
-      fender(ps, 'paint', wb, { rin: 18.3, rout: 21.8, z0: 28, z1: 42.6, a0: 0.12, a1: Math.PI + 0.12 });
+      fender(ps, 'paint', wb, { rin: 18.3, rout: 23.5, z0: 28, z1: 44, a0: 0.12, a1: Math.PI + 0.12 });
       fender(ps, 'trim', wf, { rin: 15.4, rout: 15.9, z0: 26.5, z1: 40, a0: -0.12, a1: Math.PI - 0.02, lip: 0.2 });
       fender(ps, 'trim', wb, { rin: 17.9, rout: 18.4, z0: 28.5, z1: 42.2, a0: 0.12, a1: Math.PI + 0.12, lip: 0.2 });
       // chunky front bumper block + rally bull bar with round lamps (rear bumper bar)
@@ -186,20 +187,20 @@ const BODY_SPECS = {
       }
       ps.add('trim', roundedBox(4, 5, 30, 1.2), M(-48.2, 6.5, 0));
       // hood scoop
-      ps.add('trim', roundedBox(15, 3.4, 13, 1.3), M(48, 21.3, 0, 0, 0, -0.18));
-      ps.add('glow', roundedBox(0.6, 1.6, 10, 0.2), M(55.3, 21.1, 0, 0, 0, -0.18));
+      ps.add('trim', roundedBox(15, 3.4, 13, 1.3), M(48, 23.6, 0, 0, 0, -0.16));
+      ps.add('glow', roundedBox(0.6, 1.6, 10, 0.2), M(55.3, 22.6, 0, 0, 0, -0.16));
       // spoiler: wing (accent), endplates & struts (trim)
-      const wing = extrudeSide([[-51.5, 43.2], [-49, 45.6], [-41, 45.2], [-39.5, 44.2], [-44, 43.2]], 60, 0.5);
+      const wing = extrudeSide([[-51.5, 47], [-49, 49.4], [-41, 49], [-39.5, 48], [-44, 47]], 60, 0.5);
       ps.add('accent', wing);
-      ps.addMirrored('trim', roundedBox(13.5, 6.5, 1.4, 0.5), M(-45.5, 43.2, 30.8, 0, 0, 0.12));
-      ps.addMirrored('trim', roundedBox(3, 9, 1.6, 0.5), M(-43.5, 37.5, 14, 0, 0, -0.25));
+      ps.addMirrored('trim', roundedBox(13.5, 6.5, 1.4, 0.5), M(-45.5, 47, 30.8, 0, 0, 0.12));
+      ps.addMirrored('trim', roundedBox(3, 12.5, 1.6, 0.5), M(-43.5, 40.2, 14, 0, 0, -0.25));
       // headlights / DRL / tail lights
       for (const y of [6.2, 8.4]) ps.add('chrome', roundedBox(1, 0.8, 22, 0.35), M(78.6, y, 0));  // grille slats
       light(ps, DRL, 1.4, 1.2, 6, 78.4, 4.2, 22.5, 0, 0, 0, 0.5);
       light(ps, TAIL, 2, 4.6, 13, -49.2, 24.2, 18.5, 0, 0, 0, 1.1);
       light(ps, AMBER, 1.6, 1.4, 5, -49.1, 20.6, 21.5, 0, 0, 0, 0.5);
       // roof scoop
-      ps.add('trim', roundedBox(10, 2.2, 10, 1), M(-6, 40.3, 0));
+      ps.add('trim', roundedBox(10, 2.2, 10, 1), M(-6, 43.2, 0));
     },
   },
   // =========================================================================
