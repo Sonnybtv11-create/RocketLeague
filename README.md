@@ -48,3 +48,17 @@ but not LAN play. The LAN screen will say "Network play isn't set up on this web
 - `node tools/run-selftests.mjs` runs the physics and game self-tests.
 - `npx wrangler dev --port 8787` runs the website and rooms locally.
 - `node tools/e2e-lan.mjs [--relay | --block-p2p]` runs a two-browser LAN test against that local site.
+
+## Car models (Blender)
+
+The Vector body is modelled in Blender by a script, `tools/blender/octane_build.py`: control cages
+smoothed with subdivision, creased and marked sharp on hard edges, plus bevelled mechanical parts.
+The script writes a compact quantised mesh to `src/render/cars/vectorMesh.js`, which the game
+decodes at start-up. Blender material names map to the game's material slots (`paint`, `trim`,
+`glass`, `chrome:red` and so on). To rebuild after editing the script:
+
+    uv venv --python 3.13 .bl && uv pip install --python .bl/bin/python bpy
+    .bl/bin/python tools/blender/octane_build.py [--blend out.blend]
+    node tools/assemble.mjs
+
+`?procedural=1` in the URL shows the older code-built body for comparison.

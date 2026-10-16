@@ -15,6 +15,7 @@ import { CAR_CONFIGS, wheelLayout } from '../../sim/carconfig.js';
 import { CAR_BODIES } from '../../contracts.js';
 import { smooth, PartSet, Loft, sweepArc, roundedBox, latheX, discX, extrudeSide, M, setColor, clamp } from './geo.js';
 import { getWheelGeometries } from './wheels.js';
+import { VECTOR_MESH_META, VECTOR_MESH_B64 } from './vectorMesh.js';
 
 // HDR vertex colours for emissive parts (bloom picks these up)
 const HEAD = [2.1, 2.2, 2.5];   // bright but not a glare blob in daylight
@@ -516,6 +517,39 @@ export function bodySpec(bodyId) {
   return BODY_SPECS[bodyId] ? bodyId : (CAR_BODIES.find((b) => b.hitbox === bodyId) || CAR_BODIES[0]).id;
 }
 
+// Bodies modelled in Blender (tools/blender/*.py) ship as compact quantised meshes; decode into
+// per-slot non-indexed geometries in uu, car model axes (+X fwd, +Y up, +Z right).
+const MODELLED = { vector: [VECTOR_MESH_META, VECTOR_MESH_B64] };
+function addModelled(ps, meta, b64) {
+  const bin = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)).buffer;
+  const q = 1 / meta.q;
+  for (const part of meta.parts) {
+    const { nv, ni, off, wide, slot } = part;
+    let o = off;
+    const P = new Int16Array(bin, o, nv * 3); o += nv * 6;
+    const N = new Int8Array(bin, o, nv * 3); o += nv * 3;
+    const C = new Uint8Array(bin, o, nv); o += nv;
+    o = (o + 3) & ~3;
+    const I = wide ? new Uint32Array(bin, o, ni) : new Uint16Array(bin, o, ni);
+    const pos = new Float32Array(ni * 3), nrm = new Float32Array(ni * 3), col = new Float32Array(ni * 3);
+    for (let k = 0; k < ni; k++) {
+      const v = I[k];
+      // Blender (x, y left, z up) -> model (x, z, -y)
+      pos[k * 3] = P[v * 3] * q; pos[k * 3 + 1] = P[v * 3 + 2] * q; pos[k * 3 + 2] = -P[v * 3 + 1] * q;
+      let nx = N[v * 3], ny = N[v * 3 + 2], nz = -N[v * 3 + 1];
+      const l = Math.hypot(nx, ny, nz) || 1;
+      nrm[k * 3] = nx / l; nrm[k * 3 + 1] = ny / l; nrm[k * 3 + 2] = nz / l;
+      const c = meta.palette[C[v]];
+      col[k * 3] = c[0]; col[k * 3 + 1] = c[1]; col[k * 3 + 2] = c[2];
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    g.setAttribute('normal', new THREE.BufferAttribute(nrm, 3));
+    if (slot === 'light' || slot === 'chrome') g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    ps.add(slot, g);
+  }
+}
+
 export function buildBody(bodyId) {
   const id = bodySpec(bodyId);
   if (cache.has(id)) return cache.get(id);
@@ -523,7 +557,9 @@ export function buildBody(bodyId) {
   const ps = new PartSet();
   const W = restWheels(spec.hitbox, spec.tyre.extraF, spec.tyre.extraB);
   const B = { ps, W, spec };
-  spec.build(B);
+  const noModel = typeof location !== 'undefined' && /[?&]procedural=1/.test(location.search);
+  if (MODELLED[id] && !noModel) addModelled(ps, ...MODELLED[id]);
+  else spec.build(B);
   for (const [x, y, z, r] of spec.nozzles) nozzle(ps, x, y, z, r, 6);
   const geoms = ps.build(0.01);
   const res = {
