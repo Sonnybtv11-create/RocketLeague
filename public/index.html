@@ -4743,13 +4743,13 @@ var init_selftest = __esm({
       return { pass: err < 1, detail: `error after 3 s: ${err.toFixed(3)} uu` };
     });
     T2(6, "Render mirror: right is screen-right, blue goal behind blue kickoff", async () => {
-      const THREE28 = await import("three");
+      const THREE29 = await import("three");
       const { simToThree: simToThree2, simRotToQuat: simRotToQuat2 } = await Promise.resolve().then(() => (init_util(), util_exports));
       const w = mkWorld(1);
       const car = w.cars[0];
       car.setSpawn(-256, -3840, 17, Math.PI / 2);
       for (let i = 0; i < 30; i++) w.step();
-      const cam = new THREE28.PerspectiveCamera(80, 16 / 9, 0.1, 1e3);
+      const cam = new THREE29.PerspectiveCamera(80, 16 / 9, 0.1, 1e3);
       const f = car.forward;
       simToThree2({ x: car.pos.x - f.x * 270, y: car.pos.y - f.y * 270, z: car.pos.z + 100 }, cam.position);
       cam.up.set(0, 1, 0);
@@ -4762,7 +4762,7 @@ var init_selftest = __esm({
       const blueGoal = proj({ x: 0, y: -5120, z: 300 });
       const orangeGoal = proj({ x: 0, y: 5120, z: 300 });
       const q = simRotToQuat2(car.rot);
-      const mz = new THREE28.Vector3(0, 0, 1).applyQuaternion(q);
+      const mz = new THREE29.Vector3(0, 0, 1).applyQuaternion(q);
       const simR = simToThree2(car.right.mul(100)).normalize();
       const p0 = proj(car.pos);
       for (let i = 0; i < 120; i++) {
@@ -4784,7 +4784,7 @@ init_const();
 init_arena();
 init_carconfig();
 init_contracts();
-import * as THREE27 from "three";
+import * as THREE28 from "three";
 
 // src/game/view.js
 init_math();
@@ -5139,7 +5139,7 @@ init_util();
 // src/render/environment.js
 init_contracts();
 init_arena();
-import * as THREE9 from "three";
+import * as THREE10 from "three";
 
 // src/render/env/arenaMesh.js
 init_arena();
@@ -5456,14 +5456,13 @@ function makeFieldTextures(renderer2) {
     for (let iy = -5; iy < 5; iy++) {
       const light2 = (ix + iy & 1) === 0;
       const team = iy < 0 ? 0 : 1;
-      let r = light2 ? 66 : 50, gg = light2 ? 118 : 94, b = light2 ? 53 : 42;
+      let r = light2 ? 50 : 38, gg = light2 ? 108 : 88, b = light2 ? 42 : 34;
       if (team === 0) {
-        r -= 3;
-        b += 5;
+        r -= 2;
+        b += 4;
       } else {
-        r += 5;
-        gg += 1;
-        b -= 3;
+        r += 4;
+        b -= 2;
       }
       g.fillStyle = `rgb(${r},${gg},${b})`;
       g.fillRect(ix * SQ + OX, iy * SQ, SQ, SQ);
@@ -5508,122 +5507,190 @@ function makeFieldTextures(renderer2) {
     pts.forEach((p, i) => i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1]));
     if (close) g.closePath();
   };
+  const ring = (u) => {
+    const q = quadRing(u);
+    const quad = q.slice(0, q.length - 2);
+    const pts = [];
+    for (const p of quad) pts.push(p);
+    for (let k = quad.length - 1; k >= 0; k--) pts.push([-quad[k][0], quad[k][1]]);
+    for (let k = 0; k < quad.length; k++) pts.push([-quad[k][0], -quad[k][1]]);
+    for (let k = quad.length - 1; k >= 0; k--) pts.push([quad[k][0], -quad[k][1]]);
+    return pts;
+  };
+  const ringPath = (u, path = new Path2D()) => {
+    ring(u).forEach((p, k) => k ? path.lineTo(p[0], p[1]) : path.moveTo(p[0], p[1]));
+    path.closePath();
+    return path;
+  };
+  const glowLine = (pts, col, w) => {
+    g.lineCap = "round";
+    g.lineJoin = "round";
+    g.strokeStyle = col;
+    g.globalAlpha = 0.22;
+    g.lineWidth = w * 3.2;
+    poly(pts);
+    g.stroke();
+    g.globalAlpha = 0.8;
+    g.lineWidth = w;
+    poly(pts);
+    g.stroke();
+    g.globalAlpha = 1;
+  };
+  const hexTiles = (r, fill, edge, edgeW, tint, tintCol) => {
+    const w = Math.sqrt(3) * r;
+    for (let row = -Math.ceil(Y3 / (1.5 * r)) - 1; row <= Math.ceil(Y3 / (1.5 * r)) + 1; row++) {
+      for (let col = -Math.ceil(X3 / w) - 1; col <= Math.ceil(X3 / w) + 1; col++) {
+        const cx = col * w + (row & 1 ? w / 2 : 0), cy = row * 1.5 * r;
+        const pts = [];
+        for (let k = 0; k < 6; k++) {
+          const a = Math.PI / 6 + k * Math.PI / 3;
+          pts.push([cx + (r - edgeW * 0.5) * Math.cos(a), cy + (r - edgeW * 0.5) * Math.sin(a)]);
+        }
+        g.fillStyle = fill;
+        g.globalAlpha = 1;
+        poly(pts, true);
+        g.fill();
+        g.strokeStyle = tint && R() < tint ? tintCol : edge;
+        g.lineWidth = edgeW;
+        g.stroke();
+      }
+    }
+  };
   for (const team of [0, 1]) {
     const s2 = team === 0 ? -1 : 1;
-    const col = TEAM_PAINT[team];
+    const col = TEAM_PAINT[team], light2 = TEAM_CSS_LIGHT[team];
     g.save();
+    g.clip(ringPath(RF3 + 70));
     g.beginPath();
-    g.rect(-2500, s2 > 0 ? 3250 : -5120, 5e3, 5120 - 3250);
+    g.rect(-X3, s2 > 0 ? 0 : -Y3, 2 * X3, Y3);
     g.clip();
-    const pa = PAINT_ALPHA[team];
     g.fillStyle = col;
-    g.globalAlpha = 0.5 * pa;
-    for (let k = -12; k < 12; k++) {
-      const off = k * 420;
-      for (const side of [-1, 1]) {
-        g.beginPath();
-        const x0 = 0, y0 = s2 * 3250 + off * s2;
-        const dx = side, dy = s2;
-        const w = 100;
-        g.moveTo(x0, y0);
-        g.lineTo(x0 + dx * 4e3, y0 + dy * 4e3);
-        g.lineTo(x0 + dx * 4e3, y0 + dy * 4e3 + s2 * w * 1.41);
-        g.lineTo(x0, y0 + s2 * w * 1.41);
-        g.closePath();
-        g.fill();
+    g.globalAlpha = 0.2 * PAINT_ALPHA[team];
+    for (const sx of [-1, 1]) {
+      for (const [x0, len3, ang] of [[700, 3600, 0.32], [1900, 2600, 0.5]]) {
+        g.save();
+        g.translate(sx * x0, s2 * (Y3 - 400));
+        g.rotate(-s2 * sx * ang + (s2 > 0 ? Math.PI : 0));
+        g.fillRect(-160, 0, 320, len3);
+        g.restore();
       }
+    }
+    g.globalAlpha = 1;
+    const Rl = rng(77 + team);
+    for (let n = 0; n < 5; n++) {
+      let x = 250 + Rl() * 2800, y = Y3 - 300 - Rl() * 900;
+      const pts = [[x, y]];
+      const segs = 3 + Math.floor(Rl() * 3);
+      for (let k = 0; k < segs && y > 500; k++) {
+        const run = 350 + Rl() * 900;
+        if (k % 2 === 0) y -= run;
+        else {
+          const dx = (Rl() < 0.5 ? -1 : 1) * Math.min(run * 0.7, 600);
+          x = Math.max(150, Math.min(X3 - 700, x + dx));
+          y -= Math.abs(dx);
+        }
+        y = Math.max(y, 450);
+        pts.push([x, y]);
+      }
+      for (const sx of [-1, 1]) glowLine(pts.map((p) => [p[0] * sx, p[1] * s2]), light2, 16);
     }
     g.restore();
-    g.fillStyle = col;
-    g.globalAlpha = Math.min(1, 0.55 * pa);
-    g.fillRect(-1500, s2 > 0 ? 4250 : -5120, 3e3, 870);
-    g.globalAlpha = 0.95;
-    g.fillRect(-GW3, s2 > 0 ? 5040 : -5120, 2 * GW3, 80);
-    g.globalAlpha = 0.75;
-    for (const sx of [-1, 1]) {
-      for (let k = 0; k < 6; k++) {
-        const y0 = s2 * (2350 + k * 260);
-        g.fillRect(sx > 0 ? X3 - RF3 - 330 : -X3 + RF3 + 90, Math.min(y0, y0 + s2 * 170), 240, 170);
-      }
-    }
-    g.globalAlpha = 0.85;
-    for (const sx of [-1, 1]) g.fillRect(sx * 1650 - 14, s2 > 0 ? 450 : -3250, 28, 2800);
-    g.globalAlpha = 1;
   }
-  const hexPts = (r) => {
+  {
+    const inner = RF3 + 70 + 820;
+    const apron = ringPath(RF3 + 70);
+    ringPath(inner, apron);
+    for (const team of [0, 1]) {
+      const s2 = team === 0 ? -1 : 1;
+      g.save();
+      g.clip(apron, "evenodd");
+      g.beginPath();
+      for (const sx of [-1, 1]) g.rect(sx > 0 ? 1350 : -X3, s2 > 0 ? 1650 : -Y3, X3 - 1350, Y3 - 1650);
+      g.clip();
+      hexTiles(210, "#23272e", "#3b424c", 16, 0.12, TEAM_PAINT[team]);
+      g.globalAlpha = 0.8;
+      g.strokeStyle = "#e8ecf2";
+      g.lineWidth = 22;
+      g.setLineDash([170, 150]);
+      g.stroke(ringPath(RF3 + 70 + 420));
+      g.setLineDash([]);
+      g.globalAlpha = 1;
+      g.restore();
+      g.save();
+      g.beginPath();
+      for (const sx of [-1, 1]) g.rect(sx > 0 ? 1350 : -X3, s2 > 0 ? 1650 : -Y3, X3 - 1350, Y3 - 1650);
+      g.clip();
+      g.lineCap = "round";
+      g.strokeStyle = TEAM_CSS_LIGHT[team];
+      g.globalAlpha = 0.3;
+      g.lineWidth = 80;
+      g.stroke(ringPath(inner));
+      g.globalAlpha = 0.95;
+      g.lineWidth = 26;
+      g.stroke(ringPath(inner));
+      g.globalAlpha = 1;
+      g.restore();
+    }
+  }
+  g.save();
+  g.clip(ringPath(RF3 + 70));
+  g.fillStyle = "#9aa1a9";
+  g.fillRect(-X3, -95, 2 * X3, 190);
+  g.fillStyle = "rgba(255,255,255,0.85)";
+  g.fillRect(-X3, -95, 2 * X3, 14);
+  g.fillRect(-X3, 81, 2 * X3, 14);
+  g.setLineDash([120, 110]);
+  line(14, "rgba(255,255,255,0.75)");
+  poly([[-X3, 0], [X3, 0]]);
+  g.stroke();
+  g.setLineDash([]);
+  g.restore();
+  const hexPts = (r, rot = 0) => {
     const p = [];
-    for (let i = 0; i < 6; i++) {
-      const a = i * Math.PI / 3;
+    for (let k = 0; k < 6; k++) {
+      const a = rot + k * Math.PI / 3;
       p.push([r * Math.cos(a), r * Math.sin(a)]);
     }
     return p;
   };
+  g.save();
+  poly(hexPts(640), true);
+  g.clip();
+  hexTiles(105, "#262a31", "#3d444e", 10, 0, null);
+  g.restore();
   for (const team of [0, 1]) {
     const s2 = team === 0 ? -1 : 1;
     g.save();
     g.beginPath();
     g.rect(-2e3, s2 > 0 ? 0 : -2e3, 4e3, 2e3);
     g.clip();
-    g.fillStyle = TEAM_PAINT[team];
-    g.globalAlpha = 0.85 * PAINT_ALPHA[team];
-    poly(hexPts(360), true);
-    g.fill();
-    g.globalAlpha = 0.7 * PAINT_ALPHA[team];
-    g.lineWidth = 44;
-    g.strokeStyle = TEAM_PAINT[team];
-    g.setLineDash([150, 90]);
-    g.beginPath();
-    g.arc(0, 0, 560, 0, Math.PI * 2);
+    g.strokeStyle = TEAM_CSS_LIGHT[team];
+    g.lineJoin = "round";
+    g.globalAlpha = 0.3;
+    g.lineWidth = 70;
+    poly(hexPts(640), true);
     g.stroke();
-    g.lineWidth = 26;
-    g.setLineDash([60, 70]);
-    g.beginPath();
-    g.arc(0, 0, 720, 0, Math.PI * 2);
+    g.globalAlpha = 1;
+    g.lineWidth = 22;
+    poly(hexPts(640), true);
     g.stroke();
-    g.setLineDash([]);
     g.restore();
   }
-  g.globalAlpha = 1;
-  {
-    const q = quadRing(RF3 + 70);
-    const quad = q.slice(0, q.length - 2);
-    const pts = [];
-    for (const p of quad) pts.push(p);
-    for (let i = quad.length - 1; i >= 0; i--) pts.push([-quad[i][0], quad[i][1]]);
-    for (let i = 0; i < quad.length; i++) pts.push([-quad[i][0], -quad[i][1]]);
-    for (let i = quad.length - 1; i >= 0; i--) pts.push([quad[i][0], -quad[i][1]]);
-    line(36);
-    poly(pts, true);
-    g.stroke();
+  for (const team of [0, 1]) {
+    const s2 = team === 0 ? -1 : 1;
+    g.fillStyle = TEAM_PAINT[team];
+    g.globalAlpha = 0.95;
+    g.fillRect(-GW3, s2 > 0 ? 5040 : -5120, 2 * GW3, 80);
+    g.globalAlpha = 1;
   }
   line(36);
-  poly([[-X3 + RF3 + 70, 0], [X3 - RF3 - 70, 0]]);
-  g.stroke();
+  g.stroke(ringPath(RF3 + 70));
+  line(22, "rgba(255,255,255,0.8)");
+  g.setLineDash([160, 120]);
   g.beginPath();
-  g.arc(0, 0, 1e3, 0, Math.PI * 2);
+  g.arc(0, 0, 1180, 0, Math.PI * 2);
   g.stroke();
-  line(20);
-  poly(hexPts(375), true);
-  g.stroke();
-  for (const s2 of [-1, 1]) {
-    line(32);
-    poly([[-2500, s2 * (5120 - RF3 - 70)], [-2500, s2 * 3250], [2500, s2 * 3250], [2500, s2 * (5120 - RF3 - 70)]]);
-    g.stroke();
-    const R0 = 2350, yc = s2 * 5120;
-    const ang = Math.acos((5120 - 3250) / R0);
-    g.beginPath();
-    if (s2 > 0) g.arc(0, yc, R0, -Math.PI / 2 - ang, -Math.PI / 2 + ang);
-    else g.arc(0, yc, R0, Math.PI / 2 - ang, Math.PI / 2 + ang);
-    g.stroke();
-    line(26);
-    poly([[-1500, s2 * 5120], [-1500, s2 * 4250], [1500, s2 * 4250], [1500, s2 * 5120]]);
-    g.stroke();
-    line(18, "rgba(255,255,255,0.7)");
-    g.setLineDash([140, 120]);
-    poly([[-X3 + RF3 + 70, s2 * 2e3], [X3 - RF3 - 70, s2 * 2e3]]);
-    g.stroke();
-    g.setLineDash([]);
-  }
+  g.setLineDash([]);
   for (const p of PAD_LOCS_SMALL) {
     g.fillStyle = "rgba(20,40,20,0.18)";
     g.beginPath();
@@ -6051,24 +6118,6 @@ function createScenery() {
   };
   ring(1500, 20, 150, 160, new THREE5.Color(5071736), new THREE5.Color(8228771), 0.55, true, 11);
   ring(1100, 0, 45, 120, new THREE5.Color(3099180), new THREE5.Color(4876858), 0.35, false, 23);
-  const tower = (cx, cz, w, h2, c) => {
-    const cc = c.clone().lerp(haze, 0.45), ct = c.clone().lerp(haze, 0.3).offsetHSL(0, 0, 0.08);
-    const pts = [[-w, -w], [w, -w], [w, w], [-w, w]];
-    for (let k = 0; k < 4; k++) {
-      const p0 = pts[k], p1 = pts[(k + 1) % 4];
-      const a = push(cx + p0[0], -10, cz + p0[1], cc), b = push(cx + p1[0], -10, cz + p1[1], cc);
-      const c2 = push(cx + p1[0], h2, cz + p1[1], ct), d = push(cx + p0[0], h2, cz + p0[1], ct);
-      idx.push(a, b, c2, a, c2, d, a, c2, b, a, d, c2);
-    }
-    const t0 = push(cx - w, h2, cz - w, ct), t1 = push(cx + w, h2, cz - w, ct), t2 = push(cx + w, h2, cz + w, ct), t3 = push(cx - w, h2, cz + w, ct);
-    idx.push(t0, t1, t2, t0, t2, t3, t0, t2, t1, t0, t3, t2);
-  };
-  for (let i = 0; i < 26; i++) {
-    const side = i % 2 ? 1 : -1;
-    const a = (side > 0 ? 0.3 : Math.PI + 0.3) + (R() - 0.5) * 0.9;
-    const r = 700 + R() * 350;
-    tower(Math.cos(a) * r, Math.sin(a) * r, 14 + R() * 18, 90 + R() * 200, new THREE5.Color().setHSL(0.6, 0.15, 0.35 + R() * 0.2));
-  }
   const g = new THREE5.BufferGeometry();
   g.setAttribute("position", new THREE5.Float32BufferAttribute(pos, 3));
   g.setAttribute("color", new THREE5.Float32BufferAttribute(col, 3));
@@ -6507,9 +6556,10 @@ var SEC = {
   walk2: [[2250, 2450], [2400, 2450]],
   upper: [[2400, 2450], [4300, 3700]],
   back: [[4300, 3700], [4300, 4700]],
-  roofTop: [[4400, 4800], [900, 5350]],
-  roofEdge: [[900, 5350], [900, 5080]],
-  roofUnder: [[900, 5080], [4400, 4600]]
+  // slim dark steel roof ring over the upper tier (the sky above stays open under the glass dome)
+  roofTop: [[4400, 4800], [2700, 5e3]],
+  roofEdge: [[2700, 5e3], [2700, 4860]],
+  roofUnder: [[2700, 4860], [4400, 4640]]
 };
 var ROW_DEPTH = 87.5;
 var STADIUM_EXTENT = { x: 4800 + 4500, y: 6550 + 4500, z: 5400 };
@@ -6753,7 +6803,7 @@ function createStadium(ctx2) {
   const structGeo = buildStrips(path, [[SEC.front, 1e3, 1e3], [SEC.walk1, 1e3, 1e3], [SEC.walk2, 1e3, 1e3], [SEC.back, 1e3, 1e3]]);
   const roofGeo = buildStrips(path, [[SEC.roofTop, 1e3, 1e3], [SEC.roofEdge, 1e3, 1e3], [SEC.roofUnder, 1e3, 1e3]]);
   setEmis(setColor(structGeo, new THREE8.Color(8225679)), new THREE8.Color(0, 0, 0));
-  setEmis(setColor(roofGeo, new THREE8.Color(16048860)), new THREE8.Color(6974580));
+  setEmis(setColor(roofGeo, new THREE8.Color(2896702)), new THREE8.Color(461068));
   const shellGeo = track(merge([structGeo, roofGeo]));
   structGeo.dispose();
   roofGeo.dispose();
@@ -6795,7 +6845,7 @@ function createStadium(ctx2) {
     let acc = 0;
     for (let i = 0; i < path.length - 1; i++) {
       const a = path[i], b = path[i + 1];
-      const ax = a.x + a.nx * 900, ay = a.y + a.ny * 900, bx = b.x + b.nx * 900, by = b.y + b.ny * 900;
+      const ax = a.x + a.nx * 2700, ay = a.y + a.ny * 2700, bx = b.x + b.nx * 2700, by = b.y + b.ny * 2700;
       const len3 = Math.hypot(bx - ax, by - ay);
       let t = acc;
       while (t < len3) {
@@ -6812,7 +6862,7 @@ function createStadium(ctx2) {
   const lampMesh = new THREE8.InstancedMesh(lampGeo, lampMat, lamps.length);
   const glowPos = new Float32Array(lamps.length * 3), glowSize = new Float32Array(lamps.length);
   lamps.forEach((l, i) => {
-    const x = (l.x - l.nx * 40) * S4, y = 50.5, z = (l.y - l.ny * 40) * S4;
+    const x = (l.x - l.nx * 40) * S4, y = 48.3, z = (l.y - l.ny * 40) * S4;
     dummy.position.set(x, y, z);
     dummy.rotation.set(0, 0, 0);
     dummy.lookAt(x - l.nx, y - 0.9, z - l.ny);
@@ -6880,18 +6930,357 @@ function createStadium(ctx2) {
   };
 }
 
-// src/render/environment.js
+// src/render/env/skyline.js
+import * as THREE9 from "three";
 var S5 = 0.01;
+var DOME_VERT = (
+  /* glsl */
+  `
+varying vec3 vWorld;
+varying vec3 vNormalW;
+void main() {
+  vec4 w = modelMatrix * vec4(position, 1.0);
+  vWorld = w.xyz;
+  vNormalW = normalize(mat3(modelMatrix) * normal);
+  gl_Position = projectionMatrix * viewMatrix * w;
+}`
+);
+var DOME_FRAG = (
+  /* glsl */
+  `
+uniform float uCell;
+uniform vec3 uLine;
+uniform float uAlpha;
+varying vec3 vWorld;
+varying vec3 vNormalW;
+// distance to the nearest hexagon edge (cells of size 1, edge at 0)
+float hexEdge(vec2 p) {
+  const vec2 s = vec2(1.0, 1.7320508);
+  vec4 hc = floor(vec4(p, p - vec2(0.5, 1.0)) / s.xyxy) + 0.5;
+  vec4 h = vec4(p - hc.xy * s, p - (hc.zw + 0.5) * s);
+  vec2 q = dot(h.xy, h.xy) < dot(h.zw, h.zw) ? h.xy : h.zw;
+  q = abs(q);
+  return 0.5 - max(dot(q, s * 0.5), q.x);
+}
+void main() {
+  // top-down projection on the cap, cylindrical on the steep rim
+  vec2 pTop = vWorld.xz / uCell;
+  vec2 pSide = vec2(atan(vWorld.z, vWorld.x) * 18.0, vWorld.y / uCell);
+  float up = smoothstep(0.35, 0.75, abs(vNormalW.y));
+  float e = mix(hexEdge(pSide), hexEdge(pTop), up);
+  float w = fwidth(e);
+  float line = 1.0 - smoothstep(0.0, w * 1.2 + 0.002, e);
+  gl_FragColor = vec4(uLine, uAlpha * line + 0.025);
+}`
+);
+function buildDome() {
+  const { A, B, R } = BOWL;
+  const ring = [];
+  const seg = 18;
+  const corner = (cx, cy, a0) => {
+    for (let i = 0; i <= seg; i++) {
+      const a = a0 + i / seg * Math.PI / 2;
+      ring.push([cx + Math.cos(a) * R, cy + Math.sin(a) * R]);
+    }
+  };
+  corner(A - R, B - R, 0);
+  corner(-(A - R), B - R, Math.PI / 2);
+  corner(-(A - R), -(B - R), Math.PI);
+  corner(A - R, -(B - R), Math.PI * 1.5);
+  const OUT = 4500;
+  const rows = 14;
+  const pos = [], idx = [];
+  const n = ring.length;
+  for (let r = 0; r <= rows; r++) {
+    const t = r / rows;
+    const k = 1 - t * 0.985;
+    const z = 4950 + (9800 - 4950) * Math.sin(t * Math.PI / 2);
+    for (let i = 0; i < n; i++) {
+      const [x, y] = ring[i];
+      const l = Math.hypot(x, y) || 1;
+      const ox = x + x / l * OUT, oy = y + y / l * OUT;
+      pos.push(ox * k * S5, z * S5, oy * k * S5);
+    }
+  }
+  for (let r = 0; r < rows; r++) for (let i = 0; i < n; i++) {
+    const a = r * n + i, b = r * n + (i + 1) % n, c = (r + 1) * n + (i + 1) % n, d = (r + 1) * n + i;
+    idx.push(a, b, c, a, c, d);
+  }
+  const g = new THREE9.BufferGeometry();
+  g.setAttribute("position", new THREE9.Float32BufferAttribute(pos, 3));
+  g.setIndex(idx);
+  g.computeVertexNormals();
+  const m = new THREE9.ShaderMaterial({
+    uniforms: { uCell: { value: 13 }, uLine: { value: new THREE9.Color(14216447) }, uAlpha: { value: 0.17 } },
+    vertexShader: DOME_VERT,
+    fragmentShader: DOME_FRAG,
+    transparent: true,
+    depthWrite: false,
+    side: THREE9.DoubleSide
+  });
+  m.extensions = { derivatives: true };
+  const mesh = new THREE9.Mesh(g, m);
+  mesh.name = "glassDome";
+  mesh.renderOrder = 2;
+  mesh.frustumCulled = false;
+  return mesh;
+}
+function archPoint(L, H4, yPlane, t) {
+  const a = Math.PI * (1 - t);
+  return [Math.cos(a) * L, yPlane, Math.sin(a) * H4];
+}
+function buildArches() {
+  const steel = [], lamps = [];
+  const L = 11200, H4 = 10600, W = 520, T3 = 360;
+  const NSEG = 64;
+  for (const yPlane of [-9300, 9300]) {
+    const inward = -Math.sign(yPlane);
+    for (const off of [0, inward * 900]) {
+      const w = off ? W * 0.45 : W, th = off ? T3 * 0.55 : T3;
+      const pts = [];
+      for (let i = 0; i <= NSEG; i++) pts.push(archPoint(L - (off ? 350 : 0), H4 - (off ? 450 : 0), yPlane + off, i / NSEG));
+      steel.push({ pts, w, th });
+    }
+    for (let i = 4; i < NSEG - 3; i += 2) {
+      const p = archPoint(L, H4, yPlane, i / NSEG);
+      lamps.push({ p, inward });
+    }
+  }
+  const pos = [], idx = [];
+  for (const { pts, w, th } of steel) {
+    const base = pos.length / 3;
+    for (let i = 0; i < pts.length; i++) {
+      const p = pts[i], q = pts[Math.min(i + 1, pts.length - 1)], o = pts[Math.max(i - 1, 0)];
+      const tx = q[0] - o[0], tz = q[2] - o[2], tl = Math.hypot(tx, tz) || 1;
+      const nx = -tz / tl, nz = tx / tl;
+      const corners = [[-w / 2, -th / 2], [w / 2, -th / 2], [w / 2, th / 2], [-w / 2, th / 2]];
+      for (const [dy, dn] of corners) pos.push((p[0] + nx * dn) * S5, (p[2] + nz * dn) * S5, (p[1] + dy) * S5);
+    }
+    for (let i = 0; i < pts.length - 1; i++) for (let f = 0; f < 4; f++) {
+      const a = base + i * 4 + f, b = base + i * 4 + (f + 1) % 4, c = base + (i + 1) * 4 + (f + 1) % 4, d = base + (i + 1) * 4 + f;
+      idx.push(a, b, c, a, c, d);
+    }
+  }
+  const g = new THREE9.BufferGeometry();
+  g.setAttribute("position", new THREE9.Float32BufferAttribute(pos, 3));
+  g.setIndex(idx);
+  g.computeVertexNormals();
+  const mat = new THREE9.MeshStandardMaterial({ color: 3818064, roughness: 0.5, metalness: 0.55, side: THREE9.DoubleSide, envMapIntensity: 0.8 });
+  const arches = new THREE9.Mesh(g, mat);
+  arches.name = "arches";
+  const lampGeo = new THREE9.BoxGeometry(4.2, 0.5, 1.1);
+  const lampMat = new THREE9.MeshBasicMaterial({ color: new THREE9.Color(1, 0.96, 0.86).multiplyScalar(4) });
+  const lampMesh = new THREE9.InstancedMesh(lampGeo, lampMat, lamps.length);
+  const dummy = new THREE9.Object3D();
+  lamps.forEach(({ p }, i) => {
+    const t = Math.atan2(p[2] / 10600, p[0] / 11200);
+    dummy.position.set(p[0] * S5, (p[2] - 230) * S5, p[1] * S5);
+    dummy.rotation.set(0, 0, t - Math.PI / 2);
+    dummy.updateMatrix();
+    lampMesh.setMatrixAt(i, dummy.matrix);
+  });
+  const group = new THREE9.Group();
+  group.add(arches, lampMesh);
+  return { group, disposables: [g, mat, lampGeo, lampMat, lampMesh], H: H4, L };
+}
+function makeFlagAtlas() {
+  const c = document.createElement("canvas");
+  c.width = 512;
+  c.height = 128;
+  const g = c.getContext("2d");
+  const cols = ["#d62828", "#ffffff", "#1d3fbb", "#f7c600", "#1f8a3a", "#111111", "#ff8a1f", "#5bc0eb", "#8b1e3f", "#2a9d8f"];
+  const R = rng(99);
+  for (let k = 0; k < 16; k++) {
+    const x = k % 8 * 64, y = Math.floor(k / 8) * 64;
+    const pick = () => cols[Math.floor(R() * cols.length)];
+    const a = pick(), b = pick(), d = pick();
+    const style = k % 5;
+    g.fillStyle = a;
+    g.fillRect(x, y, 64, 64);
+    g.fillStyle = b;
+    if (style === 0) g.fillRect(x + 21, y, 22, 64);
+    else if (style === 1) g.fillRect(x, y + 21, 64, 22);
+    else if (style === 2) {
+      g.fillRect(x + 18, y, 12, 64);
+      g.fillRect(x, y + 26, 64, 12);
+    } else if (style === 3) {
+      g.fillRect(x, y + 32, 64, 32);
+    } else {
+      g.beginPath();
+      g.arc(x + 32, y + 32, 14, 0, Math.PI * 2);
+      g.fill();
+    }
+    g.fillStyle = d;
+    if (style === 0) g.fillRect(x + 43, y, 21, 64);
+    if (style === 1) g.fillRect(x, y + 43, 64, 21);
+  }
+  const tex = new THREE9.CanvasTexture(c);
+  tex.colorSpace = THREE9.SRGBColorSpace;
+  return tex;
+}
+function buildFlags(L, H4) {
+  const cables = [];
+  for (const fx of [-0.62, -0.25, 0.25, 0.62]) {
+    const x = fx * L;
+    const zEnd = Math.sqrt(1 - fx * fx) * H4 - 300;
+    cables.push({ x, zEnd });
+  }
+  const R = rng(7);
+  const pos = [], uv = [], idx = [], linePos = [];
+  const FW = 330, FH = 230, STEP = 520, Y0 = 9300;
+  for (const { x, zEnd } of cables) {
+    const sag = 2600;
+    const zAt = (y) => zEnd - sag * (1 - (y / Y0) ** 2);
+    for (let y = -Y0; y < Y0; y += 300) linePos.push(x * S5, zAt(y) * S5, y * S5, x * S5, zAt(y + 300) * S5, (y + 300) * S5);
+    for (let y = -Y0 + STEP; y < Y0 - STEP / 2; y += STEP) {
+      const k = Math.floor(R() * 16), u0 = k % 8 / 8, v0 = 1 - Math.floor(k / 8) * 0.5;
+      const z0 = zAt(y), base = pos.length / 3;
+      const tilt = (R() - 0.5) * 60;
+      pos.push(
+        x * S5,
+        z0 * S5,
+        (y - FW / 2) * S5,
+        x * S5,
+        z0 * S5,
+        (y + FW / 2) * S5,
+        (x + tilt) * S5,
+        (z0 - FH) * S5,
+        (y + FW / 2) * S5,
+        (x + tilt) * S5,
+        (z0 - FH) * S5,
+        (y - FW / 2) * S5
+      );
+      uv.push(u0, v0, u0 + 1 / 8, v0, u0 + 1 / 8, v0 - 0.5, u0, v0 - 0.5);
+      idx.push(base, base + 1, base + 2, base, base + 2, base + 3);
+    }
+  }
+  const g = new THREE9.BufferGeometry();
+  g.setAttribute("position", new THREE9.Float32BufferAttribute(pos, 3));
+  g.setAttribute("uv", new THREE9.Float32BufferAttribute(uv, 2));
+  g.setIndex(idx);
+  const tex = makeFlagAtlas();
+  const mat = new THREE9.MeshBasicMaterial({ map: tex, side: THREE9.DoubleSide, fog: false });
+  const flags = new THREE9.Mesh(g, mat);
+  const lg = new THREE9.BufferGeometry();
+  lg.setAttribute("position", new THREE9.Float32BufferAttribute(linePos, 3));
+  const lm = new THREE9.LineBasicMaterial({ color: 1777704 });
+  const lines = new THREE9.LineSegments(lg, lm);
+  const group = new THREE9.Group();
+  group.add(flags, lines);
+  flags.frustumCulled = false;
+  lines.frustumCulled = false;
+  return { group, disposables: [g, mat, tex, lg, lm] };
+}
+function makeTowerTexture() {
+  const c = document.createElement("canvas");
+  c.width = 128;
+  c.height = 256;
+  const g = c.getContext("2d");
+  const grd = g.createLinearGradient(0, 0, 128, 0);
+  grd.addColorStop(0, "#2f5f9c");
+  grd.addColorStop(0.5, "#6f9fd6");
+  grd.addColorStop(1, "#244f88");
+  g.fillStyle = grd;
+  g.fillRect(0, 0, 128, 256);
+  const R = rng(31);
+  for (let y = 0; y < 256; y += 8) {
+    g.fillStyle = "rgba(30,50,80,0.35)";
+    g.fillRect(0, y, 128, 1);
+    if (y / 8 % 4 === 0) {
+      g.fillStyle = `rgba(255,255,255,${0.55 + R() * 0.35})`;
+      g.fillRect(0, y + 3, 128, 2);
+    }
+  }
+  for (let x = 0; x < 128; x += 16) {
+    g.fillStyle = "rgba(40,60,90,0.3)";
+    g.fillRect(x, 0, 1, 256);
+  }
+  const tex = new THREE9.CanvasTexture(c);
+  tex.colorSpace = THREE9.SRGBColorSpace;
+  tex.wrapS = tex.wrapT = THREE9.RepeatWrapping;
+  return tex;
+}
+function buildTowers() {
+  const R = rng(4242);
+  const geos = [];
+  const place = (ang, dist2, w, h2, sides) => {
+    const geo = new THREE9.CylinderGeometry(w * 0.82, w, h2, sides, 1, false, Math.PI / sides);
+    geo.translate(Math.cos(ang) * dist2, h2 / 2 - 20, Math.sin(ang) * dist2);
+    const uvA = geo.attributes.uv;
+    const circ = 2 * Math.PI * w;
+    for (let i = 0; i < uvA.count; i++) uvA.setXY(i, uvA.getX(i) * circ / 40, uvA.getY(i) * h2 / 64);
+    geos.push(geo);
+  };
+  for (let i = 0; i < 22; i++) {
+    const end = i % 2 ? 1 : -1;
+    const side = i % 4 < 2;
+    const ang = side ? (end > 0 ? 0 : Math.PI) + (R() - 0.5) * 0.9 : (end > 0 ? Math.PI / 2 : -Math.PI / 2) + (R() - 0.5) * 1.3;
+    const dist2 = 330 + R() * 330;
+    place(ang, dist2, 16 + R() * 18, 180 + R() * 260, R() < 0.5 ? 6 : 8);
+  }
+  const merged = mergeGeos(geos);
+  geos.forEach((g) => g.dispose());
+  const tex = makeTowerTexture();
+  const mat = new THREE9.MeshBasicMaterial({ map: tex, fog: false });
+  const mesh = new THREE9.Mesh(merged, mat);
+  mesh.name = "skyscrapers";
+  mesh.frustumCulled = false;
+  return { mesh, disposables: [merged, tex, mat] };
+}
+function mergeGeos(geos) {
+  let nPos = 0, nIdx = 0;
+  for (const g of geos) {
+    nPos += g.attributes.position.count;
+    nIdx += g.index.count;
+  }
+  const pos = new Float32Array(nPos * 3), uv = new Float32Array(nPos * 2), idx = new Uint32Array(nIdx);
+  let po = 0, io = 0;
+  for (const g of geos) {
+    pos.set(g.attributes.position.array, po * 3);
+    uv.set(g.attributes.uv.array, po * 2);
+    const ia = g.index.array;
+    for (let i = 0; i < ia.length; i++) idx[io + i] = ia[i] + po;
+    po += g.attributes.position.count;
+    io += ia.length;
+  }
+  const m = new THREE9.BufferGeometry();
+  m.setAttribute("position", new THREE9.BufferAttribute(pos, 3));
+  m.setAttribute("uv", new THREE9.BufferAttribute(uv, 2));
+  m.setIndex(new THREE9.BufferAttribute(idx, 1));
+  return m;
+}
+function createSkyline() {
+  const group = new THREE9.Group();
+  group.name = "skyline";
+  const dome = buildDome();
+  const arches = buildArches();
+  const flags = buildFlags(arches.L, arches.H);
+  const towers = buildTowers();
+  group.add(towers.mesh, arches.group, flags.group, dome);
+  const disposables = [dome.geometry, dome.material, ...arches.disposables, ...flags.disposables, ...towers.disposables];
+  return {
+    object3d: group,
+    setDetail(level) {
+      flags.group.visible = level > 0;
+    },
+    dispose() {
+      for (const d of disposables) d.dispose && d.dispose();
+    }
+  };
+}
+
+// src/render/environment.js
+var S6 = 0.01;
 var { X: X4, Y: Y5, H: H3, GW: GW5, GD: GD4 } = ARENA_PARAMS;
-var SUN_SIM = new THREE9.Vector3(-0.64, 0.2, 0.74).normalize();
-var SUN_DIR = new THREE9.Vector3(SUN_SIM.x, SUN_SIM.z, SUN_SIM.y);
+var SUN_SIM = new THREE10.Vector3(-0.64, 0.2, 0.74).normalize();
+var SUN_DIR = new THREE10.Vector3(SUN_SIM.x, SUN_SIM.z, SUN_SIM.y);
 var HAZE = 11126492;
 function buildMullions(team) {
   const sign2 = team === 0 ? -1 : 1;
   const pos = [], idx = [];
   const W = 14;
   const total = RING_S[RING_S.length - 1];
-  const n = new THREE9.Vector3();
+  const n = new THREE10.Vector3();
   const stations2 = [];
   for (let s2 = 600; s2 < total - 300; s2 += 1150) stations2.push(s2);
   const rows = PROFILE.slice(SPLIT_ROW, SPLIT_ROW + 2);
@@ -6908,7 +7297,7 @@ function buildMullions(team) {
         const y = ring[i][1] + (ring[i + 1][1] - ring[i][1]) * f;
         arenaNormal(x, y, Math.min(row.z, H3 - 1), n);
         const off = 3;
-        pos.push((x + n.x * off) * S5, (row.z + n.z * off) * S5, (y + n.y * off) * S5);
+        pos.push((x + n.x * off) * S6, (row.z + n.z * off) * S6, (y + n.y * off) * S6);
       }
     }
     for (let j = 0; j < rows.length - 1; j++) {
@@ -6916,32 +7305,32 @@ function buildMullions(team) {
       idx.push(a, a + 1, a + 3, a, a + 3, a + 2);
     }
   }
-  const g = new THREE9.BufferGeometry();
-  g.setAttribute("position", new THREE9.Float32BufferAttribute(pos, 3));
+  const g = new THREE10.BufferGeometry();
+  g.setAttribute("position", new THREE10.Float32BufferAttribute(pos, 3));
   g.setIndex(idx);
   return g;
 }
 function buildEnvScene(skyMaterial) {
-  const sc = new THREE9.Scene();
-  const sky = new THREE9.Mesh(new THREE9.SphereGeometry(400, 32, 16), skyMaterial);
+  const sc = new THREE10.Scene();
+  const sky = new THREE10.Mesh(new THREE10.SphereGeometry(400, 32, 16), skyMaterial);
   sc.add(sky);
-  const pitch = new THREE9.Mesh(new THREE9.PlaneGeometry(82, 102), new THREE9.MeshBasicMaterial({ color: 4160053 }));
+  const pitch = new THREE10.Mesh(new THREE10.PlaneGeometry(82, 102), new THREE10.MeshBasicMaterial({ color: 4160053 }));
   pitch.rotation.x = -Math.PI / 2;
   sc.add(pitch);
-  const outer = new THREE9.Mesh(new THREE9.CircleGeometry(390, 32), new THREE9.MeshBasicMaterial({ color: 5070917 }));
+  const outer = new THREE10.Mesh(new THREE10.CircleGeometry(390, 32), new THREE10.MeshBasicMaterial({ color: 5070917 }));
   outer.rotation.x = -Math.PI / 2;
   outer.position.y = -0.5;
   sc.add(outer);
-  const stands = new THREE9.Mesh(new THREE9.CylinderGeometry(95, 70, 45, 32, 1, true), new THREE9.MeshBasicMaterial({ color: 4869980, side: THREE9.BackSide }));
+  const stands = new THREE10.Mesh(new THREE10.CylinderGeometry(95, 70, 45, 32, 1, true), new THREE10.MeshBasicMaterial({ color: 4869980, side: THREE10.BackSide }));
   stands.position.y = 22;
   sc.add(stands);
-  const walls = new THREE9.Mesh(new THREE9.CylinderGeometry(52, 52, 6.4, 32, 1, true), new THREE9.MeshBasicMaterial({ color: 12107464, side: THREE9.BackSide }));
+  const walls = new THREE10.Mesh(new THREE10.CylinderGeometry(52, 52, 6.4, 32, 1, true), new THREE10.MeshBasicMaterial({ color: 12107464, side: THREE10.BackSide }));
   walls.position.y = 3.2;
   sc.add(walls);
-  const lampMat = new THREE9.MeshBasicMaterial({ color: new THREE9.Color(1, 0.95, 0.85).multiplyScalar(6) });
+  const lampMat = new THREE10.MeshBasicMaterial({ color: new THREE10.Color(1, 0.95, 0.85).multiplyScalar(6) });
   for (let i = 0; i < 16; i++) {
     const a = i / 16 * Math.PI * 2;
-    const l = new THREE9.Mesh(new THREE9.BoxGeometry(8, 2, 0.5), lampMat);
+    const l = new THREE10.Mesh(new THREE10.BoxGeometry(8, 2, 0.5), lampMat);
     l.position.set(Math.cos(a) * 75, 50, Math.sin(a) * 75);
     l.lookAt(0, 0, 0);
     sc.add(l);
@@ -6950,7 +7339,7 @@ function buildEnvScene(skyMaterial) {
 }
 function createEnvironment(ctx2) {
   const { renderer: renderer2, scene: scene2 } = ctx2;
-  const root = new THREE9.Group();
+  const root = new THREE10.Group();
   root.name = "environment";
   const disposables = [];
   const track = (o) => {
@@ -6965,7 +7354,7 @@ function createEnvironment(ctx2) {
   const detail = makeGrassDetail(renderer2);
   track(field.map);
   track(detail);
-  const floorMat = track(new THREE9.MeshStandardMaterial({ map: field.map, roughness: 0.93, metalness: 0, envMapIntensity: 0.35 }));
+  const floorMat = track(new THREE10.MeshStandardMaterial({ map: field.map, roughness: 0.93, metalness: 0, envMapIntensity: 0.35 }));
   floorMat.onBeforeCompile = (sh) => {
     sh.uniforms.uDetail = { value: detail };
     sh.fragmentShader = sh.fragmentShader.replace("#include <common>", "#include <common>\nuniform sampler2D uDetail;").replace("#include <map_fragment>", `#include <map_fragment>
@@ -6978,7 +7367,7 @@ function createEnvironment(ctx2) {
       }`);
   };
   floorMat.customProgramCacheKey = () => "tp-field";
-  const floor = new THREE9.Mesh(geos.floor, floorMat);
+  const floor = new THREE10.Mesh(geos.floor, floorMat);
   floor.receiveShadow = true;
   floor.name = "pitch";
   root.add(floor);
@@ -6988,14 +7377,14 @@ function createEnvironment(ctx2) {
     track(tx.emissiveMap);
     scaleUV(geos.lower[0], -1 / WALL_TILE, 0.5 / V_LOWER, 0, 0);
     scaleUV(geos.lower[1], 1 / WALL_TILE, 0.5 / V_LOWER, 0, 0.5);
-    const m = track(new THREE9.MeshStandardMaterial({
+    const m = track(new THREE10.MeshStandardMaterial({
       map: tx.map,
       emissive: 16777215,
       emissiveMap: tx.emissiveMap,
       emissiveIntensity: 1.6,
       roughness: 0.55,
       metalness: 0.1,
-      side: THREE9.DoubleSide,
+      side: THREE10.DoubleSide,
       envMapIntensity: 0.6
     }));
     m.onBeforeCompile = (sh) => {
@@ -7007,7 +7396,7 @@ function createEnvironment(ctx2) {
           }`).replace("#include <emissivemap_fragment>", "#include <emissivemap_fragment>\n if (!gl_FrontFacing) totalEmissiveRadiance = vec3(0.0);");
     };
     m.customProgramCacheKey = () => "tp-lowerwall";
-    const wall = new THREE9.Mesh(track(merge([geos.lower[0], geos.lower[1]])), m);
+    const wall = new THREE10.Mesh(track(merge([geos.lower[0], geos.lower[1]])), m);
     wall.receiveShadow = true;
     wall.castShadow = true;
     wall.name = "lowerWalls";
@@ -7019,30 +7408,30 @@ function createEnvironment(ctx2) {
     const parts = [];
     for (const team of [0, 1]) {
       const tc = TEAM_COLORS[team];
-      const tint = new THREE9.Color(tc.light).lerp(new THREE9.Color(16777215), 0.5);
-      const glow = new THREE9.Color(tc.glow);
+      const tint = new THREE10.Color(tc.light).lerp(new THREE10.Color(16777215), 0.5);
+      const glow = new THREE10.Color(tc.glow);
       parts.push(setEmis(setColor(scaleUV(geos.glass[team], 1 / hexW, 1 / hexH), tint, 0.32), glow, 0.45));
       parts.push(setEmis(setColor(scaleUV(geos.ceiling[team], 1024 / hexW, 1024 / hexH), tint, 0.22), glow, 0.45));
     }
-    const gm = track(vertexEmissive(new THREE9.MeshStandardMaterial({
+    const gm = track(vertexEmissive(new THREE10.MeshStandardMaterial({
       map: hex,
       emissiveMap: hex,
       vertexColors: true,
       transparent: true,
       roughness: 0.15,
       metalness: 0,
-      side: THREE9.DoubleSide,
+      side: THREE10.DoubleSide,
       depthWrite: false,
       forceSinglePass: true
     }), "glass"));
-    const glass = new THREE9.Mesh(track(merge(parts)), gm);
+    const glass = new THREE10.Mesh(track(merge(parts)), gm);
     glass.renderOrder = 3;
     glass.name = "glass";
     root.add(glass);
   }
   {
-    const parts = [0, 1].map((team) => setColor(buildMullions(team), new THREE9.Color(TEAM_COLORS[team].glow).multiplyScalar(2.2)));
-    const mull = new THREE9.Mesh(track(merge(parts)), track(new THREE9.MeshBasicMaterial({ vertexColors: true, side: THREE9.DoubleSide })));
+    const parts = [0, 1].map((team) => setColor(buildMullions(team), new THREE10.Color(TEAM_COLORS[team].glow).multiplyScalar(2.2)));
+    const mull = new THREE10.Mesh(track(merge(parts)), track(new THREE10.MeshBasicMaterial({ vertexColors: true, side: THREE10.DoubleSide })));
     mull.name = "mullions";
     root.add(mull);
   }
@@ -7050,6 +7439,8 @@ function createEnvironment(ctx2) {
   root.add(goals.object3d);
   const stadium = createStadium(ctx2);
   root.add(stadium.object3d);
+  const skyline = createSkyline();
+  root.add(skyline.object3d);
   const pads = createPads(ctx2);
   root.add(pads.object3d);
   const sky = createSky(SUN_DIR, 1800);
@@ -7060,21 +7451,21 @@ function createEnvironment(ctx2) {
   track(scenery.geometry);
   track(scenery.material);
   root.add(scenery);
-  const sun = new THREE9.DirectionalLight(16772822, 2.4);
+  const sun = new THREE10.DirectionalLight(16772822, 2.4);
   sun.castShadow = true;
   sun.shadow.bias = -4e-4;
   sun.shadow.normalBias = 0.025;
-  const target = new THREE9.Object3D();
+  const target = new THREE10.Object3D();
   sun.target = target;
   root.add(target);
   {
     const dist2 = 320;
     sun.position.copy(SUN_DIR).multiplyScalar(dist2);
     target.position.set(0, 0, 0);
-    const rot = new THREE9.Matrix4().lookAt(sun.position, target.position, new THREE9.Vector3(0, 1, 0));
+    const rot = new THREE10.Matrix4().lookAt(sun.position, target.position, new THREE10.Vector3(0, 1, 0));
     const inv = rot.clone().invert();
-    const tmp = new THREE9.Vector3();
-    const toLight = (x, y, z) => tmp.set(x * S5, z * S5, y * S5).sub(sun.position).applyMatrix4(inv);
+    const tmp = new THREE10.Vector3();
+    const toLight = (x, y, z) => tmp.set(x * S6, z * S6, y * S6).sub(sun.position).applyMatrix4(inv);
     let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity, minZ = Infinity, maxZ = -Infinity;
     for (const x of [-X4, X4]) for (const y of [-GD4, GD4]) for (const z of [0, H3]) {
       const p = toLight(x, y, z);
@@ -7099,22 +7490,22 @@ function createEnvironment(ctx2) {
     cam.updateProjectionMatrix();
   }
   root.add(sun);
-  const hemi = new THREE9.HemisphereLight(12901631, 7236190, 0.7);
+  const hemi = new THREE10.HemisphereLight(12901631, 7236190, 0.7);
   root.add(hemi);
-  const pmrem = new THREE9.PMREMGenerator(renderer2);
+  const pmrem = new THREE10.PMREMGenerator(renderer2);
   const envScene = buildEnvScene(sky.material);
   let envRT = null, envSize = 0;
   function buildEnv(size) {
     if (size === envSize && envRT) return;
     const old = envRT;
-    envRT = pmrem.fromScene(envScene, 0.02, 0.1, 1e3, { size, position: new THREE9.Vector3(0, 3, 0) });
+    envRT = pmrem.fromScene(envScene, 0.02, 0.1, 1e3, { size, position: new THREE10.Vector3(0, 3, 0) });
     envSize = size;
     scene2.environment = envRT.texture;
     if (old) old.dispose();
   }
   const prev = { environment: scene2.environment, fog: scene2.fog, background: scene2.background, envInt: scene2.environmentIntensity };
-  scene2.fog = new THREE9.Fog(HAZE, 260, 1900);
-  scene2.background = new THREE9.Color(HAZE);
+  scene2.fog = new THREE10.Fog(HAZE, 260, 1900);
+  scene2.background = new THREE10.Color(HAZE);
   scene2.environmentIntensity = 0.6;
   let envWanted = 128, envDelay = 2, curDetail = -1;
   function setQuality(name) {
@@ -7136,6 +7527,7 @@ function createEnvironment(ctx2) {
       const wasLow = curDetail === 0;
       curDetail = detailLvl;
       stadium.setDetail(detailLvl);
+      skyline.setDetail(detailLvl);
       pads.setDetail(detailLvl);
       sky.material.uniforms.uCloudDetail.value = detailLvl === 0 ? 4 : 6;
       const aniso = detailLvl === 0 ? Math.min(4, maxAniso) : maxAniso;
@@ -7163,6 +7555,7 @@ function createEnvironment(ctx2) {
       pads.dispose();
       goals.dispose();
       stadium.dispose();
+      skyline.dispose();
       for (const d of disposables) d.dispose && d.dispose();
       if (envRT) envRT.dispose();
       pmrem.dispose();
@@ -7183,15 +7576,15 @@ function createEnvironment(ctx2) {
 init_carconfig();
 init_contracts();
 init_util();
-import * as THREE16 from "three";
+import * as THREE17 from "three";
 
 // src/render/cars/bodies.js
 init_carconfig();
 init_contracts();
-import * as THREE12 from "three";
+import * as THREE13 from "three";
 
 // src/render/cars/geo.js
-import * as THREE10 from "three";
+import * as THREE11 from "three";
 import { mergeGeometries as mergeGeometries3, toCreasedNormals } from "three/addons/utils/BufferGeometryUtils.js";
 import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
 function smooth(table) {
@@ -7244,7 +7637,7 @@ var PartSet = class {
   addMirrored(slot, geom, matrix) {
     const a = this.add(slot, geom, matrix);
     const b = a.clone();
-    b.applyMatrix4(new THREE10.Matrix4().makeScale(1, 1, -1));
+    b.applyMatrix4(new THREE11.Matrix4().makeScale(1, 1, -1));
     flipWinding(b);
     this.parts[slot].push(b);
   }
@@ -7294,7 +7687,7 @@ function setColor2(g, r, gg, b) {
     arr[i * 3 + 1] = gg;
     arr[i * 3 + 2] = b;
   }
-  g.setAttribute("color", new THREE10.BufferAttribute(arr, 3));
+  g.setAttribute("color", new THREE11.BufferAttribute(arr, 3));
   return g;
 }
 var KN = 6;
@@ -7338,7 +7731,7 @@ var Loft = class _Loft {
   // Surface point at (x, u) with u in [-1, 1] (negative = left side); fills THREE.Vector3
   // u is continuous round the ring: 0 bottom centre, +-1 top centre, (0,1) right side, (-1,0) left side,
   // (1,2) continues down the left side and (-2,-1) down the right side (so patches can straddle the top).
-  point(x, u, out = new THREE10.Vector3()) {
+  point(x, u, out = new THREE11.Vector3()) {
     const P = this.def.section(x);
     let side = 1, a = u;
     if (u > 1) {
@@ -7357,7 +7750,7 @@ var Loft = class _Loft {
   }
   // Outward surface normal at (x, u) by finite differences (derivative along increasing u is
   // always "round the ring" in the same rotational sense, so tx x tu points outward).
-  normal(x, u, out = new THREE10.Vector3()) {
+  normal(x, u, out = new THREE11.Vector3()) {
     const e = 0.25, eu = 4e-3;
     const a = this.point(x - e, u), b = this.point(x + e, u);
     const c = this.point(x, u - eu), d = this.point(x, u + eu);
@@ -7414,10 +7807,10 @@ var Loft = class _Loft {
         triSlot.push(typeof capSlot === "function" ? capSlot(dir) : capSlot);
       }
     }
-    const g = new THREE10.BufferGeometry();
-    g.setAttribute("position", new THREE10.Float32BufferAttribute(pos, 3));
+    const g = new THREE11.BufferGeometry();
+    g.setAttribute("position", new THREE11.Float32BufferAttribute(pos, 3));
     g.setIndex(idx);
-    const creased = toCreasedNormals(g, THREE10.MathUtils.degToRad(creaseDeg));
+    const creased = toCreasedNormals(g, THREE11.MathUtils.degToRad(creaseDeg));
     const P = creased.attributes.position.array, Nn = creased.attributes.normal.array;
     const per = {};
     for (let t = 0; t < triSlot.length; t++) {
@@ -7431,9 +7824,9 @@ var Loft = class _Loft {
         pa.set(P.subarray(t * 9, t * 9 + 9), j * 9);
         na.set(Nn.subarray(t * 9, t * 9 + 9), j * 9);
       });
-      const sg = new THREE10.BufferGeometry();
-      sg.setAttribute("position", new THREE10.BufferAttribute(pa, 3));
-      sg.setAttribute("normal", new THREE10.BufferAttribute(na, 3));
+      const sg = new THREE11.BufferGeometry();
+      sg.setAttribute("position", new THREE11.BufferAttribute(pa, 3));
+      sg.setAttribute("normal", new THREE11.BufferAttribute(na, 3));
       ps.add(s2, sg);
     }
   }
@@ -7441,7 +7834,7 @@ var Loft = class _Loft {
   // x0..x1 along the body, u0..u1 ring parameter (0 bottom centre .. 1 top centre; negative = left side)
   patch(ps, slot, x0, x1, u0, u1, lift = 0.25, nx = 12, nu = 6, color = null) {
     const pos = [], idx = [];
-    const p = new THREE10.Vector3(), n = new THREE10.Vector3();
+    const p = new THREE11.Vector3(), n = new THREE11.Vector3();
     for (let i = 0; i <= nx; i++) {
       const x = lerp(x0, x1, i / nx);
       for (let j = 0; j <= nu; j++) {
@@ -7455,8 +7848,8 @@ var Loft = class _Loft {
       const a = i * (nu + 1) + j, b = a + 1, c = a + nu + 1, d = c + 1;
       idx.push(a, c, b, b, c, d);
     }
-    const g = new THREE10.BufferGeometry();
-    g.setAttribute("position", new THREE10.Float32BufferAttribute(pos, 3));
+    const g = new THREE11.BufferGeometry();
+    g.setAttribute("position", new THREE11.Float32BufferAttribute(pos, 3));
     g.setIndex(idx);
     g.computeVertexNormals();
     const gi = g.toNonIndexed();
@@ -7480,16 +7873,16 @@ function roundedBox(lx, ly, lz, r, seg = 1) {
   const g = new RoundedBoxGeometry(lx, ly, lz, seg, Math.min(r, Math.min(lx, ly, lz) / 2 - 0.01));
   return g.index ? g.toNonIndexed() : g;
 }
-var _e = new THREE10.Euler();
-var _q = new THREE10.Quaternion();
-var _v = new THREE10.Vector3();
-var _s = new THREE10.Vector3(1, 1, 1);
+var _e = new THREE11.Euler();
+var _q = new THREE11.Quaternion();
+var _v = new THREE11.Vector3();
+var _s = new THREE11.Vector3(1, 1, 1);
 function M(x = 0, y = 0, z = 0, rx = 0, ry = 0, rz = 0, sx = 1, sy = 1, sz = 1) {
   _e.set(rx, ry, rz, "XYZ");
   _q.setFromEuler(_e);
   _v.set(x, y, z);
   _s.set(sx, sy, sz);
-  return new THREE10.Matrix4().compose(_v, _q, _s);
+  return new THREE11.Matrix4().compose(_v, _q, _s);
 }
 function sweepArc(profile, a0, a1, segs = 16, closeEnds = true, crease = 50) {
   const pos = [], idx = [];
@@ -7522,10 +7915,10 @@ function sweepArc(profile, a0, a1, segs = 16, closeEnds = true, crease = 50) {
       }
     }
   }
-  const g = new THREE10.BufferGeometry();
-  g.setAttribute("position", new THREE10.Float32BufferAttribute(pos, 3));
+  const g = new THREE11.BufferGeometry();
+  g.setAttribute("position", new THREE11.Float32BufferAttribute(pos, 3));
   g.setIndex(idx);
-  return orientOutward(toCreasedNormals(g, THREE10.MathUtils.degToRad(crease)));
+  return orientOutward(toCreasedNormals(g, THREE11.MathUtils.degToRad(crease)));
 }
 function orientOutward(g) {
   const p = g.attributes.position;
@@ -7539,7 +7932,7 @@ function orientOutward(g) {
   cy /= p.count;
   cz /= p.count;
   let score = 0;
-  const a = new THREE10.Vector3(), b = new THREE10.Vector3(), c = new THREE10.Vector3(), n = new THREE10.Vector3();
+  const a = new THREE11.Vector3(), b = new THREE11.Vector3(), c = new THREE11.Vector3(), n = new THREE11.Vector3();
   for (let i = 0; i < p.count; i += 3) {
     a.fromBufferAttribute(p, i);
     b.fromBufferAttribute(p, i + 1);
@@ -7556,28 +7949,28 @@ function orientOutward(g) {
   return g;
 }
 function latheX(profile, segs = 20, crease = 40) {
-  const pts = profile.map(([x, r]) => new THREE10.Vector2(Math.max(r, 1e-3), x));
-  const g = new THREE10.LatheGeometry(pts, segs);
-  g.applyMatrix4(new THREE10.Matrix4().makeRotationZ(-Math.PI / 2));
+  const pts = profile.map(([x, r]) => new THREE11.Vector2(Math.max(r, 1e-3), x));
+  const g = new THREE11.LatheGeometry(pts, segs);
+  g.applyMatrix4(new THREE11.Matrix4().makeRotationZ(-Math.PI / 2));
   g.deleteAttribute("uv");
-  return orientOutward(toCreasedNormals(g, THREE10.MathUtils.degToRad(crease)));
+  return orientOutward(toCreasedNormals(g, THREE11.MathUtils.degToRad(crease)));
 }
 function discX(r, segs = 20, facing = 1) {
-  const g = new THREE10.CircleGeometry(r, segs);
+  const g = new THREE11.CircleGeometry(r, segs);
   g.deleteAttribute("uv");
-  g.applyMatrix4(new THREE10.Matrix4().makeRotationY(facing > 0 ? Math.PI / 2 : -Math.PI / 2));
+  g.applyMatrix4(new THREE11.Matrix4().makeRotationY(facing > 0 ? Math.PI / 2 : -Math.PI / 2));
   return g.index ? g.toNonIndexed() : g;
 }
 function extrudeSide(points2d, depth, bevel = 0.8, curveSegs = 2) {
-  const sh = new THREE10.Shape(points2d.map(([x, y]) => new THREE10.Vector2(x, y)));
-  const g = new THREE10.ExtrudeGeometry(sh, { depth, bevelEnabled: bevel > 0, bevelThickness: bevel, bevelSize: bevel, bevelSegments: curveSegs, curveSegments: 6 });
+  const sh = new THREE11.Shape(points2d.map(([x, y]) => new THREE11.Vector2(x, y)));
+  const g = new THREE11.ExtrudeGeometry(sh, { depth, bevelEnabled: bevel > 0, bevelThickness: bevel, bevelSize: bevel, bevelSegments: curveSegs, curveSegments: 6 });
   g.translate(0, 0, -depth / 2);
   g.deleteAttribute("uv");
-  return toCreasedNormals(g, THREE10.MathUtils.degToRad(35));
+  return toCreasedNormals(g, THREE11.MathUtils.degToRad(35));
 }
 
 // src/render/cars/wheels.js
-import * as THREE11 from "three";
+import * as THREE12 from "three";
 import { toCreasedNormals as toCreasedNormals2 } from "three/addons/utils/BufferGeometryUtils.js";
 import { mergeGeometries as mergeGeometries4 } from "three/addons/utils/BufferGeometryUtils.js";
 var cache = /* @__PURE__ */ new Map();
@@ -7632,10 +8025,10 @@ function buildTyre(width) {
       idx.push(a, b, c2, b, d, c2);
     }
   }
-  const g = new THREE11.BufferGeometry();
-  g.setAttribute("position", new THREE11.Float32BufferAttribute(pos, 3));
+  const g = new THREE12.BufferGeometry();
+  g.setAttribute("position", new THREE12.Float32BufferAttribute(pos, 3));
   g.setIndex(idx);
-  const out = orientOutward(toCreasedNormals2(g, THREE11.MathUtils.degToRad(50)));
+  const out = orientOutward(toCreasedNormals2(g, THREE12.MathUtils.degToRad(50)));
   out.scale(0.01, 0.01, 0.01);
   out.computeBoundingSphere();
   return out;
@@ -7644,11 +8037,11 @@ function lerp2(a, b, t) {
   return a + (b - a) * t;
 }
 function lathe(profile, segs) {
-  const pts = profile.map(([r, w]) => new THREE11.Vector2(Math.max(0.01, r), w));
-  const g = new THREE11.LatheGeometry(pts, segs);
-  g.applyMatrix4(new THREE11.Matrix4().makeRotationX(Math.PI / 2));
+  const pts = profile.map(([r, w]) => new THREE12.Vector2(Math.max(0.01, r), w));
+  const g = new THREE12.LatheGeometry(pts, segs);
+  g.applyMatrix4(new THREE12.Matrix4().makeRotationX(Math.PI / 2));
   g.deleteAttribute("uv");
-  return toCreasedNormals2(g, THREE11.MathUtils.degToRad(40));
+  return toCreasedNormals2(g, THREE12.MathUtils.degToRad(40));
 }
 function buildRim(width, spokes) {
   const hw = width * 50;
@@ -7660,7 +8053,7 @@ function buildRim(width, spokes) {
   parts.push(setColor2(orientOutward(lathe([[0.5, face - 14], [40, face - 14], [58, face - 8], [58.5, face - 6]], 24)), ...DARK));
   for (let s2 = 0; s2 < spokes; s2++) {
     const a = s2 / spokes * Math.PI * 2;
-    const blade = new THREE11.BoxGeometry(46, 13, 7, 4, 1, 1);
+    const blade = new THREE12.BoxGeometry(46, 13, 7, 4, 1, 1);
     const bp = blade.attributes.position;
     for (let i = 0; i < bp.count; i++) {
       const x = bp.getX(i) + 23 + 12;
@@ -7670,8 +8063,8 @@ function buildRim(width, spokes) {
       bp.setXYZ(i, x, y, z);
     }
     blade.deleteAttribute("uv");
-    const g = toCreasedNormals2(blade, THREE11.MathUtils.degToRad(30));
-    g.applyMatrix4(new THREE11.Matrix4().makeRotationZ(a));
+    const g = toCreasedNormals2(blade, THREE12.MathUtils.degToRad(30));
+    g.applyMatrix4(new THREE12.Matrix4().makeRotationZ(a));
     g.translate(0, 0, face - 3.5);
     parts.push(setColor2(g, ...SILVER));
   }
@@ -7679,9 +8072,9 @@ function buildRim(width, spokes) {
   parts.push(setColor2(orientOutward(lathe([[0.5, face + 3.6], [6, face + 3.6], [7, face + 3.1]], 20)), ...GRAPH));
   for (let s2 = 0; s2 < spokes; s2++) {
     const a = s2 / spokes * Math.PI * 2 + Math.PI / spokes;
-    const n = new THREE11.CylinderGeometry(2, 2, 3, 6);
+    const n = new THREE12.CylinderGeometry(2, 2, 3, 6);
     n.deleteAttribute("uv");
-    n.applyMatrix4(new THREE11.Matrix4().makeRotationX(Math.PI / 2));
+    n.applyMatrix4(new THREE12.Matrix4().makeRotationX(Math.PI / 2));
     n.translate(Math.cos(a) * 11, Math.sin(a) * 11, face + 3);
     parts.push(setColor2(n.toNonIndexed(), ...GRAPH));
   }
@@ -7768,10 +8161,10 @@ function light(ps, color, lx, ly, lz, x, y, z, rx = 0, ry = 0, rz = 0, r = 0.8) 
   const g = setColor2(roundedBox(lx, ly, lz, r, 1), ...color);
   ps.addMirrored("light", g, M(x, y, z, rx, ry, rz));
 }
-var _X = new THREE12.Vector3();
-var _Y = new THREE12.Vector3();
-var _Z = new THREE12.Vector3();
-var _P = new THREE12.Vector3();
+var _X = new THREE13.Vector3();
+var _Y = new THREE13.Vector3();
+var _Z = new THREE13.Vector3();
+var _P = new THREE13.Vector3();
 function surfBox(ps, slot, loft, x, u, lx, ly, lz, { embed = 0.4, r = 0.5, color = null, mirrored = true, roll = 0, yaw = 0 } = {}) {
   loft.point(x, u, _P);
   loft.normal(x, u, _Y);
@@ -7780,8 +8173,8 @@ function surfBox(ps, slot, loft, x, u, lx, ly, lz, { embed = 0.4, r = 0.5, color
   _X.normalize();
   if (yaw) _X.applyAxisAngle(_Y, yaw).normalize();
   _Z.crossVectors(_X, _Y);
-  const m = new THREE12.Matrix4().makeBasis(_X, _Y, _Z);
-  if (roll) m.multiply(new THREE12.Matrix4().makeRotationX(roll));
+  const m = new THREE13.Matrix4().makeBasis(_X, _Y, _Z);
+  if (roll) m.multiply(new THREE13.Matrix4().makeRotationX(roll));
   m.setPosition(_P.x + _Y.x * (ly / 2 - embed), _P.y + _Y.y * (ly / 2 - embed), _P.z + _Y.z * (ly / 2 - embed));
   let g = roundedBox(lx, ly, lz, r, 1);
   if (color) g = setColor2(g, ...color);
@@ -8135,7 +8528,7 @@ function buildBody(bodyId) {
     hitbox: spec.hitbox,
     geoms,
     tyre: spec.tyre,
-    nozzles: spec.nozzles.map(([x, y, z]) => new THREE12.Vector3(x / 100, y / 100, z / 100)),
+    nozzles: spec.nozzles.map(([x, y, z]) => new THREE13.Vector3(x / 100, y / 100, z / 100)),
     nozzleRadius: spec.nozzles.map((n) => n[3] / 100)
   };
   cache2.set(id, res);
@@ -8144,7 +8537,7 @@ function buildBody(bodyId) {
 
 // src/render/cars/materials.js
 init_contracts();
-import * as THREE13 from "three";
+import * as THREE14 from "three";
 var shared = null;
 var paintCache = /* @__PURE__ */ new Map();
 var accentCache = /* @__PURE__ */ new Map();
@@ -8154,14 +8547,14 @@ var envState = null;
 function getSharedMaterials() {
   if (shared) return shared;
   shared = {
-    trim: new THREE13.MeshStandardMaterial({ color: 1513758, roughness: 0.55, metalness: 0.35, name: "car.trim" }),
-    glass: new THREE13.MeshPhysicalMaterial({ color: 527122, roughness: 0.16, metalness: 0.1, clearcoat: 0.6, clearcoatRoughness: 0.16, envMapIntensity: 1, name: "car.glass" }),
+    trim: new THREE14.MeshStandardMaterial({ color: 1513758, roughness: 0.55, metalness: 0.35, name: "car.trim" }),
+    glass: new THREE14.MeshPhysicalMaterial({ color: 527122, roughness: 0.16, metalness: 0.1, clearcoat: 0.6, clearcoatRoughness: 0.16, envMapIntensity: 1, name: "car.glass" }),
     // instanced depth material for the tyres' shadow pass (keeps the instanced shadow program separate)
-    tyreDepth: new THREE13.MeshDepthMaterial({ name: "car.tyre.depth" }),
-    light: new THREE13.MeshBasicMaterial({ vertexColors: true, toneMapped: false, name: "car.lights" }),
-    chrome: new THREE13.MeshStandardMaterial({ color: 12896464, roughness: 0.18, metalness: 1, name: "car.chrome" }),
-    tyre: new THREE13.MeshStandardMaterial({ color: 2369067, roughness: 0.88, metalness: 0, name: "car.tyre" }),
-    rim: new THREE13.MeshStandardMaterial({ vertexColors: true, roughness: 0.28, metalness: 0.85, name: "car.rim" })
+    tyreDepth: new THREE14.MeshDepthMaterial({ name: "car.tyre.depth" }),
+    light: new THREE14.MeshBasicMaterial({ vertexColors: true, toneMapped: false, name: "car.lights" }),
+    chrome: new THREE14.MeshStandardMaterial({ color: 12896464, roughness: 0.18, metalness: 1, name: "car.chrome" }),
+    tyre: new THREE14.MeshStandardMaterial({ color: 2369067, roughness: 0.88, metalness: 0, name: "car.tyre" }),
+    rim: new THREE14.MeshStandardMaterial({ vertexColors: true, roughness: 0.28, metalness: 0.85, name: "car.rim" })
   };
   for (const m of Object.values(shared)) if (!m.isMeshDepthMaterial && !m.isMeshBasicMaterial) envUsers.add(m);
   return shared;
@@ -8170,7 +8563,7 @@ function getPaint(team) {
   let m = paintCache.get(team);
   if (!m) {
     const tc = TEAM_COLORS[team] || TEAM_COLORS[0];
-    m = new THREE13.MeshPhysicalMaterial({
+    m = new THREE14.MeshPhysicalMaterial({
       color: tc.primary,
       roughness: 0.34,
       metalness: 0.12,
@@ -8188,8 +8581,8 @@ function getAccent(hex) {
   const key = (hex || "#e8e8e8").toLowerCase();
   let m = accentCache.get(key);
   if (!m) {
-    m = new THREE13.MeshPhysicalMaterial({
-      color: new THREE13.Color(key),
+    m = new THREE14.MeshPhysicalMaterial({
+      color: new THREE14.Color(key),
       roughness: 0.3,
       metalness: 0.2,
       clearcoat: 1,
@@ -8210,12 +8603,12 @@ function registerEnvUser(m) {
   }
 }
 function buildFallbackEnv(renderer2) {
-  const scene2 = new THREE13.Scene();
-  const skyGeo = new THREE13.SphereGeometry(50, 32, 16);
+  const scene2 = new THREE14.Scene();
+  const skyGeo = new THREE14.SphereGeometry(50, 32, 16);
   const cols = [];
   const p = skyGeo.attributes.position;
-  const top = new THREE13.Color(726064), hor = new THREE13.Color(3820142), stand = new THREE13.Color(1711398), pitch = new THREE13.Color(2054696);
-  const c = new THREE13.Color();
+  const top = new THREE14.Color(726064), hor = new THREE14.Color(3820142), stand = new THREE14.Color(1711398), pitch = new THREE14.Color(2054696);
+  const c = new THREE14.Color();
   for (let i = 0; i < p.count; i++) {
     const y = p.getY(i) / 50;
     if (y > 0.25) c.copy(hor).lerp(top, Math.min(1, (y - 0.25) / 0.6));
@@ -8223,27 +8616,27 @@ function buildFallbackEnv(renderer2) {
     else c.copy(pitch).multiplyScalar(0.8 + 0.2 * Math.min(1, -y * 3));
     cols.push(c.r, c.g, c.b);
   }
-  skyGeo.setAttribute("color", new THREE13.Float32BufferAttribute(cols, 3));
-  scene2.add(new THREE13.Mesh(skyGeo, new THREE13.MeshBasicMaterial({ vertexColors: true, side: THREE13.BackSide })));
-  const lampMat = new THREE13.MeshBasicMaterial({ color: new THREE13.Color(6, 6, 5.6) });
+  skyGeo.setAttribute("color", new THREE14.Float32BufferAttribute(cols, 3));
+  scene2.add(new THREE14.Mesh(skyGeo, new THREE14.MeshBasicMaterial({ vertexColors: true, side: THREE14.BackSide })));
+  const lampMat = new THREE14.MeshBasicMaterial({ color: new THREE14.Color(6, 6, 5.6) });
   for (let i = 0; i < 8; i++) {
     const a = i / 8 * Math.PI * 2 + 0.3;
-    const m = new THREE13.Mesh(new THREE13.PlaneGeometry(9, 2.2), lampMat);
+    const m = new THREE14.Mesh(new THREE14.PlaneGeometry(9, 2.2), lampMat);
     m.position.set(Math.cos(a) * 40, 22, Math.sin(a) * 40);
     m.lookAt(0, 0, 0);
     scene2.add(m);
   }
-  const pan = new THREE13.Mesh(new THREE13.PlaneGeometry(40, 18), new THREE13.MeshBasicMaterial({ color: new THREE13.Color(1.2, 1.25, 1.4) }));
+  const pan = new THREE14.Mesh(new THREE14.PlaneGeometry(40, 18), new THREE14.MeshBasicMaterial({ color: new THREE14.Color(1.2, 1.25, 1.4) }));
   pan.position.set(0, 45, 0);
   pan.rotation.x = Math.PI / 2;
   scene2.add(pan);
   for (const [z, col] of [[38, 2776319], [-38, 16742938]]) {
-    const b = new THREE13.Mesh(new THREE13.PlaneGeometry(60, 1.5), new THREE13.MeshBasicMaterial({ color: new THREE13.Color(col).multiplyScalar(1.5) }));
+    const b = new THREE14.Mesh(new THREE14.PlaneGeometry(60, 1.5), new THREE14.MeshBasicMaterial({ color: new THREE14.Color(col).multiplyScalar(1.5) }));
     b.position.set(0, 4, z);
     b.lookAt(0, 4, 0);
     scene2.add(b);
   }
-  const pm = new THREE13.PMREMGenerator(renderer2);
+  const pm = new THREE14.PMREMGenerator(renderer2);
   const rt = pm.fromScene(scene2, 0.02);
   pm.dispose();
   scene2.traverse((o) => {
@@ -8271,7 +8664,7 @@ function syncEnvironment(ctx2) {
 
 // src/render/cars/nameplate.js
 init_contracts();
-import * as THREE14 from "three";
+import * as THREE15 from "three";
 var CW = 512;
 var CH = 112;
 var ASPECT = CW / CH;
@@ -8281,8 +8674,8 @@ var NEAR_FULL = 12;
 var FAR_FULL = 105;
 var FAR_HIDE = 125;
 var ANCHOR_UP = 1;
-var planeGeo = new THREE14.PlaneGeometry(1, 1);
-var barGeo = new THREE14.PlaneGeometry(1, 1).translate(0.5, 0, 0);
+var planeGeo = new THREE15.PlaneGeometry(1, 1);
+var barGeo = new THREE15.PlaneGeometry(1, 1).translate(0.5, 0, 0);
 var placed = [];
 var frameKey = null;
 function roundRect(g, x, y, w, h2, r) {
@@ -8305,7 +8698,7 @@ function createNameplate(name, team) {
   canvas3.height = CH;
   const g = canvas3.getContext("2d");
   const css = (hex, a) => {
-    const c = new THREE14.Color(hex);
+    const c = new THREE15.Color(hex);
     return `rgba(${Math.round(c.r * 255)},${Math.round(c.g * 255)},${Math.round(c.b * 255)},${a})`;
   };
   g.clearRect(0, 0, CW, CH);
@@ -8333,20 +8726,20 @@ function createNameplate(name, team) {
   roundRect(g, 34, CH - 30, CW - 68, 14, 7);
   g.fillStyle = "rgba(0,0,0,0.6)";
   g.fill();
-  const tex = new THREE14.CanvasTexture(canvas3);
-  tex.colorSpace = THREE14.SRGBColorSpace;
+  const tex = new THREE15.CanvasTexture(canvas3);
+  tex.colorSpace = THREE15.SRGBColorSpace;
   tex.anisotropy = 4;
-  const cardMat = new THREE14.MeshBasicMaterial({ map: tex, transparent: true, depthTest: false, depthWrite: false, toneMapped: false, fog: false });
-  const barMat = new THREE14.MeshBasicMaterial({ color: new THREE14.Color(16761402), transparent: true, depthTest: false, depthWrite: false, toneMapped: false, fog: false });
+  const cardMat = new THREE15.MeshBasicMaterial({ map: tex, transparent: true, depthTest: false, depthWrite: false, toneMapped: false, fog: false });
+  const barMat = new THREE15.MeshBasicMaterial({ color: new THREE15.Color(16761402), transparent: true, depthTest: false, depthWrite: false, toneMapped: false, fog: false });
   cardMat.forceSinglePass = true;
   barMat.forceSinglePass = true;
-  const root = new THREE14.Group();
+  const root = new THREE15.Group();
   root.name = "nameplate";
-  const card = new THREE14.Mesh(planeGeo, cardMat);
+  const card = new THREE15.Mesh(planeGeo, cardMat);
   card.scale.set(ASPECT, 1, 1);
   card.renderOrder = 50;
   const bx0 = (34 + 2) / CH - ASPECT / 2, bw = (CW - 72) / CH, by = 0.5 - (CH - 23) / CH;
-  const bar = new THREE14.Mesh(barGeo, barMat);
+  const bar = new THREE15.Mesh(barGeo, barMat);
   bar.position.set(bx0, by, 1e-3);
   bar.scale.set(bw, 10 / CH, 1);
   bar.renderOrder = 51;
@@ -8355,7 +8748,7 @@ function createNameplate(name, team) {
   card.frustumCulled = false;
   bar.frustumCulled = false;
   root.visible = false;
-  const anchor = new THREE14.Vector3(), rel = new THREE14.Vector3(), fwd = new THREE14.Vector3(), camUp = new THREE14.Vector3(), ndc = new THREE14.Vector3();
+  const anchor = new THREE15.Vector3(), rel = new THREE15.Vector3(), fwd = new THREE15.Vector3(), camUp = new THREE15.Vector3(), ndc = new THREE15.Vector3();
   let lastBoost = -1;
   const rec = { root, d: 0, x: 0, y: 0, hw: 0, hh: 0, shift: 0, worldPerNdc: 0, apply: null };
   rec.apply = () => {
@@ -8382,7 +8775,7 @@ function createNameplate(name, team) {
         return;
       }
       const alpha = Math.min(1, (dist2 - NEAR_HIDE) / (NEAR_FULL - NEAR_HIDE)) * Math.min(1, (FAR_HIDE - dist2) / (FAR_HIDE - FAR_FULL));
-      const tanH = Math.tan(THREE14.MathUtils.degToRad(camera2.fov) / 2) / (camera2.zoom || 1);
+      const tanH = Math.tan(THREE15.MathUtils.degToRad(camera2.fov) / 2) / (camera2.zoom || 1);
       rec.worldPerNdc = depth * tanH;
       ndc.copy(anchor).project(camera2);
       rec.hh = H_FRAC;
@@ -8437,11 +8830,11 @@ function createNameplate(name, team) {
 // src/render/cars/ball.js
 init_contracts();
 init_util();
-import * as THREE15 from "three";
+import * as THREE16 from "three";
 var R_M = BALL_RADIUS / 100;
 function panelCentres() {
   const t = (1 + Math.sqrt(5)) / 2;
-  const v = [[-1, t, 0], [1, t, 0], [-1, -t, 0], [1, -t, 0], [0, -1, t], [0, 1, t], [0, -1, -t], [0, 1, -t], [t, 0, -1], [t, 0, 1], [-t, 0, -1], [-t, 0, 1]].map((p) => new THREE15.Vector3(...p).normalize());
+  const v = [[-1, t, 0], [1, t, 0], [-1, -t, 0], [1, -t, 0], [0, -1, t], [0, 1, t], [0, -1, -t], [0, 1, -t], [t, 0, -1], [t, 0, 1], [-t, 0, -1], [-t, 0, 1]].map((p) => new THREE16.Vector3(...p).normalize());
   const out = v.slice();
   const minD = v[0].distanceTo(v[1]) * 1.01;
   for (let i = 0; i < 12; i++) for (let j = i + 1; j < 12; j++) {
@@ -8450,15 +8843,15 @@ function panelCentres() {
   return out;
 }
 function createBallModel(ctx2) {
-  const group = new THREE15.Group();
+  const group = new THREE16.Group();
   group.name = "ball";
   const centres = panelCentres();
   const uniforms = {
     uCentres: { value: centres },
-    uGlow: { value: new THREE15.Color(1, 1, 1) },
+    uGlow: { value: new THREE16.Color(1, 1, 1) },
     uFlash: { value: 0 }
   };
-  const mat = new THREE15.MeshPhysicalMaterial({
+  const mat = new THREE16.MeshPhysicalMaterial({
     color: 16777215,
     roughness: 0.34,
     metalness: 0.12,
@@ -8505,7 +8898,7 @@ totalEmissiveRadiance = uGlow * (gRing * 2.6 + gCore * 0.12) + vec3(1.0, 0.97, 0
   };
   mat.customProgramCacheKey = () => "turbo-ball-v1";
   registerEnvUser(mat);
-  const ball = new THREE15.Mesh(new THREE15.SphereGeometry(R_M, 64, 40), mat);
+  const ball = new THREE16.Mesh(new THREE16.SphereGeometry(R_M, 64, 40), mat);
   ball.castShadow = false;
   ball.receiveShadow = true;
   group.add(ball);
@@ -8537,11 +8930,11 @@ totalEmissiveRadiance = uGlow * (gRing * 2.6 + gCore * 0.12) + vec3(1.0, 0.97, 0
       idx.push(a0 + s2, b0 + s2, b0 + s22, a0 + s2, b0 + s22, a0 + s22);
     }
   }
-  const sg = new THREE15.BufferGeometry();
-  sg.setAttribute("position", new THREE15.BufferAttribute(pos, 3).setUsage(THREE15.DynamicDrawUsage));
-  sg.setAttribute("color", new THREE15.BufferAttribute(col, 4));
+  const sg = new THREE16.BufferGeometry();
+  sg.setAttribute("position", new THREE16.BufferAttribute(pos, 3).setUsage(THREE16.DynamicDrawUsage));
+  sg.setAttribute("color", new THREE16.BufferAttribute(col, 4));
   sg.setIndex(idx);
-  const smat = new THREE15.MeshBasicMaterial({
+  const smat = new THREE16.MeshBasicMaterial({
     color: 0,
     vertexColors: true,
     transparent: true,
@@ -8550,21 +8943,21 @@ totalEmissiveRadiance = uGlow * (gRing * 2.6 + gCore * 0.12) + vec3(1.0, 0.97, 0
     polygonOffset: true,
     polygonOffsetFactor: -4,
     polygonOffsetUnits: -4,
-    side: THREE15.FrontSide,
+    side: THREE16.FrontSide,
     toneMapped: false,
     fog: false,
     name: "ball.shadow"
   });
   smat.forceSinglePass = true;
-  const shadow = new THREE15.Mesh(sg, smat);
+  const shadow = new THREE16.Mesh(sg, smat);
   shadow.frustumCulled = false;
   shadow.renderOrder = 2;
   group.add(shadow);
   const nrm = { x: 0, y: 0, z: 1 };
-  const N2 = new THREE15.Vector3(), T3 = new THREE15.Vector3(), Bt = new THREE15.Vector3(), H4 = new THREE15.Vector3();
-  const prevVel = new THREE15.Vector3(), prevPos = new THREE15.Vector3();
+  const N2 = new THREE16.Vector3(), T3 = new THREE16.Vector3(), Bt = new THREE16.Vector3(), H4 = new THREE16.Vector3();
+  const prevVel = new THREE16.Vector3(), prevPos = new THREE16.Vector3();
   let havePrev = false, flash = 0;
-  const blue = new THREE15.Color(TEAM_COLORS[0].glow), orange = new THREE15.Color(TEAM_COLORS[1].glow), white = new THREE15.Color(0.85, 0.92, 1);
+  const blue = new THREE16.Color(TEAM_COLORS[0].glow), orange = new THREE16.Color(TEAM_COLORS[1].glow), white = new THREE16.Color(0.85, 0.92, 1);
   const glow = uniforms.uGlow.value;
   const LIFT = 1.2;
   const raycast = ctx2.arena && ctx2.arena.raycast;
@@ -8645,7 +9038,7 @@ totalEmissiveRadiance = uGlow * (gRing * 2.6 + gCore * 0.12) + vec3(1.0, 0.97, 0
         dbg.peakFlash = Math.max(dbg.peakFlash, flash);
         dbg.flash = flash;
       }
-      const wO = THREE15.MathUtils.smoothstep(bv.pos.y, 150, 1400), wB = THREE15.MathUtils.smoothstep(-bv.pos.y, 150, 1400);
+      const wO = THREE16.MathUtils.smoothstep(bv.pos.y, 150, 1400), wB = THREE16.MathUtils.smoothstep(-bv.pos.y, 150, 1400);
       const wW = 1 - wO - wB;
       glow.setRGB(white.r * wW + blue.r * wB + orange.r * wO, white.g * wW + blue.g * wB + orange.g * wO, white.b * wW + blue.b * wB + orange.b * wO);
       shadow.visible = placeShadow(bv.pos);
@@ -8669,16 +9062,16 @@ var DEV_DEBUG = params.has("cardebug");
 function getBoostNozzles(bodyId) {
   return buildBody(bodySpec(bodyId)).nozzles.map((v) => v.clone());
 }
-var _m = new THREE16.Matrix4();
-var _q2 = new THREE16.Quaternion();
-var _qs = new THREE16.Quaternion();
-var _qf = new THREE16.Quaternion();
-var _p = new THREE16.Vector3();
-var _s2 = new THREE16.Vector3();
-var _wp = new THREE16.Vector3();
-var AX_Y = new THREE16.Vector3(0, 1, 0);
-var AX_Z = new THREE16.Vector3(0, 0, 1);
-var Q_FLIP = new THREE16.Quaternion().setFromAxisAngle(AX_Y, Math.PI);
+var _m = new THREE17.Matrix4();
+var _q2 = new THREE17.Quaternion();
+var _qs = new THREE17.Quaternion();
+var _qf = new THREE17.Quaternion();
+var _p = new THREE17.Vector3();
+var _s2 = new THREE17.Vector3();
+var _wp = new THREE17.Vector3();
+var AX_Y = new THREE17.Vector3(0, 1, 0);
+var AX_Z = new THREE17.Vector3(0, 0, 1);
+var Q_FLIP = new THREE17.Quaternion().setFromAxisAngle(AX_Y, Math.PI);
 function createCarModel(ctx2, opts) {
   let bodyId = DEV_BODY || opts.bodyId;
   if (!bodyId || !CAR_BODIES.find((b) => b.id === bodyId)) bodyId = bodySpec(opts.hitbox || "OCTANE");
@@ -8691,18 +9084,18 @@ function createCarModel(ctx2, opts) {
   let accentHex = opts.accent || "#e8e8e8";
   let accent = getAccent(accentHex);
   const tc = TEAM_COLORS[team] || TEAM_COLORS[0];
-  const glowMat = new THREE16.MeshBasicMaterial({ color: new THREE16.Color(tc.glow), toneMapped: false, name: "car.boostglow" });
-  const glowBase = new THREE16.Color(tc.glow);
-  const root = new THREE16.Group();
+  const glowMat = new THREE17.MeshBasicMaterial({ color: new THREE17.Color(tc.glow), toneMapped: false, name: "car.boostglow" });
+  const glowBase = new THREE17.Color(tc.glow);
+  const root = new THREE17.Group();
   root.name = "car:" + bodyId;
-  const carG = new THREE16.Group();
+  const carG = new THREE17.Group();
   root.add(carG);
   const meshes = {};
   const mats = { paint, trim: sh.trim, accent, glass: sh.glass, light: sh.light, chrome: sh.chrome, glow: glowMat };
   for (const slot of Object.keys(body.geoms)) {
     const g = body.geoms[slot];
     if (!g) continue;
-    const m = new THREE16.Mesh(g, mats[slot]);
+    const m = new THREE17.Mesh(g, mats[slot]);
     m.name = slot;
     m.castShadow = slot !== "light" && slot !== "glow";
     m.receiveShadow = slot === "paint" || slot === "accent" || slot === "trim";
@@ -8710,12 +9103,12 @@ function createCarModel(ctx2, opts) {
     meshes[slot] = m;
   }
   const wg = getWheelGeometries(1, body.tyre.spokes || 5);
-  const tyres = new THREE16.InstancedMesh(wg.tyre, sh.tyre, 4);
-  const rims = new THREE16.InstancedMesh(wg.rim, sh.rim, 4);
+  const tyres = new THREE17.InstancedMesh(wg.tyre, sh.tyre, 4);
+  const rims = new THREE17.InstancedMesh(wg.rim, sh.rim, 4);
   for (const im of [tyres, rims]) {
     im.frustumCulled = false;
     im.receiveShadow = false;
-    im.instanceMatrix.setUsage(THREE16.DynamicDrawUsage);
+    im.instanceMatrix.setUsage(THREE17.DynamicDrawUsage);
     carG.add(im);
   }
   tyres.name = "tyres";
@@ -8754,14 +9147,14 @@ function createCarModel(ctx2, opts) {
   }
   if (DEV_HITBOX) {
     const s2 = cfg.hitboxSize, o = cfg.hitboxOffset;
-    const box = new THREE16.LineSegments(
-      new THREE16.EdgesGeometry(new THREE16.BoxGeometry(s2.x / 100, s2.z / 100, s2.y / 100)),
-      new THREE16.LineBasicMaterial({ color: 65382, depthTest: false, transparent: true, toneMapped: false })
+    const box = new THREE17.LineSegments(
+      new THREE17.EdgesGeometry(new THREE17.BoxGeometry(s2.x / 100, s2.z / 100, s2.y / 100)),
+      new THREE17.LineBasicMaterial({ color: 65382, depthTest: false, transparent: true, toneMapped: false })
     );
     box.position.set(o.x / 100, o.z / 100, 0);
     box.renderOrder = 60;
     carG.add(box);
-    const hp = new THREE16.Mesh(new THREE16.SphereGeometry(0.012, 8, 6), new THREE16.MeshBasicMaterial({ color: 16711935, depthTest: false }));
+    const hp = new THREE17.Mesh(new THREE17.SphereGeometry(0.012, 8, 6), new THREE17.MeshBasicMaterial({ color: 16711935, depthTest: false }));
     for (const w of [cfg.frontWheels, cfg.backWheels]) for (const sgn2 of [1, -1]) {
       const m = hp.clone();
       m.position.set(w.offset.x / 100, w.offset.z / 100, sgn2 * w.offset.y / 100);
@@ -8822,15 +9215,15 @@ function createCarModel(ctx2, opts) {
     }
   };
 }
-var _white = new THREE16.Color();
+var _white = new THREE17.Color();
 
 // src/render/vfx.js
-import * as THREE24 from "three";
+import * as THREE25 from "three";
 init_contracts();
 init_util();
 
 // src/render/vfx/particles.js
-import * as THREE17 from "three";
+import * as THREE18 from "three";
 var STRIDE = 24;
 var SHAPE = Object.freeze({ GLOW: 0, SMOKE: 1, SPARK: 2, RING: 3, GLINT: 4 });
 var VERT = (
@@ -8948,24 +9341,24 @@ var ParticlePool = class {
       this.data[i * STRIDE + 3] = -1e9;
       this.data[i * STRIDE + 7] = 1;
     }
-    const geo = new THREE17.InstancedBufferGeometry();
-    geo.setAttribute("position", new THREE17.BufferAttribute(new Float32Array([-1, -1, 0, 1, -1, 0, 1, 1, 0, -1, 1, 0]), 3));
+    const geo = new THREE18.InstancedBufferGeometry();
+    geo.setAttribute("position", new THREE18.BufferAttribute(new Float32Array([-1, -1, 0, 1, -1, 0, 1, 1, 0, -1, 1, 0]), 3));
     geo.setIndex([0, 1, 2, 0, 2, 3]);
-    const ib = new THREE17.InstancedInterleavedBuffer(this.data, STRIDE, 1).setUsage(THREE17.DynamicDrawUsage);
+    const ib = new THREE18.InstancedInterleavedBuffer(this.data, STRIDE, 1).setUsage(THREE18.DynamicDrawUsage);
     this.buffer = ib;
-    ["aP0", "aV0", "aSz", "aC0", "aC1", "aMs"].forEach((n, i) => geo.setAttribute(n, new THREE17.InterleavedBufferAttribute(ib, 4, i * 4)));
+    ["aP0", "aV0", "aSz", "aC0", "aC1", "aMs"].forEach((n, i) => geo.setAttribute(n, new THREE18.InterleavedBufferAttribute(ib, 4, i * 4)));
     geo.instanceCount = capacity;
     this.uniforms = { uTime: { value: 0 } };
-    this.material = new THREE17.ShaderMaterial({
+    this.material = new THREE18.ShaderMaterial({
       uniforms: this.uniforms,
       vertexShader: VERT,
       fragmentShader: FRAG,
       transparent: true,
       depthWrite: false,
       depthTest: true,
-      blending: additive ? THREE17.AdditiveBlending : THREE17.NormalBlending
+      blending: additive ? THREE18.AdditiveBlending : THREE18.NormalBlending
     });
-    this.mesh = new THREE17.Mesh(geo, this.material);
+    this.mesh = new THREE18.Mesh(geo, this.material);
     this.mesh.frustumCulled = false;
     this.mesh.renderOrder = renderOrder;
     this.mesh.name = additive ? "vfx.particles.add" : "vfx.particles.alpha";
@@ -9067,7 +9460,7 @@ var ParticlePool = class {
 };
 
 // src/render/vfx/flames.js
-import * as THREE18 from "three";
+import * as THREE19 from "three";
 var MAX_CARS = 8;
 var MAX_NOZZLES = 4;
 var VERT2 = (
@@ -9161,10 +9554,10 @@ function flameGeometry2() {
   for (let i = 0; i <= N2; i++) {
     const t = i / N2;
     const r = i === N2 ? 0 : Math.max(0, (0.72 + 0.28 * Math.sin(Math.min(t / 0.35, 1) * Math.PI * 0.5)) * Math.pow(1 - t, 0.6));
-    pts.push(new THREE18.Vector2(r, t));
+    pts.push(new THREE19.Vector2(r, t));
   }
-  pts.unshift(new THREE18.Vector2(0, 0));
-  const g = new THREE18.LatheGeometry(pts, 14);
+  pts.unshift(new THREE19.Vector2(0, 0));
+  const g = new THREE19.LatheGeometry(pts, 14);
   g.rotateZ(Math.PI / 2);
   g.deleteAttribute("uv");
   return g;
@@ -9172,29 +9565,29 @@ function flameGeometry2() {
 var BoostFlames = class {
   constructor(carMats, carK) {
     const base = flameGeometry2();
-    const geo = new THREE18.InstancedBufferGeometry();
+    const geo = new THREE19.InstancedBufferGeometry();
     geo.index = base.index;
     geo.setAttribute("position", base.getAttribute("position"));
     geo.setAttribute("normal", base.getAttribute("normal"));
     const n = MAX_CARS * MAX_NOZZLES * 2;
-    this.noz = new THREE18.InstancedBufferAttribute(new Float32Array(n * 4), 4);
-    this.info = new THREE18.InstancedBufferAttribute(new Float32Array(n * 2), 2);
+    this.noz = new THREE19.InstancedBufferAttribute(new Float32Array(n * 4), 4);
+    this.info = new THREE19.InstancedBufferAttribute(new Float32Array(n * 2), 2);
     geo.setAttribute("aNoz", this.noz);
     geo.setAttribute("aInfo", this.info);
     geo.instanceCount = 0;
     this.geo = geo;
     this.uniforms = { uCarMat: { value: carMats }, uCarK: { value: carK }, uTime: { value: 0 } };
-    this.material = new THREE18.ShaderMaterial({
+    this.material = new THREE19.ShaderMaterial({
       uniforms: this.uniforms,
       vertexShader: VERT2,
       fragmentShader: FRAG2,
       transparent: true,
       depthWrite: false,
       forceSinglePass: true,
-      blending: THREE18.AdditiveBlending,
-      side: THREE18.FrontSide
+      blending: THREE19.AdditiveBlending,
+      side: THREE19.FrontSide
     });
-    this.mesh = new THREE18.Mesh(geo, this.material);
+    this.mesh = new THREE19.Mesh(geo, this.material);
     this.mesh.frustumCulled = false;
     this.mesh.renderOrder = 22;
     this.mesh.name = "vfx.flames";
@@ -9232,7 +9625,7 @@ var BoostFlames = class {
 };
 
 // src/render/vfx/streaks.js
-import * as THREE19 from "three";
+import * as THREE20 from "three";
 var STREAKS_PER_CAR = 18;
 var VERT3 = (
   /* glsl */
@@ -9284,30 +9677,30 @@ void main() {
 );
 var SupersonicStreaks = class {
   constructor(carMats, carK) {
-    const geo = new THREE19.InstancedBufferGeometry();
-    geo.setAttribute("position", new THREE19.BufferAttribute(new Float32Array([-1, -1, 0, 1, -1, 0, 1, 1, 0, -1, 1, 0]), 3));
+    const geo = new THREE20.InstancedBufferGeometry();
+    geo.setAttribute("position", new THREE20.BufferAttribute(new Float32Array([-1, -1, 0, 1, -1, 0, 1, 1, 0, -1, 1, 0]), 3));
     geo.setIndex([0, 1, 2, 0, 2, 3]);
     const n = MAX_CARS * STREAKS_PER_CAR;
-    this.loc = new THREE19.InstancedBufferAttribute(new Float32Array(n * 4), 4);
-    this.span = new THREE19.InstancedBufferAttribute(new Float32Array(n * 4), 4);
-    this.car = new THREE19.InstancedBufferAttribute(new Float32Array(n), 1);
+    this.loc = new THREE20.InstancedBufferAttribute(new Float32Array(n * 4), 4);
+    this.span = new THREE20.InstancedBufferAttribute(new Float32Array(n * 4), 4);
+    this.car = new THREE20.InstancedBufferAttribute(new Float32Array(n), 1);
     geo.setAttribute("aLoc", this.loc);
     geo.setAttribute("aSpan", this.span);
     geo.setAttribute("aCar", this.car);
     geo.instanceCount = 0;
     this.geo = geo;
     this.uniforms = { uCarMat: { value: carMats }, uCarK: { value: carK }, uTime: { value: 0 } };
-    this.material = new THREE19.ShaderMaterial({
+    this.material = new THREE20.ShaderMaterial({
       uniforms: this.uniforms,
       vertexShader: VERT3,
       fragmentShader: FRAG3,
       transparent: true,
       depthWrite: false,
       forceSinglePass: true,
-      blending: THREE19.AdditiveBlending,
-      side: THREE19.DoubleSide
+      blending: THREE20.AdditiveBlending,
+      side: THREE20.DoubleSide
     });
-    this.mesh = new THREE19.Mesh(geo, this.material);
+    this.mesh = new THREE20.Mesh(geo, this.material);
     this.mesh.frustumCulled = false;
     this.mesh.renderOrder = 23;
     this.mesh.name = "vfx.streaks";
@@ -9315,7 +9708,7 @@ var SupersonicStreaks = class {
   // slots: [{ slot, cfg (CAR_CONFIGS entry) }]
   setCars(slots) {
     let k = 0;
-    const L = this.loc.array, S6 = this.span.array, C3 = this.car.array;
+    const L = this.loc.array, S7 = this.span.array, C3 = this.car.array;
     for (const s2 of slots) {
       const hs = s2.cfg.hitboxSize, ho = s2.cfg.hitboxOffset;
       const cy = ho.z / 100, hh = hs.z / 200 + 0.16, hw = hs.y / 200 + 0.16;
@@ -9326,10 +9719,10 @@ var SupersonicStreaks = class {
         L[k * 4 + 1] = Math.sin(a) * hw;
         L[k * 4 + 2] = Math.random();
         L[k * 4 + 3] = 2.4 + Math.random() * 1.6;
-        S6[k * 4] = front;
-        S6[k * 4 + 1] = range;
-        S6[k * 4 + 2] = 0.55 + Math.random() * 0.6;
-        S6[k * 4 + 3] = 8e-3 + Math.random() * 6e-3;
+        S7[k * 4] = front;
+        S7[k * 4 + 1] = range;
+        S7[k * 4 + 2] = 0.55 + Math.random() * 0.6;
+        S7[k * 4 + 3] = 8e-3 + Math.random() * 6e-3;
         C3[k] = s2.slot;
         k++;
       }
@@ -9349,7 +9742,7 @@ var SupersonicStreaks = class {
 };
 
 // src/render/vfx/ribbons.js
-import * as THREE20 from "three";
+import * as THREE21 from "three";
 var N = 36;
 var SAMPLE_DT = 1 / 50;
 var VPR = (N + 1) * 2;
@@ -9376,14 +9769,14 @@ var Ribbons = class {
         idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
       }
     }
-    const geo = new THREE20.BufferGeometry();
-    this.posAttr = new THREE20.BufferAttribute(pos, 3).setUsage(THREE20.DynamicDrawUsage);
-    this.colAttr = new THREE20.BufferAttribute(col, 4).setUsage(THREE20.DynamicDrawUsage);
+    const geo = new THREE21.BufferGeometry();
+    this.posAttr = new THREE21.BufferAttribute(pos, 3).setUsage(THREE21.DynamicDrawUsage);
+    this.colAttr = new THREE21.BufferAttribute(col, 4).setUsage(THREE21.DynamicDrawUsage);
     geo.setAttribute("position", this.posAttr);
     geo.setAttribute("aCol", this.colAttr);
     geo.setIndex(idx);
     this.color = color;
-    this.material = new THREE20.ShaderMaterial({
+    this.material = new THREE21.ShaderMaterial({
       vertexShader: (
         /* glsl */
         `
@@ -9403,21 +9796,21 @@ var Ribbons = class {
           #include <colorspace_fragment>
         }`
       ),
-      uniforms: { uColor: { value: new THREE20.Vector3(...color) } },
+      uniforms: { uColor: { value: new THREE21.Vector3(...color) } },
       transparent: true,
       depthWrite: false,
       forceSinglePass: true,
-      blending: THREE20.AdditiveBlending,
-      side: THREE20.DoubleSide
+      blending: THREE21.AdditiveBlending,
+      side: THREE21.DoubleSide
     });
     this.geo = geo;
-    this.mesh = new THREE20.Mesh(geo, this.material);
+    this.mesh = new THREE21.Mesh(geo, this.material);
     this.mesh.frustumCulled = false;
     this.mesh.renderOrder = 19;
     this.mesh.name = "vfx.ribbons";
-    this._t = new THREE20.Vector3();
-    this._s = new THREE20.Vector3();
-    this._c = new THREE20.Vector3();
+    this._t = new THREE21.Vector3();
+    this._s = new THREE21.Vector3();
+    this._c = new THREE21.Vector3();
   }
   // Feed the emitter position for ribbon r this frame. emitting=false lets it fade out.
   feed(r, x, y, z, emitting, time) {
@@ -9557,7 +9950,7 @@ var Ribbons = class {
 };
 
 // src/render/vfx/skids.js
-import * as THREE21 from "three";
+import * as THREE22 from "three";
 var STRIDE2 = 12;
 var VERT4 = (
   /* glsl */
@@ -9606,29 +9999,29 @@ var SkidMarks = class {
     this.capacity = capacity;
     this.data = new Float32Array(capacity * STRIDE2);
     for (let i = 0; i < capacity; i++) this.data[i * STRIDE2 + 3] = -1e9;
-    const geo = new THREE21.InstancedBufferGeometry();
-    geo.setAttribute("position", new THREE21.BufferAttribute(new Float32Array([0, -1, 0, 1, -1, 0, 1, 1, 0, 0, 1, 0]), 3));
+    const geo = new THREE22.InstancedBufferGeometry();
+    geo.setAttribute("position", new THREE22.BufferAttribute(new Float32Array([0, -1, 0, 1, -1, 0, 1, 1, 0, 0, 1, 0]), 3));
     geo.setIndex([0, 1, 2, 0, 2, 3]);
-    const ib = new THREE21.InstancedInterleavedBuffer(this.data, STRIDE2, 1).setUsage(THREE21.DynamicDrawUsage);
+    const ib = new THREE22.InstancedInterleavedBuffer(this.data, STRIDE2, 1).setUsage(THREE22.DynamicDrawUsage);
     this.buffer = ib;
-    geo.setAttribute("aA", new THREE21.InterleavedBufferAttribute(ib, 4, 0));
-    geo.setAttribute("aB", new THREE21.InterleavedBufferAttribute(ib, 4, 4));
-    geo.setAttribute("aN", new THREE21.InterleavedBufferAttribute(ib, 4, 8));
+    geo.setAttribute("aA", new THREE22.InterleavedBufferAttribute(ib, 4, 0));
+    geo.setAttribute("aB", new THREE22.InterleavedBufferAttribute(ib, 4, 4));
+    geo.setAttribute("aN", new THREE22.InterleavedBufferAttribute(ib, 4, 8));
     geo.instanceCount = capacity;
     this.uniforms = { uTime: { value: 0 }, uLife: { value: life } };
-    this.material = new THREE21.ShaderMaterial({
+    this.material = new THREE22.ShaderMaterial({
       uniforms: this.uniforms,
       vertexShader: VERT4,
       fragmentShader: FRAG4,
       transparent: true,
       depthWrite: false,
       forceSinglePass: true,
-      side: THREE21.DoubleSide,
+      side: THREE22.DoubleSide,
       polygonOffset: true,
       polygonOffsetFactor: -2,
       polygonOffsetUnits: -2
     });
-    this.mesh = new THREE21.Mesh(geo, this.material);
+    this.mesh = new THREE22.Mesh(geo, this.material);
     this.mesh.frustumCulled = false;
     this.mesh.renderOrder = 5;
     this.mesh.name = "vfx.skids";
@@ -9700,7 +10093,7 @@ var SkidMarks = class {
 };
 
 // src/render/vfx/shocks.js
-import * as THREE22 from "three";
+import * as THREE23 from "three";
 var STRIDE3 = 16;
 var COMMON = (
   /* glsl */
@@ -9811,26 +10204,26 @@ var ShockPool = class {
       this.data[i * STRIDE3 + 3] = -1e9;
       this.data[i * STRIDE3 + 7] = 1;
     }
-    const geo = new THREE22.InstancedBufferGeometry();
+    const geo = new THREE23.InstancedBufferGeometry();
     geo.index = baseGeo.index;
     geo.setAttribute("position", baseGeo.getAttribute("position"));
     if (baseGeo.getAttribute("normal")) geo.setAttribute("normal", baseGeo.getAttribute("normal"));
-    const ib = new THREE22.InstancedInterleavedBuffer(this.data, STRIDE3, 1).setUsage(THREE22.DynamicDrawUsage);
+    const ib = new THREE23.InstancedInterleavedBuffer(this.data, STRIDE3, 1).setUsage(THREE23.DynamicDrawUsage);
     this.buffer = ib;
-    ["aC", "aN", "aR", "aK"].forEach((n, i) => geo.setAttribute(n, new THREE22.InterleavedBufferAttribute(ib, 4, i * 4)));
+    ["aC", "aN", "aR", "aK"].forEach((n, i) => geo.setAttribute(n, new THREE23.InterleavedBufferAttribute(ib, 4, i * 4)));
     geo.instanceCount = capacity;
     this.uniforms = { uTime: { value: 0 } };
-    this.material = new THREE22.ShaderMaterial({
+    this.material = new THREE23.ShaderMaterial({
       uniforms: this.uniforms,
       vertexShader: vert,
       fragmentShader: frag,
       transparent: true,
       depthWrite: false,
       forceSinglePass: true,
-      blending: THREE22.AdditiveBlending,
-      side: THREE22.DoubleSide
+      blending: THREE23.AdditiveBlending,
+      side: THREE23.DoubleSide
     });
-    this.mesh = new THREE22.Mesh(geo, this.material);
+    this.mesh = new THREE23.Mesh(geo, this.material);
     this.mesh.frustumCulled = false;
     this.mesh.renderOrder = renderOrder;
     this.mesh.name = name;
@@ -9882,8 +10275,8 @@ var ShockPool = class {
 };
 var Shocks = class {
   constructor() {
-    const quad = new THREE22.PlaneGeometry(2, 2);
-    const sphere = new THREE22.SphereGeometry(1, 48, 32);
+    const quad = new THREE23.PlaneGeometry(2, 2);
+    const sphere = new THREE23.SphereGeometry(1, 48, 32);
     this.rings = new ShockPool(quad, RING_VERT, RING_FRAG, 24, 24, "vfx.rings");
     this.shells = new ShockPool(sphere, SHELL_VERT, SHELL_FRAG, 12, 24, "vfx.shells");
     this.time = 0;
@@ -9910,9 +10303,9 @@ var Shocks = class {
 };
 
 // src/render/vfx/debris.js
-import * as THREE23 from "three";
+import * as THREE24 from "three";
 function shardGeometry() {
-  const g = new THREE23.BoxGeometry(1, 0.16, 1, 3, 1, 3);
+  const g = new THREE24.BoxGeometry(1, 0.16, 1, 3, 1, 3);
   const p = g.getAttribute("position");
   const rnd = (i) => {
     const s2 = Math.sin(i * 12.9898) * 43758.5453;
@@ -9936,18 +10329,18 @@ var Debris = class {
   constructor(capacity = 48) {
     this.capacity = capacity;
     const geo = shardGeometry();
-    this.heat = new THREE23.InstancedBufferAttribute(new Float32Array(capacity), 1).setUsage(THREE23.DynamicDrawUsage);
+    this.heat = new THREE24.InstancedBufferAttribute(new Float32Array(capacity), 1).setUsage(THREE24.DynamicDrawUsage);
     geo.setAttribute("aHeat", this.heat);
-    const mat = new THREE23.MeshStandardMaterial({ color: 16777215, roughness: 0.45, metalness: 0.55 });
+    const mat = new THREE24.MeshStandardMaterial({ color: 16777215, roughness: 0.45, metalness: 0.55 });
     mat.onBeforeCompile = (sh) => {
       sh.vertexShader = sh.vertexShader.replace("#include <common>", "#include <common>\nattribute float aHeat;\nvarying float vHeat;").replace("#include <begin_vertex>", "#include <begin_vertex>\nvHeat = aHeat;");
       sh.fragmentShader = sh.fragmentShader.replace("#include <common>", "#include <common>\nvarying float vHeat;").replace("#include <emissivemap_fragment>", "#include <emissivemap_fragment>\ntotalEmissiveRadiance += vec3(1.6, 0.45, 0.08) * vHeat * vHeat;");
     };
     mat.customProgramCacheKey = () => "vfx-debris-heat";
     this.material = mat;
-    this.mesh = new THREE23.InstancedMesh(geo, mat, capacity);
-    this.mesh.instanceMatrix.setUsage(THREE23.DynamicDrawUsage);
-    this.mesh.instanceColor = new THREE23.InstancedBufferAttribute(new Float32Array(capacity * 3), 3);
+    this.mesh = new THREE24.InstancedMesh(geo, mat, capacity);
+    this.mesh.instanceMatrix.setUsage(THREE24.DynamicDrawUsage);
+    this.mesh.instanceColor = new THREE24.InstancedBufferAttribute(new Float32Array(capacity * 3), 3);
     this.mesh.frustumCulled = false;
     this.mesh.castShadow = true;
     this.mesh.name = "vfx.debris";
@@ -9958,24 +10351,24 @@ var Debris = class {
         alive: false,
         t: 0,
         life: 0,
-        pos: new THREE23.Vector3(),
-        vel: new THREE23.Vector3(),
-        q: new THREE23.Quaternion(),
-        axis: new THREE23.Vector3(1, 0, 0),
+        pos: new THREE24.Vector3(),
+        vel: new THREE24.Vector3(),
+        q: new THREE24.Quaternion(),
+        axis: new THREE24.Vector3(1, 0, 0),
         spin: 0,
-        scale: new THREE23.Vector3(1, 1, 1),
-        color: new THREE23.Color(),
+        scale: new THREE24.Vector3(1, 1, 1),
+        color: new THREE24.Color(),
         trailAcc: 0,
         rest: false
       });
     }
     this.next = 0;
-    this._m = new THREE23.Matrix4();
-    this._dq = new THREE23.Quaternion();
-    this._s = new THREE23.Vector3();
+    this._m = new THREE24.Matrix4();
+    this._dq = new THREE24.Quaternion();
+    this._s = new THREE24.Vector3();
     this._n = { x: 0, y: 0, z: 0 };
-    this._e = new THREE23.Euler();
-    this.zero = new THREE23.Matrix4().makeScale(0, 0, 0);
+    this._e = new THREE24.Euler();
+    this.zero = new THREE24.Matrix4().makeScale(0, 0, 0);
   }
   spawn(pos, vel, scale, color, life) {
     const it = this.items[this.next];
@@ -10098,7 +10491,7 @@ var C2 = {
   demoSmoke1: [0.13, 0.125, 0.12, 0]
 };
 function linColor(hex) {
-  return new THREE24.Color(hex);
+  return new THREE25.Color(hex);
 }
 function teamPalette(team) {
   const tc = TEAM_COLORS[team] || TEAM_COLORS[0];
@@ -10107,11 +10500,11 @@ function teamPalette(team) {
 }
 function createVFX(ctx2) {
   const scene2 = ctx2.scene;
-  const root = new THREE24.Group();
+  const root = new THREE25.Group();
   root.name = "vfx";
   scene2.add(root);
-  const carMats = Array.from({ length: MAX_CARS }, () => new THREE24.Matrix4().makeScale(0, 0, 0));
-  const carK = Array.from({ length: MAX_CARS }, () => new THREE24.Vector4());
+  const carMats = Array.from({ length: MAX_CARS }, () => new THREE25.Matrix4().makeScale(0, 0, 0));
+  const carK = Array.from({ length: MAX_CARS }, () => new THREE25.Vector4());
   const add2 = new ParticlePool(ADD_CAP, true, 20);
   const smoke = new ParticlePool(SMOKE_CAP, false, 12);
   const flames = new BoostFlames(carMats, carK);
@@ -10121,33 +10514,33 @@ function createVFX(ctx2) {
   const shocks = new Shocks();
   const debris = new Debris(48);
   for (const o of [skids.mesh, smoke.mesh, ribbons.mesh, add2.mesh, flames.mesh, streaks.mesh, shocks.rings.mesh, shocks.shells.mesh, debris.mesh]) root.add(o);
-  const light2 = new THREE24.PointLight(16777215, 0, 60, 2);
+  const light2 = new THREE25.PointLight(16777215, 0, 60, 2);
   light2.castShadow = false;
   root.add(light2);
-  const flash = { t: 0, life: 1, peak: 0, color: new THREE24.Color() };
+  const flash = { t: 0, life: 1, peak: 0, color: new THREE25.Color() };
   let density = ctx2.quality && ctx2.quality.particles || 1;
   let ribbonsOn = true;
   let time = 0, lastViewTime = -1, step = 0;
   let lastView = null;
-  const _v2 = new THREE24.Vector3(), _v22 = new THREE24.Vector3(), _v3 = new THREE24.Vector3();
-  const _q3 = new THREE24.Quaternion(), _one = new THREE24.Vector3(1, 1, 1);
-  const _fw = new THREE24.Vector3(), _rt = new THREE24.Vector3(), _up = new THREE24.Vector3(), _cv = new THREE24.Vector3();
+  const _v2 = new THREE25.Vector3(), _v22 = new THREE25.Vector3(), _v3 = new THREE25.Vector3();
+  const _q3 = new THREE25.Quaternion(), _one = new THREE25.Vector3(1, 1, 1);
+  const _fw = new THREE25.Vector3(), _rt = new THREE25.Vector3(), _up = new THREE25.Vector3(), _cv = new THREE25.Vector3();
   const _col1 = [0, 0, 0, 0];
-  const _c = new THREE24.Color(), _cw = new THREE24.Color(1, 1, 1);
+  const _c = new THREE25.Color(), _cw = new THREE25.Color(1, 1, 1);
   const cars = /* @__PURE__ */ new Map();
   let slotsDirty = true;
   function nozzlesFor(bodyId, hitbox) {
     if (typeof getBoostNozzles === "function") {
       try {
         const r = getBoostNozzles(bodyId);
-        if (r && r.length) return r.map((v) => new THREE24.Vector3(v.x, v.y, v.z));
+        if (r && r.length) return r.map((v) => new THREE25.Vector3(v.x, v.y, v.z));
       } catch (e) {
       }
     }
     const cfg = ctx2.carConfigs[hitbox] || ctx2.carConfigs.OCTANE;
     const s2 = cfg.hitboxSize, o = cfg.hitboxOffset;
     const x = (o.x - s2.x / 2) / 100, y = (o.z - s2.z / 2 + 0.4 * s2.z) / 100, w = 0.15 * s2.y / 100;
-    return [new THREE24.Vector3(x, y, -w), new THREE24.Vector3(x, y, w)];
+    return [new THREE25.Vector3(x, y, -w), new THREE25.Vector3(x, y, w)];
   }
   function carState(cv) {
     let st = cars.get(cv.id);
@@ -10166,7 +10559,7 @@ function createVFX(ctx2) {
         slot: -1,
         seen: 0,
         nozzles: noz,
-        last: noz.map(() => new THREE24.Vector3()),
+        last: noz.map(() => new THREE25.Vector3()),
         acc: noz.map(() => 0),
         hasLast: false,
         boost: 0,
@@ -10174,11 +10567,11 @@ function createVFX(ctx2) {
         streak: 0,
         scale: noz.length >= 2 ? 1 : 1.3,
         rear: [
-          new THREE24.Vector3((cfg.hitboxOffset.x - cfg.hitboxSize.x / 2) / 100 + 0.04, (cfg.hitboxOffset.z + cfg.hitboxSize.z * 0.15) / 100, -cfg.hitboxSize.y * 0.43 / 100),
-          new THREE24.Vector3((cfg.hitboxOffset.x - cfg.hitboxSize.x / 2) / 100 + 0.04, (cfg.hitboxOffset.z + cfg.hitboxSize.z * 0.15) / 100, cfg.hitboxSize.y * 0.43 / 100)
+          new THREE25.Vector3((cfg.hitboxOffset.x - cfg.hitboxSize.x / 2) / 100 + 0.04, (cfg.hitboxOffset.z + cfg.hitboxSize.z * 0.15) / 100, -cfg.hitboxSize.y * 0.43 / 100),
+          new THREE25.Vector3((cfg.hitboxOffset.x - cfg.hitboxSize.x / 2) / 100 + 0.04, (cfg.hitboxOffset.z + cfg.hitboxSize.z * 0.15) / 100, cfg.hitboxSize.y * 0.43 / 100)
         ],
         skid: [false, false],
-        skidLast: [new THREE24.Vector3(), new THREE24.Vector3()]
+        skidLast: [new THREE25.Vector3(), new THREE25.Vector3()]
       };
       cars.set(cv.id, st);
       slotsDirty = true;
@@ -10202,7 +10595,7 @@ function createVFX(ctx2) {
     streaks.setCars(slots);
     slotsDirty = false;
   }
-  const S6 = (v, out) => out.set(v.x * U, v.z * U, v.y * U);
+  const S7 = (v, out) => out.set(v.x * U, v.z * U, v.y * U);
   const SD = (x, y, z, out) => out.set(x, z, y);
   function carBasis(cv) {
     const m = cv.rot.m;
@@ -10361,11 +10754,11 @@ function createVFX(ctx2) {
   function ballHit(e, view) {
     const s2 = Math.min(1, Math.max(0, (e.impulse - 150) / 2200));
     if (e.impulse < 60) return;
-    const bp = S6(e.pos, _v2);
+    const bp = S7(e.pos, _v2);
     const car = findCar(view, e.carId);
     const n = _v22.set(0, 1, 0);
     if (car) {
-      S6(car.pos, n);
+      S7(car.pos, n);
       n.subVectors(bp, n).normalize();
     }
     const cp2 = _v3.copy(bp).addScaledVector(n, -BALL_RADIUS * U);
@@ -10384,7 +10777,7 @@ function createVFX(ctx2) {
     if (e.speed < 450) return;
     const s2 = Math.min(1, (e.speed - 450) / 2e3);
     const n = SD(e.normal.x, e.normal.y, e.normal.z, _v22);
-    const cp2 = S6(e.pos, _v2).addScaledVector(n, -BALL_RADIUS * U * 0.92);
+    const cp2 = S7(e.pos, _v2).addScaledVector(n, -BALL_RADIUS * U * 0.92);
     const k = cnt(3 + 8 * s2);
     smoke.style(C2.dust0, C2.dust1, 2.5, -0.2, SHAPE.SMOKE, 0, 0.1);
     for (let i = 0; i < k; i++) {
@@ -10451,7 +10844,7 @@ function createVFX(ctx2) {
         }
       }
     } else {
-      S6(car.pos, _v2).addScaledVector(_up, -0.25);
+      S7(car.pos, _v2).addScaledVector(_up, -0.25);
       shocks.ring(_v2.x, _v2.y, _v2.z, _up.x, _up.y, _up.z, 0.3, 0.3, 1.5, 0.18, 0.5, [1.6, 1.6, 1.7], 2);
       smoke.style([0.5, 0.5, 0.52, 0.18], [0.6, 0.6, 0.62, 0], 3, 0, SHAPE.SMOKE, 0, 0.1);
       const k = cnt(5);
@@ -10464,7 +10857,7 @@ function createVFX(ctx2) {
     }
   }
   function padPickup(e) {
-    const p = S6(e.pos, _v2);
+    const p = S7(e.pos, _v2);
     p.y = Math.max(p.y, 0.05);
     if (e.isBig) {
       add2.style(C2.padGlow0, C2.padGlow1, 0, 0, SHAPE.GLOW, 0, 0);
@@ -10493,8 +10886,8 @@ function createVFX(ctx2) {
     const car = findCar(view, e.victimId);
     const team = car ? car.team : 0;
     const pal = teamPalette(team);
-    const c = S6(e.pos, _v2.set(0, 0, 0)).clone();
-    const cvel = e.vel ? S6(e.vel, new THREE24.Vector3()) : new THREE24.Vector3();
+    const c = S7(e.pos, _v2.set(0, 0, 0)).clone();
+    const cvel = e.vel ? S7(e.vel, new THREE25.Vector3()) : new THREE25.Vector3();
     cvel.multiplyScalar(0.35);
     add2.style([4, 3.2, 1.8, 1], [1.5, 0.5, 0.1, 0], 0, 0, SHAPE.GLOW, 0, 0);
     add2.emit(c.x, c.y, c.z, 0, 0, 0, 0.22, 1.2, 4.5);
@@ -10546,8 +10939,8 @@ function createVFX(ctx2) {
     shocks.ring(c.x, Math.max(0.05, c.y - 0.3), c.z, 0, 1, 0, 0.5, 0.5, 8, 0.06, 1, [3, 1.6, 0.6], 3);
     shocks.shell(c.x, c.y, c.z, 0.3, 0.4, 2.6, 0.2, [2.2, 1.2, 0.4], 3);
     const nChunks = 9;
-    const tint = new THREE24.Color().copy(pal.p).multiplyScalar(0.5).lerp(new THREE24.Color(0.03, 0.03, 0.035), 0.5);
-    const dark = new THREE24.Color(0.025, 0.025, 0.028);
+    const tint = new THREE25.Color().copy(pal.p).multiplyScalar(0.5).lerp(new THREE25.Color(0.03, 0.03, 0.035), 0.5);
+    const dark = new THREE25.Color(0.025, 0.025, 0.028);
     for (let i = 0; i < nChunks; i++) {
       randDir(_cv);
       _cv.y = Math.abs(_cv.y) * 0.7 + 0.25;
@@ -10556,13 +10949,13 @@ function createVFX(ctx2) {
       _v22.set(_cv.x * sp + cvel.x, _cv.y * sp + cvel.y + rr(1.5, 3.5), _cv.z * sp + cvel.z);
       _v3.set(c.x + _cv.x * 0.4, c.y + _cv.y * 0.2, c.z + _cv.z * 0.4);
       const big = i < 4;
-      const sc = big ? new THREE24.Vector3(rr(0.45, 0.75), rr(0.5, 0.9), rr(0.35, 0.6)) : new THREE24.Vector3(rr(0.2, 0.38), rr(0.4, 0.9), rr(0.18, 0.34));
+      const sc = big ? new THREE25.Vector3(rr(0.45, 0.75), rr(0.5, 0.9), rr(0.35, 0.6)) : new THREE25.Vector3(rr(0.2, 0.38), rr(0.4, 0.9), rr(0.18, 0.34));
       debris.spawn(_v3, _v22, sc, i % 3 === 2 ? dark : tint, rr(2.2, 3));
     }
   }
   function goal(e, view) {
     const pal = teamPalette(e.team);
-    const c = S6(e.pos, new THREE24.Vector3());
+    const c = S7(e.pos, new THREE25.Vector3());
     const fz = e.pos.y > 0 ? -1 : 1;
     add2.style([4, 4, 4, 1], scaled(pal.l, 2, 0, _col1), 0, 0, SHAPE.GLOW, 0, 0);
     add2.emit(c.x, c.y, c.z, 0, 0, 0, 0.15, 0.8, 4);
@@ -10644,7 +11037,7 @@ function createVFX(ctx2) {
   function carBump(e) {
     if (e.speed < 300) return;
     const s2 = Math.min(1, (e.speed - 300) / 1800);
-    const p = S6(e.pos, _v2);
+    const p = S7(e.pos, _v2);
     const k = cnt(4 + 18 * s2);
     add2.style(C2.hitSpark0, C2.hitSpark1, 2.5, 6, SHAPE.SPARK, 0.03, 0);
     for (let i = 0; i < k; i++) {
@@ -10658,7 +11051,7 @@ function createVFX(ctx2) {
   function respawn(e, view) {
     const car = findCar(view, e.carId);
     if (!car) return;
-    const p = S6(car.pos, _v2);
+    const p = S7(car.pos, _v2);
     const pal = teamPalette(car.team);
     shocks.ring(p.x, Math.max(0.04, p.y - 0.15), p.z, 0, 1, 0, 0.5, 2.2, 0.4, 0.15, 1.2, scaled(pal.l, 3, 1, [0, 0, 0, 0]), 2);
     add2.style(scaled(pal.l, 3, 0.8, [0, 0, 0, 0]), scaled(pal.p, 1, 0, [0, 0, 0, 0]), 1, -2, SHAPE.SPARK, 0.03, 0);
@@ -10672,7 +11065,7 @@ function createVFX(ctx2) {
     const car = findCar(view, e.carId);
     if (!car || car.isDemoed) return;
     carBasis(car);
-    const p = S6(car.pos, _v2).addScaledVector(_fw, -1.2).addScaledVector(_up, 0.15);
+    const p = S7(car.pos, _v2).addScaledVector(_fw, -1.2).addScaledVector(_up, 0.15);
     shocks.ring(p.x, p.y, p.z, _fw.x, _fw.y, _fw.z, 0.3, 0.5, 1.6, 0.1, 0.3, [1.6, 1.7, 1.9], 2);
   }
   let debugFollow = null;
@@ -10800,7 +11193,7 @@ function createVFX(ctx2) {
         const st = cars.get(cv.id);
         if (!st || st.slot < 0) continue;
         const mat = carMats[st.slot];
-        S6(cv.pos, _v2);
+        S7(cv.pos, _v2);
         simRotToQuat(cv.rot, _q3);
         mat.compose(_v2, _q3, _one);
         carBasis(cv);
@@ -10815,7 +11208,7 @@ function createVFX(ctx2) {
         carK[st.slot].set(st.boost, st.ss, st.scale, st.ss);
         if (st.boost > 0.01) anyBoost = true;
         if (st.ss > 0.01) anySS = true;
-        const carVel = S6(cv.vel, _v22);
+        const carVel = S7(cv.vel, _v22);
         if (step > 0) {
           if (alive && cv.isBoosting) emitBoostTrail(cv, st, carVel);
           else st.hasLast = false;
@@ -10980,7 +11373,7 @@ function createVFX(ctx2) {
 
 // src/render/post.js
 init_contracts();
-import * as THREE25 from "three";
+import * as THREE26 from "three";
 import { GTAOPass } from "three/addons/postprocessing/GTAOPass.js";
 import { FullScreenQuad } from "three/addons/postprocessing/Pass.js";
 import { FXAAShader } from "three/addons/shaders/FXAAShader.js";
@@ -11112,7 +11505,7 @@ void main() {
 }`
 );
 function raw(fs, uniforms, extra = {}) {
-  return new THREE25.RawShaderMaterial({ vertexShader: VS, fragmentShader: fs, uniforms, depthTest: false, depthWrite: false, ...extra });
+  return new THREE26.RawShaderMaterial({ vertexShader: VS, fragmentShader: fs, uniforms, depthTest: false, depthWrite: false, ...extra });
 }
 function createPost(ctx2) {
   const { renderer: renderer2, scene: scene2, camera: camera2 } = ctx2;
@@ -11121,19 +11514,19 @@ function createPost(ctx2) {
   let enabled = false, built = false, mbOn = false;
   let sceneRT = null, mbRT = null, ldrRT = null, gtao = null;
   const bloomRT = [];
-  const prefilterMat = raw(PREFILTER_FS, { tSrc: { value: null }, uTexel: { value: new THREE25.Vector2() }, uThreshold: { value: BLOOM_THRESHOLD }, uKnee: { value: BLOOM_KNEE } });
-  const downMat = raw(DOWN_FS, { tSrc: { value: null }, uTexel: { value: new THREE25.Vector2() } });
+  const prefilterMat = raw(PREFILTER_FS, { tSrc: { value: null }, uTexel: { value: new THREE26.Vector2() }, uThreshold: { value: BLOOM_THRESHOLD }, uKnee: { value: BLOOM_KNEE } });
+  const downMat = raw(DOWN_FS, { tSrc: { value: null }, uTexel: { value: new THREE26.Vector2() } });
   const upMat = raw(
     UP_FS,
-    { tSrc: { value: null }, uTexel: { value: new THREE25.Vector2() } },
-    { blending: THREE25.CustomBlending, blendEquation: THREE25.AddEquation, blendSrc: THREE25.OneFactor, blendDst: THREE25.OneFactor }
+    { tSrc: { value: null }, uTexel: { value: new THREE26.Vector2() } },
+    { blending: THREE26.CustomBlending, blendEquation: THREE26.AddEquation, blendSrc: THREE26.OneFactor, blendDst: THREE26.OneFactor }
   );
   const mbMat = raw(MB_FS, {
     tColor: { value: null },
     tDepth: { value: null },
-    uInvViewProj: { value: new THREE25.Matrix4() },
-    uPrevViewProj: { value: new THREE25.Matrix4() },
-    uCamPos: { value: new THREE25.Vector3() },
+    uInvViewProj: { value: new THREE26.Matrix4() },
+    uPrevViewProj: { value: new THREE26.Matrix4() },
+    uCamPos: { value: new THREE26.Vector3() },
     uStrength: { value: 0.5 },
     uMaxLen: { value: 0.035 }
   });
@@ -11145,15 +11538,15 @@ function createPost(ctx2) {
     uAO: { value: 0.85 },
     toneMappingExposure: { value: 1 }
   });
-  const fxaaMat = new THREE25.ShaderMaterial({
-    uniforms: THREE25.UniformsUtils.clone(FXAAShader.uniforms),
+  const fxaaMat = new THREE26.ShaderMaterial({
+    uniforms: THREE26.UniformsUtils.clone(FXAAShader.uniforms),
     vertexShader: FXAAShader.vertexShader,
     fragmentShader: FXAAShader.fragmentShader,
     depthTest: false,
     depthWrite: false
   });
   const quad = new FullScreenQuad(null);
-  const prevVP = new THREE25.Matrix4(), curVP = new THREE25.Matrix4();
+  const prevVP = new THREE26.Matrix4(), curVP = new THREE26.Matrix4();
   let hasPrevVP = false;
   let outKey = "";
   function pass(mat, target, clear = true) {
@@ -11196,20 +11589,20 @@ function createPost(ctx2) {
     if (!enabled) return;
     const [w, h2] = px();
     mbOn = !!(ctx2.settings.graphics && ctx2.settings.graphics.motionBlur);
-    sceneRT = new THREE25.WebGLRenderTarget(w, h2, { type: THREE25.HalfFloatType, samples: q.msaa || 0, depthBuffer: true });
+    sceneRT = new THREE26.WebGLRenderTarget(w, h2, { type: THREE26.HalfFloatType, samples: q.msaa || 0, depthBuffer: true });
     sceneRT.texture.name = "post.scene";
     if (mbOn) {
-      sceneRT.depthTexture = new THREE25.DepthTexture(w, h2);
-      sceneRT.depthTexture.type = THREE25.UnsignedIntType;
+      sceneRT.depthTexture = new THREE26.DepthTexture(w, h2);
+      sceneRT.depthTexture.type = THREE26.UnsignedIntType;
       sceneRT.resolveDepthBuffer = true;
-      mbRT = new THREE25.WebGLRenderTarget(w, h2, { type: THREE25.HalfFloatType, depthBuffer: false });
+      mbRT = new THREE26.WebGLRenderTarget(w, h2, { type: THREE26.HalfFloatType, depthBuffer: false });
     } else {
       sceneRT.resolveDepthBuffer = false;
     }
     const bs = q.bloomScale || 0.5;
     let bw = Math.max(1, Math.floor(w * bs)), bh = Math.max(1, Math.floor(h2 * bs));
     for (let i = 0; i < BLOOM_LEVELS; i++) {
-      const rt = new THREE25.WebGLRenderTarget(bw, bh, { type: THREE25.HalfFloatType, depthBuffer: false });
+      const rt = new THREE26.WebGLRenderTarget(bw, bh, { type: THREE26.HalfFloatType, depthBuffer: false });
       rt.texture.name = "post.bloom" + i;
       bloomRT.push(rt);
       bw = Math.max(1, bw >> 1);
@@ -11222,7 +11615,7 @@ function createPost(ctx2) {
       gtao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 6, rings: 2, samples: 12 });
     }
     if (!q.msaa) {
-      ldrRT = new THREE25.WebGLRenderTarget(w, h2, { type: THREE25.UnsignedByteType, depthBuffer: false });
+      ldrRT = new THREE26.WebGLRenderTarget(w, h2, { type: THREE26.UnsignedByteType, depthBuffer: false });
       fxaaMat.uniforms.resolution.value.set(1 / w, 1 / h2);
     }
   }
@@ -11231,12 +11624,12 @@ function createPost(ctx2) {
     if (key === outKey) return;
     outKey = key;
     const d = {};
-    if (THREE25.ColorManagement.getTransfer(renderer2.outputColorSpace) === THREE25.SRGBTransfer) d.SRGB_TRANSFER = "";
+    if (THREE26.ColorManagement.getTransfer(renderer2.outputColorSpace) === THREE26.SRGBTransfer) d.SRGB_TRANSFER = "";
     const tm = renderer2.toneMapping;
-    if (tm === THREE25.ACESFilmicToneMapping) d.ACES_FILMIC_TONE_MAPPING = "";
-    else if (tm === THREE25.AgXToneMapping) d.AGX_TONE_MAPPING = "";
-    else if (tm === THREE25.NeutralToneMapping) d.NEUTRAL_TONE_MAPPING = "";
-    else if (tm === THREE25.LinearToneMapping) d.LINEAR_TONE_MAPPING = "";
+    if (tm === THREE26.ACESFilmicToneMapping) d.ACES_FILMIC_TONE_MAPPING = "";
+    else if (tm === THREE26.AgXToneMapping) d.AGX_TONE_MAPPING = "";
+    else if (tm === THREE26.NeutralToneMapping) d.NEUTRAL_TONE_MAPPING = "";
+    else if (tm === THREE26.LinearToneMapping) d.LINEAR_TONE_MAPPING = "";
     if (gtao) d.USE_AO = "";
     outMat.defines = d;
     outMat.needsUpdate = true;
@@ -11333,7 +11726,7 @@ function createPost(ctx2) {
 
 // src/camera/camera.js
 init_util();
-import * as THREE26 from "three";
+import * as THREE27 from "three";
 
 // src/camera/rig.js
 var DEG = Math.PI / 180;
@@ -11674,8 +12067,8 @@ function createCameraController(ctx2) {
   let lastMode = null, lastKey = null, replaySide = 1;
   let trauma = 0, shakeT = 0;
   let lastBall = null;
-  const _p2 = new THREE26.Vector3(), _d = new THREE26.Vector3(), _u = new THREE26.Vector3(), _t = new THREE26.Vector3();
-  const _right = new THREE26.Vector3();
+  const _p2 = new THREE27.Vector3(), _d = new THREE27.Vector3(), _u = new THREE27.Vector3(), _t = new THREE27.Vector3();
+  const _right = new THREE27.Vector3();
   function setFov(vfovDeg) {
     if (Math.abs(cam.fov - vfovDeg) > 1e-4) {
       cam.fov = vfovDeg;
@@ -12884,11 +13277,6 @@ var CSS = String.raw`
 .tp-end .tp-nav { top: 52%; width: calc(var(--u) * 30); }
 
 /* LAN play */
-.tp-code { width: 100%; height: calc(var(--u) * 9); resize: none; padding: calc(var(--u) * 0.8) calc(var(--u) * 1.1); border: calc(var(--u) * 0.2) solid rgba(255, 255, 255, 0.2);
-  background: rgba(0, 0, 0, 0.4); color: #cfe0ff; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: calc(var(--u) * 1.35); line-height: 1.35; word-break: break-all;
-  outline: none; pointer-events: auto; user-select: text; -webkit-user-select: text; }
-.tp-code:focus, .tp-code.tp-focus { border-color: var(--gold); }
-.tp-code[readonly] { color: #ffe29a; }
 .tp-lan-slot { border-left: calc(var(--u) * 0.45) solid var(--blue); background: rgba(255, 255, 255, 0.04); padding: calc(var(--u) * 1.2) calc(var(--u) * 1.6); margin-bottom: calc(var(--u) * 1.2); }
 .tp-lan-slot.t1 { border-left-color: var(--orange); }
 .tp-lan-slot .top { display: flex; align-items: center; gap: calc(var(--u) * 1.4); }
@@ -12909,7 +13297,6 @@ var CSS = String.raw`
 .tp-gamecode .sub b { color: #fff; }
 .tp-gamecode .act { display: flex; justify-content: center; margin: calc(var(--u) * 0.8) 0; }
 .tp-codein { height: calc(var(--u) * 8); text-align: center; font-size: calc(var(--u) * 5); font-weight: 800; letter-spacing: 0.3em; font-variant-numeric: tabular-nums; }
-.tp-codein.long { font-size: calc(var(--u) * 1.6); letter-spacing: 0; text-align: left; }
 .tp-note { font-size: calc(var(--u) * 1.6); color: var(--dim); line-height: 1.5; margin-bottom: calc(var(--u) * 2); }
 .tp-note b { color: #fff; }
 .tp-note.warn { color: #ffcf7a; }
@@ -19796,16 +20183,16 @@ var params2 = new URLSearchParams(location.search);
 var { settings, stats } = loadAll();
 if (params2.get("q")) settings.graphics.quality = params2.get("q");
 var canvas2 = document.getElementById("game-canvas");
-var renderer = new THREE27.WebGLRenderer({ canvas: canvas2, antialias: false, powerPreference: "high-performance", preserveDrawingBuffer: params2.has("shot") });
-renderer.outputColorSpace = THREE27.SRGBColorSpace;
-renderer.toneMapping = THREE27.ACESFilmicToneMapping;
+var renderer = new THREE28.WebGLRenderer({ canvas: canvas2, antialias: false, powerPreference: "high-performance", preserveDrawingBuffer: params2.has("shot") });
+renderer.outputColorSpace = THREE28.SRGBColorSpace;
+renderer.toneMapping = THREE28.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1;
 renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE27.PCFShadowMap;
-var scene = new THREE27.Scene();
-var camera = new THREE27.PerspectiveCamera(70, innerWidth / innerHeight, 0.1, 2e3);
+renderer.shadowMap.type = THREE28.PCFShadowMap;
+var scene = new THREE28.Scene();
+var camera = new THREE28.PerspectiveCamera(70, innerWidth / innerHeight, 0.1, 2e3);
 var ctx = {
-  THREE: THREE27,
+  THREE: THREE28,
   renderer,
   scene,
   camera,
@@ -20310,7 +20697,7 @@ function lanHost() {
 }
 window.__api = api;
 var ui = createUI({ root: document.getElementById("ui-root"), api, settings, stats });
-var predLine = new THREE27.Line(new THREE27.BufferGeometry(), new THREE27.LineBasicMaterial({ color: 16772744, transparent: true, opacity: 0.8 }));
+var predLine = new THREE28.Line(new THREE28.BufferGeometry(), new THREE28.LineBasicMaterial({ color: 16772744, transparent: true, opacity: 0.8 }));
 predLine.frustumCulled = false;
 scene.add(predLine);
 var predTick = -1;

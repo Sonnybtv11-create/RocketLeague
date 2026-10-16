@@ -58,8 +58,8 @@ export function makeFieldTextures(renderer) {
     for (let iy = -5; iy < 5; iy++) {
       const light = ((ix + iy) & 1) === 0;
       const team = iy < 0 ? 0 : 1;
-      let r = light ? 66 : 50, gg = light ? 118 : 94, b = light ? 53 : 42;
-      if (team === 0) { r -= 3; b += 5; } else { r += 5; gg += 1; b -= 3; }
+      let r = light ? 50 : 38, gg = light ? 108 : 88, b = light ? 42 : 34;
+      if (team === 0) { r -= 2; b += 4; } else { r += 4; b -= 2; }
       g.fillStyle = `rgb(${r},${gg},${b})`;
       g.fillRect(ix * SQ + OX, iy * SQ, SQ, SQ);
     }
@@ -94,106 +94,142 @@ export function makeFieldTextures(renderer) {
   const line = (w, col = 'rgba(255,255,255,0.92)') => { g.strokeStyle = col; g.lineWidth = w; g.lineCap = 'butt'; g.lineJoin = 'miter'; };
   const poly = (pts, close) => { g.beginPath(); pts.forEach((p, i) => (i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1]))); if (close) g.closePath(); };
 
-  // --- team colour zones (drawn under the white lines)
+  // full field-edge polygon at inset u (follows the octagon)
+  const ring = (u) => {
+    const q = quadRing(u);
+    const quad = q.slice(0, q.length - 2);
+    const pts = [];
+    for (const p of quad) pts.push(p);
+    for (let k = quad.length - 1; k >= 0; k--) pts.push([-quad[k][0], quad[k][1]]);
+    for (let k = 0; k < quad.length; k++) pts.push([-quad[k][0], -quad[k][1]]);
+    for (let k = quad.length - 1; k >= 0; k--) pts.push([quad[k][0], -quad[k][1]]);
+    return pts;
+  };
+  const ringPath = (u, path = new Path2D()) => { ring(u).forEach((p, k) => (k ? path.lineTo(p[0], p[1]) : path.moveTo(p[0], p[1]))); path.closePath(); return path; };
+  // glowing paint line: soft wide pass + bright core
+  const glowLine = (pts, col, w) => {
+    g.lineCap = 'round'; g.lineJoin = 'round';
+    g.strokeStyle = col;
+    g.globalAlpha = 0.22; g.lineWidth = w * 3.2; poly(pts); g.stroke();
+    g.globalAlpha = 0.8; g.lineWidth = w; poly(pts); g.stroke();
+    g.globalAlpha = 1;
+  };
+  const hexTiles = (r, fill, edge, edgeW, tint, tintCol) => {
+    const w = Math.sqrt(3) * r;
+    for (let row = -Math.ceil(Y / (1.5 * r)) - 1; row <= Math.ceil(Y / (1.5 * r)) + 1; row++) {
+      for (let col = -Math.ceil(X / w) - 1; col <= Math.ceil(X / w) + 1; col++) {
+        const cx = col * w + (row & 1 ? w / 2 : 0), cy = row * 1.5 * r;
+        const pts = [];
+        for (let k = 0; k < 6; k++) { const a = Math.PI / 6 + k * Math.PI / 3; pts.push([cx + (r - edgeW * 0.5) * Math.cos(a), cy + (r - edgeW * 0.5) * Math.sin(a)]); }
+        g.fillStyle = fill; g.globalAlpha = 1; poly(pts, true); g.fill();
+        g.strokeStyle = (tint && R() < tint) ? tintCol : edge; g.lineWidth = edgeW; g.stroke();
+      }
+    }
+  };
+
+  // --- team zones: broad translucent team bands and thin glowing "circuit" lines in each half
   for (const team of [0, 1]) {
     const s = team === 0 ? -1 : 1;
-    const col = TEAM_PAINT[team];
-    // diagonal chevron stripes inside the penalty box (pointing to midfield)
+    const col = TEAM_PAINT[team], light = TEAM_CSS_LIGHT[team];
     g.save();
-    g.beginPath();
-    g.rect(-2500, s > 0 ? 3250 : -5120, 5000, 5120 - 3250);
-    g.clip();
-    const pa = PAINT_ALPHA[team];
-    g.fillStyle = col; g.globalAlpha = 0.5 * pa;
-    for (let k = -12; k < 12; k++) {
-      const off = k * 420;
-      for (const side of [-1, 1]) {
-        g.beginPath();
-        // band along direction (side, -s)
-        const x0 = 0, y0 = s * 3250 + off * s;
-        const dx = side, dy = s;
-        const w = 100;
-        g.moveTo(x0, y0); g.lineTo(x0 + dx * 4000, y0 + dy * 4000);
-        g.lineTo(x0 + dx * 4000, y0 + dy * 4000 + s * w * 1.41); g.lineTo(x0, y0 + s * w * 1.41);
-        g.closePath(); g.fill();
+    g.clip(ringPath(RF + 70));
+    g.beginPath(); g.rect(-X, s > 0 ? 0 : -Y, 2 * X, Y); g.clip();
+    // broad bands running from the goal end towards midfield
+    g.fillStyle = col; g.globalAlpha = 0.2 * PAINT_ALPHA[team];
+    for (const sx of [-1, 1]) {
+      for (const [x0, len, ang] of [[700, 3600, 0.32], [1900, 2600, 0.5]]) {
+        g.save();
+        g.translate(sx * x0, s * (Y - 400));
+        g.rotate(-s * sx * ang + (s > 0 ? Math.PI : 0));
+        g.fillRect(-160, 0, 320, len);
+        g.restore();
       }
+    }
+    g.globalAlpha = 1;
+    // circuit lines: straight runs with 45-degree bends, mirrored left/right
+    const Rl = rng(77 + team);
+    for (let n = 0; n < 5; n++) {
+      let x = 250 + Rl() * 2800, y = Y - 300 - Rl() * 900;
+      const pts = [[x, y]];
+      const segs = 3 + Math.floor(Rl() * 3);
+      for (let k = 0; k < segs && y > 500; k++) {
+        const run = 350 + Rl() * 900;
+        if (k % 2 === 0) y -= run;
+        else { const dx = (Rl() < 0.5 ? -1 : 1) * Math.min(run * 0.7, 600); x = Math.max(150, Math.min(X - 700, x + dx)); y -= Math.abs(dx); }
+        y = Math.max(y, 450);
+        pts.push([x, y]);
+      }
+      for (const sx of [-1, 1]) glowLine(pts.map((p) => [p[0] * sx, p[1] * s]), light, 16);
     }
     g.restore();
-    // solid goal area
-    g.fillStyle = col; g.globalAlpha = Math.min(1, 0.55 * pa);
-    g.fillRect(-1500, s > 0 ? 4250 : -5120, 3000, 870);
-    // goal mouth strip
-    g.globalAlpha = 0.95;
-    g.fillRect(-GW, s > 0 ? 5040 : -5120, 2 * GW, 80);
-    // corner stripe blocks along the side lines
-    g.globalAlpha = 0.75;
-    for (const sx of [-1, 1]) {
-      for (let k = 0; k < 6; k++) {
-        const y0 = s * (2350 + k * 260);
-        g.fillRect(sx > 0 ? X - RF - 330 : -X + RF + 90, Math.min(y0, y0 + s * 170), 240, 170);
-      }
-    }
-    // long thin team lines
-    g.globalAlpha = 0.85;
-    for (const sx of [-1, 1]) g.fillRect(sx * 1650 - 14, s > 0 ? 450 : -3250, 28, 2800);
-    g.globalAlpha = 1;
   }
 
-  // --- centre motif (original): a hexagon split along the halfway line into the
-  // two team colours, ringed by two concentric dashed team-colour rings.
-  const hexPts = (r) => { const p = []; for (let i = 0; i < 6; i++) { const a = i * Math.PI / 3; p.push([r * Math.cos(a), r * Math.sin(a)]); } return p; };
+  // --- dark hexagon-tiled aprons along the side walls near each corner, outlined in team colour
+  {
+    const inner = RF + 70 + 820;
+    const apron = ringPath(RF + 70);
+    ringPath(inner, apron);
+    for (const team of [0, 1]) {
+      const s = team === 0 ? -1 : 1;
+      g.save();
+      g.clip(apron, 'evenodd');
+      g.beginPath();
+      for (const sx of [-1, 1]) g.rect(sx > 0 ? 1350 : -X, s > 0 ? 1650 : -Y, X - 1350, Y - 1650);
+      g.clip();
+      hexTiles(210, '#23272e', '#3b424c', 16, 0.12, TEAM_PAINT[team]);
+      // white lane dashes following the contour
+      g.globalAlpha = 0.8; g.strokeStyle = '#e8ecf2'; g.lineWidth = 22; g.setLineDash([170, 150]);
+      g.stroke(ringPath(RF + 70 + 420));
+      g.setLineDash([]); g.globalAlpha = 1;
+      g.restore();
+      // team glow along the apron's inner edge
+      g.save();
+      g.beginPath();
+      for (const sx of [-1, 1]) g.rect(sx > 0 ? 1350 : -X, s > 0 ? 1650 : -Y, X - 1350, Y - 1650);
+      g.clip();
+      g.lineCap = 'round';
+      g.strokeStyle = TEAM_CSS_LIGHT[team];
+      g.globalAlpha = 0.3; g.lineWidth = 80; g.stroke(ringPath(inner));
+      g.globalAlpha = 0.95; g.lineWidth = 26; g.stroke(ringPath(inner));
+      g.globalAlpha = 1;
+      g.restore();
+    }
+  }
+
+  // --- midline: light concrete strip from wall to wall with a dark hex platform at the centre
+  g.save();
+  g.clip(ringPath(RF + 70));
+  g.fillStyle = '#9aa1a9'; g.fillRect(-X, -95, 2 * X, 190);
+  g.fillStyle = 'rgba(255,255,255,0.85)'; g.fillRect(-X, -95, 2 * X, 14); g.fillRect(-X, 81, 2 * X, 14);
+  g.setLineDash([120, 110]); line(14, 'rgba(255,255,255,0.75)'); poly([[-X, 0], [X, 0]]); g.stroke(); g.setLineDash([]);
+  g.restore();
+  const hexPts = (r, rot = 0) => { const p = []; for (let k = 0; k < 6; k++) { const a = rot + k * Math.PI / 3; p.push([r * Math.cos(a), r * Math.sin(a)]); } return p; };
+  g.save();
+  poly(hexPts(640), true); g.clip();
+  hexTiles(105, '#262a31', '#3d444e', 10, 0, null);
+  g.restore();
   for (const team of [0, 1]) {
     const s = team === 0 ? -1 : 1;
     g.save();
     g.beginPath(); g.rect(-2000, s > 0 ? 0 : -2000, 4000, 2000); g.clip();
-    g.fillStyle = TEAM_PAINT[team]; g.globalAlpha = 0.85 * PAINT_ALPHA[team];
-    poly(hexPts(360), true); g.fill();
-    g.globalAlpha = 0.7 * PAINT_ALPHA[team];
-    g.lineWidth = 44; g.strokeStyle = TEAM_PAINT[team];
-    g.setLineDash([150, 90]);
-    g.beginPath(); g.arc(0, 0, 560, 0, Math.PI * 2); g.stroke();
-    g.lineWidth = 26; g.setLineDash([60, 70]);
-    g.beginPath(); g.arc(0, 0, 720, 0, Math.PI * 2); g.stroke();
-    g.setLineDash([]);
+    g.strokeStyle = TEAM_CSS_LIGHT[team]; g.lineJoin = 'round';
+    g.globalAlpha = 0.3; g.lineWidth = 70; poly(hexPts(640), true); g.stroke();
+    g.globalAlpha = 1; g.lineWidth = 22; poly(hexPts(640), true); g.stroke();
     g.restore();
   }
-  g.globalAlpha = 1;
+  // goal mouth strips
+  for (const team of [0, 1]) {
+    const s = team === 0 ? -1 : 1;
+    g.fillStyle = TEAM_PAINT[team]; g.globalAlpha = 0.95;
+    g.fillRect(-GW, s > 0 ? 5040 : -5120, 2 * GW, 80);
+    g.globalAlpha = 1;
+  }
 
-  // --- white markings
-  // boundary line: ring at u = RF + 70 (follows the octagon) incl. goal line
-  {
-    const q = quadRing(RF + 70);
-    const quad = q.slice(0, q.length - 2);
-    const pts = [];
-    for (const p of quad) pts.push(p);
-    for (let i = quad.length - 1; i >= 0; i--) pts.push([-quad[i][0], quad[i][1]]);
-    for (let i = 0; i < quad.length; i++) pts.push([-quad[i][0], -quad[i][1]]);
-    for (let i = quad.length - 1; i >= 0; i--) pts.push([quad[i][0], -quad[i][1]]);
-    line(36); poly(pts, true); g.stroke();
-  }
-  line(36);
-  poly([[-X + RF + 70, 0], [X - RF - 70, 0]]); g.stroke();
-  g.beginPath(); g.arc(0, 0, 1000, 0, Math.PI * 2); g.stroke();
-  line(20); poly(hexPts(375), true); g.stroke();
-  for (const s of [-1, 1]) {
-    line(32);
-    // penalty box
-    poly([[-2500, s * (5120 - RF - 70)], [-2500, s * 3250], [2500, s * 3250], [2500, s * (5120 - RF - 70)]]); g.stroke();
-    // D arc (outside the box)
-    const R0 = 2350, yc = s * 5120;
-    const ang = Math.acos((5120 - 3250) / R0);
-    g.beginPath();
-    if (s > 0) g.arc(0, yc, R0, -Math.PI / 2 - ang, -Math.PI / 2 + ang); else g.arc(0, yc, R0, Math.PI / 2 - ang, Math.PI / 2 + ang);
-    g.stroke();
-    // goal area outline
-    line(26);
-    poly([[-1500, s * 5120], [-1500, s * 4250], [1500, s * 4250], [1500, s * 5120]]); g.stroke();
-    // dashed lines across the field (like RL's broken lines)
-    line(18, 'rgba(255,255,255,0.7)');
-    g.setLineDash([140, 120]);
-    poly([[-X + RF + 70, s * 2000], [X - RF - 70, s * 2000]]); g.stroke();
-    g.setLineDash([]);
-  }
+  // --- white markings: field edge and a big dashed centre circle
+  line(36); g.stroke(ringPath(RF + 70));
+  line(22, 'rgba(255,255,255,0.8)'); g.setLineDash([160, 120]);
+  g.beginPath(); g.arc(0, 0, 1180, 0, Math.PI * 2); g.stroke();
+  g.setLineDash([]);
   // pad markings
   for (const p of BOOST_PADS_SMALL) {
     g.fillStyle = 'rgba(20,40,20,0.18)'; g.beginPath(); g.arc(p[0], p[1], 125, 0, Math.PI * 2); g.fill();

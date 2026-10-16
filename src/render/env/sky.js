@@ -116,25 +116,7 @@ export function createScenery() {
   };
   ring(1500, 20, 150, 160, new THREE.Color(0x4d6378), new THREE.Color(0x7d8fa3), 0.55, true, 11);
   ring(1100, 0, 45, 120, new THREE.Color(0x2f4a2c), new THREE.Color(0x4a6a3a), 0.35, false, 23);
-  // skyline cluster (towers) on two sides
-  const tower = (cx, cz, w, h, c) => {
-    const cc = c.clone().lerp(haze, 0.45), ct = c.clone().lerp(haze, 0.3).offsetHSL(0, 0, 0.08);
-    const pts = [[-w, -w], [w, -w], [w, w], [-w, w]];
-    for (let k = 0; k < 4; k++) {
-      const p0 = pts[k], p1 = pts[(k + 1) % 4];
-      const a = push(cx + p0[0], -10, cz + p0[1], cc), b = push(cx + p1[0], -10, cz + p1[1], cc);
-      const c2 = push(cx + p1[0], h, cz + p1[1], ct), d = push(cx + p0[0], h, cz + p0[1], ct);
-      idx.push(a, b, c2, a, c2, d, a, c2, b, a, d, c2);
-    }
-    const t0 = push(cx - w, h, cz - w, ct), t1 = push(cx + w, h, cz - w, ct), t2 = push(cx + w, h, cz + w, ct), t3 = push(cx - w, h, cz + w, ct);
-    idx.push(t0, t1, t2, t0, t2, t3, t0, t2, t1, t0, t3, t2);
-  };
-  for (let i = 0; i < 26; i++) {
-    const side = i % 2 ? 1 : -1;
-    const a = (side > 0 ? 0.3 : Math.PI + 0.3) + (R() - 0.5) * 0.9;
-    const r = 700 + R() * 350;
-    tower(Math.cos(a) * r, Math.sin(a) * r, 14 + R() * 18, 90 + R() * 200, new THREE.Color().setHSL(0.6, 0.15, 0.35 + R() * 0.2));
-  }
+  // (glass skyscrapers live in skyline.js)
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
   g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));

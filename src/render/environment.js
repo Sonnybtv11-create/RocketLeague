@@ -19,6 +19,7 @@ import { createSky, createScenery } from './env/sky.js';
 import { createPads } from './env/pads.js';
 import { createGoals } from './env/goals.js';
 import { createStadium, STADIUM_EXTENT } from './env/stadium.js';
+import { createSkyline } from './env/skyline.js';
 
 const S = 0.01;
 const { X, Y, H, GW, GD } = ARENA_PARAMS;
@@ -192,6 +193,8 @@ export function createEnvironment(ctx) {
   root.add(goals.object3d);
   const stadium = createStadium(ctx);
   root.add(stadium.object3d);
+  const skyline = createSkyline();
+  root.add(skyline.object3d);
   const pads = createPads(ctx);
   root.add(pads.object3d);
 
@@ -280,6 +283,7 @@ export function createEnvironment(ctx) {
       const wasLow = curDetail === 0;
       curDetail = detailLvl;
       stadium.setDetail(detailLvl);
+      skyline.setDetail(detailLvl);
       pads.setDetail(detailLvl);
       sky.material.uniforms.uCloudDetail.value = detailLvl === 0 ? 4 : 6;
       const aniso = detailLvl === 0 ? Math.min(4, maxAniso) : maxAniso;
@@ -302,7 +306,7 @@ export function createEnvironment(ctx) {
     },
     setQuality,
     dispose() {
-      pads.dispose(); goals.dispose(); stadium.dispose();
+      pads.dispose(); goals.dispose(); stadium.dispose(); skyline.dispose();
       for (const d of disposables) d.dispose && d.dispose();
       if (envRT) envRT.dispose();
       pmrem.dispose();

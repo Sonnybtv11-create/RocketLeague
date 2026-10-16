@@ -1,5 +1,5 @@
 // Stadium around the arena: two-tier stand bowl (rounded rectangle), LED
-// ribbons, roof canopy with floodlight banks + glow sprites, instanced crowd
+// ribbons, slim steel roof ring with floodlight banks + glow sprites, instanced crowd
 // (shader-drawn silhouettes, subtle idle motion, cheering on goals).
 import * as THREE from 'three';
 import { rng, makeSeatTexture, makeFasciaTexture, makePanelTexture } from './textures.js';
@@ -17,9 +17,10 @@ const SEC = {
   walk2: [[2250, 2450], [2400, 2450]],
   upper: [[2400, 2450], [4300, 3700]],
   back: [[4300, 3700], [4300, 4700]],
-  roofTop: [[4400, 4800], [900, 5350]],
-  roofEdge: [[900, 5350], [900, 5080]],
-  roofUnder: [[900, 5080], [4400, 4600]],
+  // slim dark steel roof ring over the upper tier (the sky above stays open under the glass dome)
+  roofTop: [[4400, 4800], [2700, 5000]],
+  roofEdge: [[2700, 5000], [2700, 4860]],
+  roofUnder: [[2700, 4860], [4400, 4640]],
 };
 const ROW_DEPTH = 87.5;
 // conservative outer bounds of the stadium structure (sim uu), for shadow fitting
@@ -254,7 +255,7 @@ export function createStadium(ctx) {
   const structGeo = buildStrips(path, [[SEC.front, 1000, 1000], [SEC.walk1, 1000, 1000], [SEC.walk2, 1000, 1000], [SEC.back, 1000, 1000]]);
   const roofGeo = buildStrips(path, [[SEC.roofTop, 1000, 1000], [SEC.roofEdge, 1000, 1000], [SEC.roofUnder, 1000, 1000]]);
   setEmis(setColor(structGeo, new THREE.Color(0x7d838f)), new THREE.Color(0, 0, 0));
-  setEmis(setColor(roofGeo, new THREE.Color(0xf4e2dc)), new THREE.Color(0x6a6c74));
+  setEmis(setColor(roofGeo, new THREE.Color(0x2c333e)), new THREE.Color(0x07090c));
   const shellGeo = track(merge([structGeo, roofGeo]));
   structGeo.dispose(); roofGeo.dispose();
   const panelTex = track(makePanelTexture(renderer));
@@ -302,7 +303,7 @@ export function createStadium(ctx) {
     let acc = 0;
     for (let i = 0; i < path.length - 1; i++) {
       const a = path[i], b = path[i + 1];
-      const ax = a.x + a.nx * 900, ay = a.y + a.ny * 900, bx = b.x + b.nx * 900, by = b.y + b.ny * 900;
+      const ax = a.x + a.nx * 2700, ay = a.y + a.ny * 2700, bx = b.x + b.nx * 2700, by = b.y + b.ny * 2700;
       const len = Math.hypot(bx - ax, by - ay);
       let t = acc;
       while (t < len) {
@@ -319,7 +320,7 @@ export function createStadium(ctx) {
   const lampMesh = new THREE.InstancedMesh(lampGeo, lampMat, lamps.length);
   const glowPos = new Float32Array(lamps.length * 3), glowSize = new Float32Array(lamps.length);
   lamps.forEach((l, i) => {
-    const x = (l.x - l.nx * 40) * S, y = 50.5, z = (l.y - l.ny * 40) * S;
+    const x = (l.x - l.nx * 40) * S, y = 48.3, z = (l.y - l.ny * 40) * S;
     dummy.position.set(x, y, z);
     dummy.rotation.set(0, 0, 0);
     dummy.lookAt(x - l.nx, y - 0.9, z - l.ny); // face the pitch, tilted down
