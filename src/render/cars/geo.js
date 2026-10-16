@@ -73,7 +73,8 @@ export class PartSet {
     for (const s of SLOTS) {
       const list = this.parts[s];
       if (!list.length) { out[s] = null; continue; }
-      const needColor = list.some((g) => g.attributes.color);
+      // chrome always carries colours (white = plain chrome) so parts can be tinted (red canisters, springs)
+      const needColor = s === 'chrome' || list.some((g) => g.attributes.color);
       if (needColor) for (const g of list) if (!g.attributes.color) setColor(g, 1, 1, 1);
       if (!needColor) for (const g of list) if (g.attributes.color) g.deleteAttribute('color');
       const m = mergeGeometries(list, false);

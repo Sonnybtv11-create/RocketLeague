@@ -43,7 +43,7 @@ export function getSharedMaterials() {
     // instanced depth material for the tyres' shadow pass (keeps the instanced shadow program separate)
     tyreDepth: new THREE.MeshDepthMaterial({ name: 'car.tyre.depth' }),
     light: new THREE.MeshBasicMaterial({ vertexColors: true, toneMapped: false, name: 'car.lights' }),
-    chrome: new THREE.MeshStandardMaterial({ color: 0xc4c8d0, roughness: 0.18, metalness: 1.0, name: 'car.chrome' }),
+    chrome: new THREE.MeshStandardMaterial({ color: 0xc4c8d0, vertexColors: true, roughness: 0.2, metalness: 1.0, name: 'car.chrome' }),
     tyre: new THREE.MeshStandardMaterial({ color: 0x151619, roughness: 0.72, metalness: 0.0, name: 'car.tyre' }),
     rim: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.28, metalness: 0.85, name: 'car.rim' }),
   };
@@ -56,9 +56,9 @@ export function getPaint(team) {
   if (!m) {
     const tc = TEAM_COLORS[team] || TEAM_COLORS[0];
     m = carShading(new THREE.MeshPhysicalMaterial({
-      color: tc.primary, roughness: 0.3, metalness: 0.45,
-      clearcoat: 1.0, clearcoatRoughness: 0.04, envMapIntensity: 1.55, name: 'car.paint.' + team,
-    }), { flop: 0.5, ao: 0.5 });
+      color: tc.primary, roughness: 0.34, metalness: 0.06,
+      clearcoat: 1.0, clearcoatRoughness: 0.07, envMapIntensity: 1.0, name: 'car.paint.' + team,
+    }), { flop: 0.18, ao: 0.32 });
     paintCache.set(team, m); envUsers.add(m);
   }
   return m;
@@ -69,9 +69,9 @@ export function getAccent(hex) {
   let m = accentCache.get(key);
   if (!m) {
     m = carShading(new THREE.MeshPhysicalMaterial({
-      color: new THREE.Color(key), roughness: 0.3, metalness: 0.35,
-      clearcoat: 1.0, clearcoatRoughness: 0.05, envMapIntensity: 1.3, name: 'car.accent.' + key,
-    }), { flop: 0.4, ao: 0.45 });
+      color: new THREE.Color(key), roughness: 0.34, metalness: 0.06,
+      clearcoat: 1.0, clearcoatRoughness: 0.08, envMapIntensity: 0.9, name: 'car.accent.' + key,
+    }), { flop: 0.15, ao: 0.3 });
     accentCache.set(key, m); envUsers.add(m);
   }
   return m;

@@ -81,7 +81,7 @@ function lathe(profile, segs) { // profile [[r, w]] around Z axis
 function buildRim(width, spokes) {
   const hw = width * 50;
   const face = hw * 0.78;          // outer face plane of the spokes
-  const SILVER = [0.78, 0.8, 0.84], GRAPH = [0.1, 0.11, 0.13], LIP = [0.92, 0.93, 0.95], DARK = [0.05, 0.05, 0.06];
+  const SILVER = [0.2, 0.21, 0.24], GRAPH = [0.08, 0.085, 0.1], LIP = [0.42, 0.43, 0.47], DARK = [0.04, 0.04, 0.05]; // dark gunmetal rims
   const parts = [];
   // barrel (inner, dark) — sits inside the tyre bead
   parts.push(setColor(orientOutward(lathe([[63, -hw * 0.8], [65, -hw * 0.75], [65, hw * 0.6], [63, hw * 0.66]], 24)), ...GRAPH));
@@ -92,7 +92,7 @@ function buildRim(width, spokes) {
   // spokes: twisted turbine blades, each a tapered box from hub to lip
   for (let s = 0; s < spokes; s++) {
     const a = (s / spokes) * Math.PI * 2;
-    const blade = new THREE.BoxGeometry(46, 13, 7, 4, 1, 1);
+    const blade = new THREE.BoxGeometry(46, 13 * Math.min(1, 6 / spokes) + 1.5, 7, 4, 1, 1); // thinner spokes on many-spoke rims
     const bp = blade.attributes.position;
     for (let i = 0; i < bp.count; i++) {
       const x = bp.getX(i) + 23 + 12; // 12..58 radial
