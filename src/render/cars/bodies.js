@@ -137,7 +137,7 @@ const BODY_SPECS = {
     // Octane-class buggy: low narrow nose with a barred grille cage and corner lamps, separate front
     // fender pods, pinched waist, compact cabin set back, high rear deck with an exposed engine block,
     // wide haunches and a big wing on struts. Floor raised for visible ground clearance.
-    hitbox: 'OCTANE', tyre: { wF: 11.0, wB: 13.0, extraF: 6, extraB: 5, spokes: 10 },
+    hitbox: 'OCTANE', tyre: { wF: 12.0, wB: 14.0, extraF: 0, extraB: 0, spokes: 6, modelled: true },
     nozzles: [[-52.0, 13.0, 0, 5.6]],
     build(B) {
       const { ps, W } = B;

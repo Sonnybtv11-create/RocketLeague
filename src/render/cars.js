@@ -103,8 +103,9 @@ export function createCarModel(ctx, opts) {
   tyres.castShadow = true; tyres.customDepthMaterial = sh.tyreDepth; // rims sit inside the tyres: no shadow
   rims.castShadow = false;
   // chunky tyres that poke out past the body (wider than the base spec, pushed outward)
-  const tyreW = [body.tyre.wF * TYRE_WIDEN / 100, body.tyre.wB * TYRE_WIDEN / 100];
-  const extra = [body.tyre.extraF + TYRE_OUT, body.tyre.extraB + TYRE_OUT];
+  const widen = body.tyre.modelled ? 1 : TYRE_WIDEN, out = body.tyre.modelled ? 0 : TYRE_OUT;
+  const tyreW = [body.tyre.wF * widen / 100, body.tyre.wB * widen / 100];
+  const extra = [body.tyre.extraF + out, body.tyre.extraB + out];
 
   // initial wheel pose (rest) so the model looks right before the first update
   const restSusp = (cfgW) => cfgW.suspRest - 12 - 2;

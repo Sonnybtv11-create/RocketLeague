@@ -125,239 +125,230 @@ def lerp_table(tab, x):
     return tab[-1][1]
 
 # ------------------------------------------------------------------ wheel layout (visual, matches the game)
-WF = dict(x=51.25, y=34.4, z=-4.0, r=12.5)   # front: centre (hard point - rest suspension), visual track
-WB = dict(x=-33.75, y=37.0, z=-2.3, r=15.0)
+WF = dict(x=51.25, y=25.9, z=-4.0, r=12.5)   # front: centre (hard point - rest suspension), visual track
+WB = dict(x=-33.75, y=29.5, z=-2.3, r=15.0)
+# wheel centres in the blueprint pose (the body is measured in this frame; in game the wheels hang lower)
+WFB = dict(WF, z=0.7)
+WBB = dict(WB, z=4.9)
 def arch(x, w, clr):
     R = w['r'] + clr
     dx = x - w['x']
     return w['z'] + math.sqrt(R * R - dx * dx) if abs(dx) < R else -1e9
 
-# ------------------------------------------------------------------ main tub (mirrored half: bottom centre -> top centre)
-TUB_X = [-49, -46, -40, -30, -20, -12, -4, 4, 14, 24, 32, 38, 44, 50, 55, 60, 64, 67, 70]
-T = {
-    'zb': [(-49, 10), (-44, 7), (-30, 6), (59.1111, 6), (70, 9)],
-    'wb': [(-49, 18), (-44, 21), (-20, 21), (20, 19), (59.1111, 16), (70, 12)],
-    'zs': [(-49, 16), (-30, 15), (20, 14), (59.1111, 12), (70, 11)],
-    'ws': [(-49, 23), (-44, 25.5), (-20, 25.5), (-4, 26.5), (20, 25.5), (44, 23), (60.6667, 20), (70, 15)],
-    'zh': [(-49, 26.5), (-40, 28), (-20, 28.5), (-4, 28), (20, 26.5), (34, 25), (44, 22.5), (56, 19.5), (63.7778, 17), (70, 14.5)],
-    'wh': [(-49, 22), (-44, 25), (-20, 25), (-4, 26), (20, 25), (44, 22.5), (60.6667, 19), (70, 14)],
-    'zt': [(-49, 29.5), (-40, 30.5), (-20, 30.5), (-4, 29.8), (20, 28.4), (34, 26.6), (44, 24), (56, 21), (63.7778, 18.5), (70, 16)],
-    'wt': [(-49, 17), (-40, 19), (-20, 19), (20, 19), (44, 17), (60.6667, 14), (70, 10)],
-    'zc': [(-49, 30), (-40, 31), (-20, 31), (-4, 30.3), (20, 29), (34, 27.6), (44, 25.6), (56, 22.6), (63.7778, 20), (70, 17)],
+# ------------------------------------------------------------------ body parts, dimensioned from the blueprint (tools/blender/blueprint.py)
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import numpy as np
+CUTTERS = set()
+
+# tub: mirrored half sections, bottom centre -> top centre
+TUB_X = [-50, -47, -42, -34, -26, -18, -10, -2, 6, 14, 22, 30, 36, 42, 48, 54, 60, 65, 69, 72.5]
+TT = {
+    'zb':  [(-50, 0), (-44, -2.5), (40, -2.5), (64, -1.5), (72.5, 1)],
+    'ws':  [(-50, 20), (-44, 21.5), (-16, 22), (-2, 22.5), (24, 22), (32, 20), (40, 17.5), (60, 16.5), (66, 15.5), (72.5, 13.5)],
+    'zh':  [(-50, 24.5), (-44, 26), (-34, 26), (-20, 24.5), (-10, 23.5), (24, 23), (32, 20.8), (38, 18.0), (44, 14.8), (50, 12.8), (56, 11.2), (62, 9.4), (66, 7.8), (72.5, 4.3)],
+    'zc':  [(-50, 25), (-44, 26.6), (-34, 26.6), (-20, 25), (-10, 24), (24, 23.5), (32, 22.0), (38, 19.2), (44, 15.8), (50, 13.8), (56, 12.2), (62, 10.4), (66, 8.6), (72.5, 5.0)],
 }
 def tub_ring(x):
-    g = {k: lerp_table(v, x) for k, v in T.items()}
-    return (x, [(0, g['zb']), (g['wb'], g['zb']), (g['ws'], g['zs']), (g['wh'], g['zh']), (g['wt'], g['zt']), (0, g['zc'])])
+    g = {k: lerp_table(v, x) for k, v in TT.items()}
+    return (x, [(0, g['zb']), (g['ws'] - 3, g['zb']), (g['ws'], g['zb'] + 4), (g['ws'], g['zh'] - 2.5), (g['ws'] - 2.5, g['zh']), (0, g['zc'])])
 def tub_mat(i, j):
-    if i < 0: return 'trim' if i == -1 else 'trim'
+    if i < 0: return 'trim'
     x = (TUB_X[i] + TUB_X[i + 1]) / 2
-    if j == 0: return 'trim'                       # underside
-    if j == 1 and (x > 62 or x < -40): return 'trim'  # lower nose fascia / rear frame
+    if j == 0: return 'trim'
+    if j in (1, 2) and x > 62: return 'trim'      # lower nose
+    if j == 1: return 'trim'                      # dark sill edge
     return 'paint'
-tub = cage('tub', [tub_ring(x) for x in TUB_X], mirror=True, faces_mat=tub_mat, mats=('paint', 'trim'),
-           crease_long=(1, 3, 4), crease_ring=(0, len(TUB_X) - 1), subdiv=2)
+cage('tub', [tub_ring(x) for x in TUB_X], mirror=True, faces_mat=tub_mat, mats=('paint', 'trim'),
+     crease_long=(1, 2, 3, 4), crease_ring=(0, len(TUB_X) - 1), subdiv=2)
 
-# raised centre hood panel + racing stripes
-HOOD_X = [34, 40, 48, 56, 62, 67]
+# raised V ridge on the hood (photo: two creases converging towards the nose)
+HOOD_X = [36, 42, 48, 54, 60, 66, 70]
 def hood_ring(x):
-    zt = lerp_table(T['zc'], x)
-    w = lerp_table([(34, 9), (56, 8), (71, 6)], x)
-    return (x, [(w + 1.5, zt - 1.0), (w, zt + 1.6), (0, zt + 2.0)])
+    zc = lerp_table(TT['zc'], x)
+    w = lerp_table([(36, 10), (54, 7), (70, 4.5)], x)
+    return (x, [(w + 2.2, zc - 0.6), (w, zc + 1.0), (0, zc + 1.5)])
 cage('hood', [hood_ring(x) for x in HOOD_X], mirror=True, crease_long=(1,), crease_ring=(0, len(HOOD_X) - 1), subdiv=2)
-STRIPE_X = [-48, -40, -30, -20, -14]
-# (roof stripes are on the cabin; hood/deck stripes:)
-def stripe_strip(name, xs, surf, y0, y1, lift=0.25):
-    rings = []
-    for x in xs:
-        z = surf(x)
-        rings.append((x, [(y0, z + lift), (y1, z + lift)]))
-    ob = cage(name, rings, mirror=True, mirror_offset=1, mats=('accent',), cap=(False, False), subdiv=0, smooth=False)
-    return ob
-stripe_strip('stripe_hood', [36, 44, 52, 60, 65, 68.5], lambda x: lerp_table(T['zc'], x) + 2.0 + 0.05, 2.2, 5.2)
-stripe_strip('stripe_deck', [-49, -44, -38], lambda x: lerp_table(T['zc'], x), 2.2, 5.2)
 
-# ------------------------------------------------------------------ cabin canopy (sits on the tub): base -> sill -> roof edge -> roof centre
-CAB_X = [-17, -14, -8, 0, 8, 16, 24, 30, 35]
-C = {
-    'zb': [(-17, 30.2), (0, 29.8), (20, 28.6), (35, 26.8)],
-    'wb': [(-17, 20), (-8, 24.5), (16, 24.5), (30, 22.5), (35, 20)],
-    'zs': [(-17, 31.5), (-8, 32.5), (16, 31.5), (30, 28.8), (35, 27.4)],
-    'ws': [(-17, 19.5), (-8, 23.8), (16, 23.8), (30, 22), (35, 19.5)],
-    'zr': [(-17, 32.5), (-14, 38), (-8, 43.5), (0, 45), (8, 44.6), (16, 40.8), (24, 35.2), (30, 30.8), (35, 27.8)],
-    'wr': [(-17, 15), (-8, 16.5), (8, 16.5), (24, 17.5), (35, 18.5)],
-    'zc': [(-17, 33), (-14, 38.8), (-8, 44.3), (0, 45.8), (8, 45.4), (16, 41.6), (24, 35.8), (30, 31.3), (35, 28)],
+# cabin: base on the tub -> belt -> roof edge -> roof centre
+CAB_X = [-27, -24, -20, -15, -8, 0, 8, 14, 20, 26, 31, 35.5]
+CC = {
+    'zb':  [(-27, 26.0), (-20, 25), (-10, 24), (24, 23.4), (35.5, 22.2)],
+    'wb':  [(-30, 16), (-22, 18.5), (-14, 19.5), (20, 19.5), (30, 17.5), (35.5, 15)],
+    'zbelt': [(-30, 27.2), (-22, 27.6), (-14, 27.4), (20, 26.4), (30, 24.4), (35.5, 22.8)],
+    'wbelt': [(-30, 15), (-22, 16.6), (-14, 17), (20, 17), (30, 15.6), (35.5, 13.5)],
+    'zr':  [(-27, 27.0), (-24, 29.0), (-20, 31.0), (-15, 32.6), (-8, 33.2), (0, 33.4), (8, 33.2), (14, 31.0), (20, 29.4), (26, 27.6), (31, 25.6), (35.5, 23.2)],
+    'wr':  [(-30, 10.5), (-20, 11.8), (0, 12.2), (20, 12.4), (35.5, 12.6)],
 }
 def cab_ring(x):
-    g = {k: lerp_table(v, x) for k, v in C.items()}
-    return (x, [(g['wb'], g['zb']), (g['ws'], g['zs']), (g['wr'], g['zr']), (0, g['zc'])])
+    g = {k: lerp_table(v, x) for k, v in CC.items()}
+    return (x, [(g['wb'], g['zb']), (g['wbelt'], g['zbelt']), (g['wr'], g['zr'] - 0.9), (0, g['zr'])])
 def cab_mat(i, j):
     if i < 0: return 'paint'
     x = (CAB_X[i] + CAB_X[i + 1]) / 2
-    if j == 1 and -9 < x < 27: return 'glass'      # side windows
-    if j == 2 and x > 9: return 'glass'            # windscreen
-    if j == 2 and x < -11: return 'glass'          # rear window
+    if j == 1 and -15 < x < 29: return 'glass'      # side window (trapezoid; front edge follows the A-pillar)
+    if j == 2 and 9 < x < 34: return 'glass'        # windscreen
     return 'paint'
 cage('cabin', [cab_ring(x) for x in CAB_X], mirror=True, faces_mat=cab_mat, mats=('paint', 'glass'),
      crease_long=(0, 1, 2), crease_ring=(0, len(CAB_X) - 1), cap=(True, True), subdiv=2)
-# window frames: thin dark rails along the sill and the roof edge
-for nm, pick in (('sill', lambda g: (g['ws'] + 0.3, g['zs'] + 0.1)), ('roofrail', lambda g: (g['wr'] + 0.6, g['zr'] - 0.2))):
-    rings = []
-    for x in [-9, -2, 6, 14, 22, 28]:
-        g = {k: lerp_table(v, x) for k, v in C.items()}
-        y, z = pick(g)
-        rings.append((x, [(y, z - 0.5), (y + 0.6, z), (y, z + 0.5), (y - 0.6, z)]))
-    cage('frame_' + nm, rings, mirror=True, mirror_offset=1, closed=True, mats=('trim',), subdiv=1)
-stripe_strip('stripe_roof', [-14, -8, 0, 8, 16, 24, 30, 34], lambda x: lerp_table(C['zc'], x) + 0.05, 2.2, 5.2)
 
-# ------------------------------------------------------------------ front fender pods (angular, flat top), closed loop sections along x
-POD_X = [27, 32, 38, 44, 50, 56, 61, 64.5, 67]
-def pod_ring(x):
-    a = arch(x, WF, 3.5)
-    top = lerp_table([(27, 20), (36, 23.5), (50, 24.5), (61, 23.5), (67, 19.5)], x)
-    yin = lerp_table([(27, 25), (40, 24), (69, 24)], x)
-    yout = lerp_table([(27, 30), (34, 40), (44, 43.5), (56, 43.5), (63, 41.5), (67, 37)], x)
-    bot = max(a, lerp_table([(27, 15), (40, 10), (60, 10), (69, 13)], x))
-    bot = min(bot, top - 2.5)
-    return (x, [(yin, bot), (yin, top - 1.5), (yin + 3, top), (yout - 3.5, top - 0.4), (yout, top - 3.5), (yout, bot + 1.2), (yout - 1.2, bot)])
-pod = cage('pod', [pod_ring(x) for x in POD_X], mirror=True, mirror_offset=1, closed=True, mats=('paint', 'trim'),
-           faces_mat=lambda i, j: 'trim' if j == 6 else 'paint', crease_long=(0, 1, 2, 3, 4, 5, 6), crease_ring=(0, len(POD_X) - 1), subdiv=2)
-# dark arch liner inside each pod
-LINER = []
-for k in range(17):
-    ang = math.radians(-8 + k * (196 / 16))
-    LINER.append(ang)
-rings = []
-for ang in LINER:
-    r0, r1 = WF['r'] + 3.0, WF['r'] + 4.0
-    x0, z0 = WF['x'] + math.cos(ang) * r0, WF['z'] + math.sin(ang) * r0
-    x1, z1 = WF['x'] + math.cos(ang) * r1, WF['z'] + math.sin(ang) * r1
-    rings.append((0, [(0, 0)]))
-# (liner built as a swept strip below)
-def swept_arch(name, w, rin, rout, yin, yout, a0, a1, n=18, mat_name='trim'):
-    bm = bmesh.new()
-    vs = []
+# window frames: body-coloured A-pillar / roof rail along the roof edge, and a sill rail under the side window
+def rail(name, pts, r=0.9, mat_name='paint'):
+    rings = [(x, [(y - r, z), (y, z + r), (y + r, z), (y, z - r)]) for x, y, z in pts]
+    return cage(name, rings, mirror=True, mirror_offset=1, closed=True, mats=(mat_name,), subdiv=1)
+roof_pts, sill_pts = [], []
+for x in [-14, -8, 0, 8, 14, 20, 26, 31, 34.5]:
+    g = {k: lerp_table(v, x) for k, v in CC.items()}
+    roof_pts.append((x, g['wr'] + 0.4, g['zr'] - 0.9))
+    sill_pts.append((x, g['wbelt'] + 0.3, g['zbelt']))
+rail('roofrail', roof_pts, 1.0)
+rail('sillrail', sill_pts[:-1], 0.7)
+# B-pillar at the back of the side window and the windscreen centre-free A-pillar foot
+for xx in (-14.5,):
+    g = {k: lerp_table(v, xx) for k, v in CC.items()}
+    rail('bpillar', [(xx, g['wbelt'] + 0.2, g['zbelt']), (xx - 0.01, (g['wbelt'] + g['wr']) / 2 + 0.3, (g['zbelt'] + g['zr']) / 2), (xx - 0.02, g['wr'] + 0.4, g['zr'] - 0.9)], 1.2)
+
+# ---- mudguards: thin swept shells over the wheels (clay render), open underneath, dark lip on the outer edge
+def mudguard(name, w, a0, a1, rad, yin, yout, thick=1.4, droop=1.6, lip=2.2, n=22, m=6):
+    """arc over the wheel in the x-z plane (angle 0 = front, 90 = top); rad(t), yout(t) with t in 0..1"""
+    rings = []
     for k in range(n + 1):
-        ang = math.radians(a0 + (a1 - a0) * k / n)
-        c, s = math.cos(ang), math.sin(ang)
-        ring = [(w['x'] + c * rin, yin, w['z'] + s * rin), (w['x'] + c * rout, yin, w['z'] + s * rout),
-                (w['x'] + c * rout, yout, w['z'] + s * rout), (w['x'] + c * rin, yout, w['z'] + s * rin)]
-        vs.append([bm.verts.new(p) for p in ring])
+        t = k / n
+        a = math.radians(a0 + (a1 - a0) * t)
+        ca, sa = math.cos(a), math.sin(a)
+        R = rad(t); yo = yout(t)
+        pts = []
+        # top surface from body side out to the edge (slight droop), then the lip down, back under
+        for q in range(m + 1):
+            u = q / m
+            y = yin + (yo - yin) * u
+            r = R - droop * u * u
+            pts.append((y, r))
+        pts.append((yo + 0.3, R - droop - lip))
+        pts.append((yo - thick, R - droop - lip))
+        for q in range(m, -1, -1):
+            u = q / m
+            y = yin + (yo - thick - yin) * u
+            r = R - thick - droop * u * u
+            pts.append((y, r))
+        ring = [(w['x'] + ca * r, y, w['z'] + sa * r) for y, r in pts]
+        rings.append(ring)
+    bm2 = bmesh.new()
+    crease = bm2.edges.layers.float.new('crease_edge')
+    V = [[bm2.verts.new(p) for p in ring] for ring in rings]
+    L = len(rings[0]); lipk = (m + 1, m + 2)
     for k in range(n):
-        for j in range(4):
-            bm.faces.new((vs[k][j], vs[k + 1][j], vs[k + 1][(j + 1) % 4], vs[k][(j + 1) % 4]))
-    bm.faces.new(list(reversed(vs[0]))); bm.faces.new(vs[-1])
-    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
-    me = bpy.data.meshes.new(name); bm.to_mesh(me); bm.free(); set_mats(me, [mat_name])
+        for q in range(L):
+            f = bm2.faces.new((V[k][q], V[k + 1][q], V[k + 1][(q + 1) % L], V[k][(q + 1) % L]))
+            f.material_index = 1 if q in (m, m + 1, m + 2) else 0
+    bm2.faces.new(list(reversed(V[0]))); bm2.faces.new(V[-1])
+    for k in range(n):
+        for q in (m, m + 1, m + 2, m + 3):
+            e = bm2.edges.get((V[k][q], V[k + 1][q]))
+            if e: e[crease] = 1.0; e.smooth = False
+    bmesh.ops.recalc_face_normals(bm2, faces=bm2.faces)
+    me = bpy.data.meshes.new(name); bm2.to_mesh(me); bm2.free(); set_mats(me, ['paint', 'trim'])
     ob = link(bpy.data.objects.new(name, me))
     md = ob.modifiers.new('mirror', 'MIRROR'); md.use_axis = (False, True, False); md.mirror_object = ORIGIN
+    sd = ob.modifiers.new('subd', 'SUBSURF'); sd.levels = 1; sd.render_levels = 1
+    for pp in me.polygons: pp.use_smooth = True
+    return ob
+
+# front: from the nose corner (low, curling up) over the wheel, down behind it into the body side
+mudguard('fender_f', WFB, 16, 178, rad=lambda t: 14.6 + 0.6 * math.sin(math.pi * t) + 9.0 * max(0, t - 0.72) ** 1.3, yin=16,
+         yout=lambda t: 23.5 + 8.0 * math.sin(math.pi * min(1, 0.18 + t * 0.95)), droop=1.4)
+# rear: rises from the body side ahead of the wheel, over it and out back into a long blade
+mudguard('fender_r', WBB, 6, 172, rad=lambda t: 18.4 + 1.6 * math.sin(math.pi * t) + 4.0 * max(0, t - 0.75),
+         yin=19, yout=lambda t: 26 + 9.4 * math.sin(math.pi * min(1, 0.12 + t * 0.95)), droop=3.4, lip=2.6)
+
+# side recess: diagonal dark inset edge behind the front wheel down towards the rear wheel
+xz_plate_side = None
+def side_slot(name, pts, y, depth=0.8):
+    bm3 = bmesh.new()
+    vs = [[bm3.verts.new((x, yy, z)) for x, z in pts] for yy in (y, y + depth)]
+    k = len(pts)
+    for j2 in range(k):
+        bm3.faces.new((vs[0][j2], vs[1][j2], vs[1][(j2 + 1) % k], vs[0][(j2 + 1) % k]))
+    bm3.faces.new(list(reversed(vs[0]))); bm3.faces.new(vs[1])
+    bmesh.ops.recalc_face_normals(bm3, faces=bm3.faces)
+    me = bpy.data.meshes.new(name); bm3.to_mesh(me); bm3.free(); set_mats(me, ['trim'])
+    ob = link(bpy.data.objects.new(name, me))
+    md = ob.modifiers.new('mirror', 'MIRROR'); md.use_axis = (False, True, False); md.mirror_object = ORIGIN
+    return ob
+side_slot('side_slot', [(30, 17.0), (28, 18.4), (6, 8.6), (-8, 5.4), (-10, 4.2), (8, 6.8)], 21.9)
+
+# roof crest fins (row of five small spikes in front of the intake)
+for yy in (-8.5, -4.2, 0.0, 4.2, 8.5):
+    bm4 = bmesh.new()
+    prof = [(4.0, 33.0), (-0.5, 33.0), (-2.2, 35.6), (-1.4, 35.6)]
+    vs = [[bm4.verts.new((x, yy + d, z)) for x, z in prof] for d in (-0.7, 0.7)]
+    for j2 in range(4):
+        bm4.faces.new((vs[0][j2], vs[1][j2], vs[1][(j2 + 1) % 4], vs[0][(j2 + 1) % 4]))
+    bm4.faces.new(list(reversed(vs[0]))); bm4.faces.new(vs[1])
+    bmesh.ops.recalc_face_normals(bm4, faces=bm4.faces)
+    me = bpy.data.meshes.new('spike'); bm4.to_mesh(me); bm4.free(); set_mats(me, ['trim'])
+    link(bpy.data.objects.new('spike', me))
+
+# ------------------------------------------------------------------ details at blueprint coordinates
+def xz_plate(name, poly, y0, y1, mat_name, bevel=0.4, mirror=True):
+    bmx = bmesh.new()
+    vs = [[bmx.verts.new((x, y, z)) for x, z in poly] for y in (y0, y1)]
+    k = len(poly)
+    for j in range(k):
+        bmx.faces.new((vs[0][j], vs[1][j], vs[1][(j + 1) % k], vs[0][(j + 1) % k]))
+    bmx.faces.new(list(reversed(vs[0]))); bmx.faces.new(vs[1])
+    bmesh.ops.recalc_face_normals(bmx, faces=bmx.faces)
+    me = bpy.data.meshes.new(name); bmx.to_mesh(me); bmx.free(); set_mats(me, [mat_name])
+    ob = link(bpy.data.objects.new(name, me))
+    if bevel:
+        bv = ob.modifiers.new('bevel', 'BEVEL'); bv.width = bevel; bv.segments = 2; bv.harden_normals = True
+    if mirror:
+        md = ob.modifiers.new('mirror', 'MIRROR'); md.use_axis = (False, True, False); md.mirror_object = ORIGIN
     for p in me.polygons: p.use_smooth = True
     return ob
-swept_arch('pod_liner', WF, WF['r'] + 3.2, WF['r'] + 3.9, 25, 42.5, 10, 170)
 
-# ------------------------------------------------------------------ rear haunches (boxy, flat top, rising into fins at the back)
-H_X = [-6, -10, -16, -24, -32, -40, -46, -50, -53]
-H_X = sorted(H_X)
-def haunch_ring(x):
-    a = arch(x, WB, 4.0)
-    top = lerp_table([(-53, 33), (-48, 31.5), (-40, 30), (-24, 29.5), (-12, 28), (-6, 24)], x)
-    yin = 23
-    yout = lerp_table([(-53, 42), (-46, 46.5), (-30, 47), (-16, 46), (-8, 40), (-6, 34)], x)
-    bot = max(a, lerp_table([(-53, 21), (-49, 17), (-20, 9), (-6, 16)], x))
-    bot = min(bot, top - 2.5)
-    return (x, [(yin, bot), (yin, top - 1.2), (yin + 3, top), (yout - 4, top - 0.3), (yout, top - 4), (yout, bot + 1.5), (yout - 1.5, bot)])
-cage('haunch', [haunch_ring(x) for x in H_X], mirror=True, mirror_offset=1, closed=True, mats=('paint', 'trim'),
-     faces_mat=lambda i, j: 'trim' if j == 6 else 'paint', crease_long=(0, 1, 2, 3, 4, 5, 6), crease_ring=(0, len(H_X) - 1), subdiv=2)
-swept_arch('haunch_liner', WB, WB['r'] + 3.6, WB['r'] + 4.3, 24, 46, 10, 170)
-
-# swept fins on the haunch tops, near the outer edge
-F_X = [-22, -30, -38, -44, -49, -53, -56]
-F_X = sorted(F_X)
-def fin_ring(x):
-    base = lerp_table([(-56, 32), (-48, 31), (-40, 30), (-22, 29.2)], x) - 1.0
-    tip = lerp_table([(-56, 44), (-53, 44.5), (-49, 41), (-44, 37.5), (-38, 34.5), (-30, 32), (-22, 29.6)], x)
-    yc = lerp_table([(-56, 41), (-40, 40), (-22, 39)], x)
-    t = lerp_table([(-56, 1.2), (-48, 2.4), (-22, 3.0)], x)
-    return (x, [(yc - t, base), (yc - t * 0.6, tip), (yc + t * 0.6, tip), (yc + t, base)])
-cage('fin', [fin_ring(x) for x in F_X], mirror=True, mirror_offset=1, closed=True, mats=('paint', 'trim'),
-     faces_mat=lambda i, j: 'trim' if j == 1 and i >= 0 and F_X[i] < -42 else 'paint', crease_long=(1, 2), crease_ring=(0,), subdiv=2)
-
-# side rib: from the back of the front pod sweeping up along the body side to the haunch
-R_X = [-6, 0, 8, 16, 24, 30]
-def rib_ring(x):
-    zc = lerp_table([(-6, 23), (8, 21), (20, 19.5), (30, 18)], x)
-    y = lerp_table([(-6, 27.5), (30, 26.8)], x)
-    return (x, [(y - 0.5, zc - 2.2), (y + 1.6, zc - 1.2), (y + 1.6, zc + 1.0), (y - 0.5, zc + 1.6)])
-cage('rib', [rib_ring(x) for x in R_X], mirror=True, mirror_offset=1, closed=True, mats=('paint',), crease_long=(1, 2), subdiv=1)
-# dark side intake scoop below the rib
-S_X = [-4, 4, 14, 24]
-def scoop_ring(x):
-    y = lerp_table([(-4, 26.4), (24, 25.8)], x)
-    top = lerp_table([(-4, 20.5), (24, 17.2)], x)
-    return (x, [(y, 9), (y + 0.6, 9.5), (y + 0.6, top), (y, top + 0.3)])
-cage('scoop', [scoop_ring(x) for x in S_X], mirror=True, mirror_offset=1, closed=True, mats=('trim',), subdiv=1)
-
-# ------------------------------------------------------------------ nose: bumper, grille cage with slats, lamps
-box('bumper', (8, 30, 7), (66.5, 0, 6.5), mat_name='trim', bevel=1.5)
-for y in [-12, -9, -6, -3, 0, 3, 6, 9, 12]:
-    box(f'slat{y}', (1.4, 1.0, 8.5), (70.6, y, 10.2), mat_name='chrome:dark', bevel=0.3)
-box('grille_back', (1.2, 27, 9), (69.6, 0, 10.2), mat_name='trim', bevel=0.3)
-# cage tubes
-cyl('cage_top', 1.4, 36, (73, 0, 15.2), rot=(math.pi / 2, 0, 0), mat_name='trim', segs=10)
-cyl('cage_bot', 1.4, 40, (72.5, 0, 4.8), rot=(math.pi / 2, 0, 0), mat_name='trim', segs=10)
-for y in (14.5, 7):
-    cyl(f'cage_up{y}', 1.3, 11, (72.9, y, 10), mat_name='trim', segs=10, mirror=True)
-cyl('cage_side', 1.3, 10, (69.5, 19.5, 14.6), rot=(0, math.pi / 2, math.radians(35)), mat_name='trim', segs=10, mirror=True)
-# corner lamps: can + chrome bezel + lens
-for y in (18.5,):
-    cyl('lamp_can', 3.6, 5, (71.5, y, 5.2), rot=(0, math.pi / 2, 0), mat_name='trim', segs=20, mirror=True, r2=4.2)
-    cyl('lamp_bezel', 4.5, 1.4, (74.4, y, 5.2), rot=(0, math.pi / 2, 0), mat_name='chrome', segs=24, mirror=True)
-    cyl('lamp_lens', 3.3, 0.6, (75.0, y, 5.2), rot=(0, math.pi / 2, 0), mat_name='light:head', segs=24, bevel=0, mirror=True)
-box('drl', (1, 5, 1.2), (68.2, 12, 13.6), mat_name='light:head', bevel=0.3, mirror=True)
-
-# ------------------------------------------------------------------ rear: frame, exhaust, tail lights, engine, canisters, intake, wing
-box('rear_frame', (2.5, 26, 12), (-48.6, 0, 17.5), mat_name='trim', bevel=0.8)
-for y in (8,):
-    cyl('exhaust', 2.2, 7, (-49.5, y, 13), rot=(0, math.pi / 2, 0), mat_name='chrome', segs=16, mirror=True, r2=2.5)
-    cyl('exhaust_in', 1.6, 1, (-53.2, y, 13), rot=(0, math.pi / 2, 0), mat_name='trim', segs=16, bevel=0, mirror=True)
-box('tail', (1.2, 4, 6), (-55.3, 40.5, 37), rot=(0, math.radians(-25), 0), mat_name='light:tail', bevel=0.3, mirror=True)
-box('tail_amber', (1.2, 4, 2.5), (-50.3, 40, 27.2), mat_name='light:amber', bevel=0.3, mirror=True)
-box('engine_plinth', (22, 26, 4), (-36, 0, 32), mat_name='trim', bevel=1)
-box('engine', (15, 18, 7.5), (-35, 0, 36.5), mat_name='chrome', bevel=1.5)
-box('engine_cover', (11, 15, 4.4), (-37, 0, 41.2), mat_name='chrome:red', bevel=1.2)
-for y in (10.5,):
-    cyl('canister', 3, 10, (-45, y, 36), rot=(0, math.pi / 2, 0), mat_name='chrome:red', segs=16, mirror=True)
-box('intake_base', (13, 15, 2), (-21, 0, 40.6), mat_name='trim', bevel=0.6)
-box('intake', (11, 13, 6.5), (-21.5, 0, 45.5), mat_name='chrome:dark', bevel=1.4)
-box('intake_mouth', (1, 10.5, 4.6), (-15.9, 0, 45.5), mat_name='trim', bevel=0.2)
-# wing: aerofoil section extruded across, endplates, struts
-bmw = bmesh.new()
-prof = [(-55, 50.0), (-52.5, 52.6), (-44, 52.2), (-41, 51.0), (-46, 49.8)]
-vs = []
-for y in (-34, 34):
-    vs.append([bmw.verts.new((x, y, z)) for x, z in prof])
-for j in range(len(prof)):
-    bmw.faces.new((vs[0][j], vs[1][j], vs[1][(j + 1) % len(prof)], vs[0][(j + 1) % len(prof)]))
-bmw.faces.new(list(reversed(vs[0]))); bmw.faces.new(vs[1])
-bmesh.ops.recalc_face_normals(bmw, faces=bmw.faces)
-me = bpy.data.meshes.new('wing'); bmw.to_mesh(me); bmw.free(); set_mats(me, ['accent'])
-wing = link(bpy.data.objects.new('wing', me))
-bv = wing.modifiers.new('bevel', 'BEVEL'); bv.width = 0.5; bv.segments = 2
-bme = bmesh.new()
-ep = [(-56, 48), (-53, 55), (-41, 54), (-40, 50.5), (-44, 47.5)]
-vs = [[bme.verts.new((x, y, z)) for x, z in ep] for y in (34, 35.6)]
-for j in range(len(ep)):
-    bme.faces.new((vs[0][j], vs[1][j], vs[1][(j + 1) % len(ep)], vs[0][(j + 1) % len(ep)]))
-bme.faces.new(list(reversed(vs[0]))); bme.faces.new(vs[1])
-bmesh.ops.recalc_face_normals(bme, faces=bme.faces)
-me = bpy.data.meshes.new('endplate'); bme.to_mesh(me); bme.free(); set_mats(me, ['trim'])
-ep_ob = link(bpy.data.objects.new('endplate', me))
-md = ep_ob.modifiers.new('mirror', 'MIRROR'); md.use_axis = (False, True, False); md.mirror_object = ORIGIN
-bv = ep_ob.modifiers.new('bevel', 'BEVEL'); bv.width = 0.4; bv.segments = 2
-box('strut', (3, 1.6, 12), (-45.5, 13, 44), rot=(0, math.radians(-14), 0), mat_name='trim', bevel=0.4, mirror=True)
-# front coilovers (red springs on dark shocks), visible between body and pods
-cyl('spring', 1.9, 8, (49, 24.5, 4), rot=(0, math.radians(-14), 0), mat_name='chrome:red', segs=12, mirror=True)
-cyl('shock', 0.8, 12, (49.3, 24.5, 4), rot=(0, math.radians(-14), 0), mat_name='chrome', segs=10, mirror=True)
-box('pod_strut', (8, 6, 2.5), (51, 23, 16), mat_name='trim', bevel=0.6, mirror=True)
+# wing: swept blade (side profile from the blueprint), endplates, struts
+xz_plate('wing', [(-39.0, 37.4), (-40.5, 38.9), (-46, 39.3), (-57.5, 39.4), (-58.5, 38.2), (-50, 36.5), (-42, 36.4)], -26.5, 26.5, 'paint', 0.4, mirror=False)
+xz_plate('endplate', [(-46, 36.0), (-50, 35.2), (-60.3, 38.4), (-60.6, 43.8), (-57, 44.2), (-50, 41.8)], 26.3, 29.6, 'trim', 0.4)
+xz_plate('strut', [(-39.5, 26.5), (-36.5, 26.5), (-39.0, 33.0), (-41.2, 37.4), (-43.4, 37.2), (-41.0, 32.6)], 11.2, 13.2, 'chrome', 0.3)  # swan neck
+# intake stack on the roof (x -1..-16, z 33..38.7) with a dark forward-facing mouth
+xz_plate('intake', [(-1.0, 33.0), (-1.0, 38.4), (-3.0, 38.9), (-15.5, 38.4), (-16.5, 34.6), (-16.5, 32.6)], -8.0, 8.0, 'chrome:dark', 0.8, mirror=False)
+xz_plate('intake_mouth', [(-0.6, 34.4), (-0.6, 37.6), (-1.6, 37.6), (-1.6, 34.4)], -6.6, 6.6, 'trim', 0.2, mirror=False)
+# engine bay behind the cabin: red covers + canisters on the deck
+box('engine', (14, 18, 3.6), (-28, 0, 27.4), mat_name='chrome:dark', bevel=1.0)
+box('engine_cover', (10, 13, 3.0), (-29, 0, 29.4), mat_name='chrome:red', bevel=1.0)
+for yy in (11.5,):
+    cyl('canister', 2.6, 10, (-36, yy, 27.5), rot=(0, math.pi / 2, 0), mat_name='chrome:red', segs=16, mirror=True)
+# nose: grille cage (x 72..79, z -10..4, |y| <= 19), slats, lamps, fog lamps
+box('grille_back', (1.2, 24, 9), (74.0, 0, -1.5), mat_name='trim', bevel=0.3)
+for yy in [-10.5, -7.5, -4.5, -1.5, 1.5, 4.5, 7.5, 10.5]:
+    box(f'slat{yy}', (1.4, 1.0, 8.4), (75.0, yy, -1.5), mat_name='chrome:dark', bevel=0.3)
+cyl('cage_top', 1.2, 30, (77.2, 0, 4.0), rot=(math.pi / 2, 0, 0), mat_name='chrome', segs=10)
+cyl('cage_bot', 1.2, 34, (77.0, 0, -8.6), rot=(math.pi / 2, 0, 0), mat_name='chrome', segs=10)
+for yy in (6.0, 13.5):
+    cyl(f'cage_up{yy}', 1.1, 13, (77.3, yy, -2.3), mat_name='chrome', segs=10, mirror=True)
+for yy in (17.5,):
+    cyl('lamp_can', 3.3, 4, (75.6, yy, 1.0), rot=(0, math.pi / 2, 0), mat_name='trim', segs=20, mirror=True, r2=3.8)
+    cyl('lamp_bezel', 4.0, 1.2, (78.0, yy, 1.0), rot=(0, math.pi / 2, 0), mat_name='chrome', segs=24, mirror=True)
+    cyl('lamp_lens', 3.0, 0.6, (78.6, yy, 1.0), rot=(0, math.pi / 2, 0), mat_name='light:head', segs=24, bevel=0, mirror=True)
+for yy in (9.0,):
+    cyl('fog_bezel', 2.0, 1.4, (77.8, yy, -6.6), rot=(0, math.pi / 2, 0), mat_name='chrome', segs=18, mirror=True)
+    cyl('fog_lens', 1.5, 0.5, (78.5, yy, -6.6), rot=(0, math.pi / 2, 0), mat_name='light:head', segs=18, bevel=0, mirror=True)
+# dark underbody: chassis tub, lower arms and the low front bumper (blueprint: down to z -9/-10)
+box('chassis', (96, 26, 4), (10, 0, -2.5), mat_name='trim', bevel=1.2)
+box('belly', (36, 22, 6), (8, 0, -6.0), mat_name='trim', bevel=1.5)
+box('front_lower', (10, 30, 8), (72, 0, -5.5), mat_name='trim', bevel=1.2)
+for xx in (51.25, -33.75):
+    box(f'arm{xx}', (8, 12, 2.2), (xx, 18, -5.5), mat_name='trim', bevel=0.6, mirror=True)
+# rear: open slatted face at x -50, exhaust, tail lights
+box('rear_frame', (1.6, 34, 24), (-49.6, 0, 11.5), mat_name='trim', bevel=0.5)
+for zz in (1.0, 4.3, 9.3, 13.7):
+    box(f'rear_slat{zz}', (1.0, 30, 0.9), (-50.6, 0, zz), mat_name='chrome:dark', bevel=0.2)
+cyl('exhaust', 2.0, 5, (-51.0, 6.5, 20.5), rot=(0, math.pi / 2, 0), mat_name='chrome', segs=16, mirror=True, r2=2.3)
+cyl('exhaust_in', 1.5, 1, (-53.4, 6.5, 20.5), rot=(0, math.pi / 2, 0), mat_name='trim', segs=16, bevel=0, mirror=True)
+box('tail', (1.0, 5, 2.4), (-50.6, 24, 20.0), mat_name='light:tail', bevel=0.3, mirror=True)
+# front coilovers visible in the wheel wells
+cyl('spring', 1.8, 7, (49.5, 19.0, 3.0), rot=(0, math.radians(-14), 0), mat_name='chrome:red', segs=12, mirror=True)
+cyl('shock', 0.8, 10, (49.7, 19.0, 3.0), rot=(0, math.radians(-14), 0), mat_name='chrome', segs=10, mirror=True)
 
 # ------------------------------------------------------------------ export: evaluated meshes -> compact quantised slots
 SLOT_OF = lambda n: n.split(':')[0]
@@ -367,7 +358,7 @@ slots = {}
 dg = bpy.context.evaluated_depsgraph_get()
 tris_total = 0
 for ob in list(scene.objects):
-    if ob.type != 'MESH': continue
+    if ob.type != 'MESH' or ob in CUTTERS: continue
     ev = ob.evaluated_get(dg)
     me = ev.to_mesh()
     me.calc_loop_triangles()
@@ -397,6 +388,55 @@ for ob in list(scene.objects):
         tris_total += 1
     ev.to_mesh_clear()
 
+# silhouette check against the blueprint (all exported triangles, Blender -> car frame y right)
+if '--compare' in sys.argv:
+    import compare as CMP
+    T = []
+    for ob in list(scene.objects):
+        if ob.type != 'MESH' or ob in CUTTERS: continue
+        ev = ob.evaluated_get(dg); me2 = ev.to_mesh(); me2.calc_loop_triangles(); M = ob.matrix_world
+        for lt in me2.loop_triangles:
+            T.append([tuple(M @ me2.vertices[i].co) for i in lt.vertices])
+        ev.to_mesh_clear()
+    T = np.array(T); T[..., 1] *= -1
+    print('IOU', CMP.run(T, sys.argv[sys.argv.index('--compare') + 1]))
+if '--photo' in sys.argv:
+    import photomap as PM, json as _json
+    from PIL import Image as _Im, ImageDraw as _Dr
+    cam = _json.load(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'ref', 'cam_blue.json')))
+    polys, labs = [], []
+    LID = {'paint': 1, 'accent': 1, 'trim': 2, 'glass': 3, 'chrome': 4, 'light': 5}
+    for ob in list(scene.objects):
+        if ob.type != 'MESH' or ob in CUTTERS: continue
+        ev = ob.evaluated_get(dg); me2 = ev.to_mesh(); me2.calc_loop_triangles(); M = ob.matrix_world
+        for lt in me2.loop_triangles:
+            mn = me2.materials[lt.material_index].name
+            polys.append(np.array([tuple(M @ me2.vertices[i].co) for i in lt.vertices])); labs.append(6 if mn == 'chrome:red' else LID[mn.split(':')[0]])
+        ev.to_mesh_clear()
+    uv, zc = [], []
+    for q in polys:
+        u, z = PM.project(q, cam); uv.append(u); zc.append(z.mean())
+    img = _Im.new('L', (1920, 1080), 0); d = _Dr.Draw(img)
+    for i in np.argsort(-np.array(zc)): d.polygon([tuple(t) for t in uv[i]], fill=labs[i])
+    L = np.array(img)
+    photo = np.array(_Im.open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'ref', 'octane_blue.webp')).convert('RGB')).astype(float)
+    edge = (L != np.roll(L, 1, 0)) | (L != np.roll(L, 1, 1))
+    edge = edge | np.roll(edge, 1, 0) | np.roll(edge, 1, 1)
+    COL = {1: (255, 255, 255), 2: (0, 255, 0), 3: (255, 0, 255), 4: (255, 255, 0), 5: (0, 255, 255), 6: (255, 60, 60)}
+    out = photo.copy()
+    for k, c in COL.items():
+        sel = edge & (L == k)
+        out[sel] = c
+    _Im.fromarray(out.astype(np.uint8)).crop((560, 280, 1880, 980)).save(sys.argv[sys.argv.index('--photo') + 1])
+if '--tris' in sys.argv:
+    T2 = []
+    for ob in list(scene.objects):
+        if ob.type != 'MESH' or ob in CUTTERS: continue
+        ev = ob.evaluated_get(dg); me2 = ev.to_mesh(); me2.calc_loop_triangles(); M = ob.matrix_world
+        for lt in me2.loop_triangles:
+            T2.append([tuple(M @ me2.vertices[i].co) for i in lt.vertices])
+        ev.to_mesh_clear()
+    np.save(sys.argv[sys.argv.index('--tris') + 1], np.array(T2, np.float32))
 # binary: per slot  [u32 nv][u32 ni][i16 pos*3nv][i8 nrm*3nv][u8 colIndex*nv][pad4][u16|u32 idx]
 palette = [(1, 1, 1)]
 blob = bytearray()
