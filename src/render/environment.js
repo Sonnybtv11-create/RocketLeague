@@ -296,13 +296,35 @@ export function createEnvironment(ctx) {
   const pmrem = new THREE.PMREMGenerator(renderer);
   const envScene = buildEnvScene(sky.material);
   let envRT = null, envSize = 0;
+  // Reflections: capture the real stadium (stands, lights, dome, skyline) from just above the
+  // centre spot, so cars and the ball mirror the actual arena. The environment group is borrowed
+  // into a capture scene for the six cube renders, then put back. Falls back to the simple stand-in.
+  const captureScene = new THREE.Scene();
+  captureScene.background = new THREE.Color(HAZE);
+  function captureReal(size) {
+    const parent = root.parent;
+    const prevEnv = scene.environment;
+    try {
+      captureScene.add(root);
+      captureScene.environment = prevEnv;
+      captureScene.environmentIntensity = scene.environmentIntensity;
+      return pmrem.fromScene(captureScene, 0.0, 0.3, 1900, { size, position: new THREE.Vector3(0, 1.6, 0) });
+    } catch (e) {
+      return null;
+    } finally {
+      if (parent) parent.add(root); else captureScene.remove(root);
+    }
+  }
+  const standIn = (size) => pmrem.fromScene(envScene, 0.02, 0.1, 1000, { size, position: new THREE.Vector3(0, 3, 0) });
   function buildEnv(size) {
     if (size === envSize && envRT) return;
+    // the first time, light the arena with the stand-in so the capture itself has sensible reflections
+    if (!envRT) { envRT = standIn(size); scene.environment = envRT.texture; }
     const old = envRT;
-    envRT = pmrem.fromScene(envScene, 0.02, 0.1, 1000, { size, position: new THREE.Vector3(0, 3, 0) });
+    envRT = captureReal(size) || standIn(size);
     envSize = size;
     scene.environment = envRT.texture;
-    if (old) old.dispose();
+    old.dispose();
   }
 
   const prev = { environment: scene.environment, fog: scene.fog, background: scene.background, envInt: scene.environmentIntensity };

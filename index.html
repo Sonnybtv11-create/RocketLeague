@@ -7534,13 +7534,35 @@ function createEnvironment(ctx2) {
   const pmrem = new THREE10.PMREMGenerator(renderer2);
   const envScene = buildEnvScene(sky.material);
   let envRT = null, envSize = 0;
+  const captureScene = new THREE10.Scene();
+  captureScene.background = new THREE10.Color(HAZE);
+  function captureReal(size) {
+    const parent = root.parent;
+    const prevEnv = scene2.environment;
+    try {
+      captureScene.add(root);
+      captureScene.environment = prevEnv;
+      captureScene.environmentIntensity = scene2.environmentIntensity;
+      return pmrem.fromScene(captureScene, 0, 0.3, 1900, { size, position: new THREE10.Vector3(0, 1.6, 0) });
+    } catch (e) {
+      return null;
+    } finally {
+      if (parent) parent.add(root);
+      else captureScene.remove(root);
+    }
+  }
+  const standIn = (size) => pmrem.fromScene(envScene, 0.02, 0.1, 1e3, { size, position: new THREE10.Vector3(0, 3, 0) });
   function buildEnv(size) {
     if (size === envSize && envRT) return;
+    if (!envRT) {
+      envRT = standIn(size);
+      scene2.environment = envRT.texture;
+    }
     const old = envRT;
-    envRT = pmrem.fromScene(envScene, 0.02, 0.1, 1e3, { size, position: new THREE10.Vector3(0, 3, 0) });
+    envRT = captureReal(size) || standIn(size);
     envSize = size;
     scene2.environment = envRT.texture;
-    if (old) old.dispose();
+    old.dispose();
   }
   const prev = { environment: scene2.environment, fog: scene2.fog, background: scene2.background, envInt: scene2.environmentIntensity };
   scene2.fog = new THREE10.Fog(HAZE, 260, 1900);
@@ -8600,6 +8622,20 @@ function buildBody(bodyId) {
 // src/render/cars/materials.js
 init_contracts();
 import * as THREE14 from "three";
+function carShading(m, { flop = 0, ao = 0.5 } = {}) {
+  m.onBeforeCompile = (sh) => {
+    sh.vertexShader = sh.vertexShader.replace("#include <common>", "#include <common>\nvarying float vCarY;").replace("#include <begin_vertex>", "#include <begin_vertex>\nvCarY = position.y;");
+    sh.fragmentShader = sh.fragmentShader.replace("#include <common>", "#include <common>\nvarying float vCarY;").replace("#include <color_fragment>", `#include <color_fragment>
+      {
+        float occ = mix(${(1 - ao).toFixed(3)}, 1.0, smoothstep(-0.06, 0.24, vCarY));
+        diffuseColor.rgb *= occ;
+        ${flop > 0 ? `float ndv = clamp(dot(normalize(vNormal), normalize(vViewPosition)), 0.0, 1.0);
+        diffuseColor.rgb *= mix(${(1 - flop).toFixed(3)}, 1.0, pow(ndv, 0.55));` : ""}
+      }`);
+  };
+  m.customProgramCacheKey = () => `carshade:${flop}:${ao}`;
+  return m;
+}
 var shared = null;
 var paintCache = /* @__PURE__ */ new Map();
 var accentCache = /* @__PURE__ */ new Map();
@@ -8609,13 +8645,13 @@ var envState = null;
 function getSharedMaterials() {
   if (shared) return shared;
   shared = {
-    trim: new THREE14.MeshStandardMaterial({ color: 1513758, roughness: 0.55, metalness: 0.35, name: "car.trim" }),
+    trim: carShading(new THREE14.MeshPhysicalMaterial({ color: 2435118, roughness: 0.42, metalness: 0.55, clearcoat: 0.35, clearcoatRoughness: 0.3, name: "car.trim" }), { ao: 0.45 }),
     glass: new THREE14.MeshPhysicalMaterial({ color: 527122, roughness: 0.16, metalness: 0.1, clearcoat: 0.6, clearcoatRoughness: 0.16, envMapIntensity: 1, name: "car.glass" }),
     // instanced depth material for the tyres' shadow pass (keeps the instanced shadow program separate)
     tyreDepth: new THREE14.MeshDepthMaterial({ name: "car.tyre.depth" }),
     light: new THREE14.MeshBasicMaterial({ vertexColors: true, toneMapped: false, name: "car.lights" }),
     chrome: new THREE14.MeshStandardMaterial({ color: 12896464, roughness: 0.18, metalness: 1, name: "car.chrome" }),
-    tyre: new THREE14.MeshStandardMaterial({ color: 2369067, roughness: 0.88, metalness: 0, name: "car.tyre" }),
+    tyre: new THREE14.MeshStandardMaterial({ color: 1381913, roughness: 0.72, metalness: 0, name: "car.tyre" }),
     rim: new THREE14.MeshStandardMaterial({ vertexColors: true, roughness: 0.28, metalness: 0.85, name: "car.rim" })
   };
   for (const m of Object.values(shared)) if (!m.isMeshDepthMaterial && !m.isMeshBasicMaterial) envUsers.add(m);
@@ -8625,15 +8661,15 @@ function getPaint(team) {
   let m = paintCache.get(team);
   if (!m) {
     const tc = TEAM_COLORS[team] || TEAM_COLORS[0];
-    m = new THREE14.MeshPhysicalMaterial({
+    m = carShading(new THREE14.MeshPhysicalMaterial({
       color: tc.primary,
-      roughness: 0.34,
-      metalness: 0.12,
+      roughness: 0.3,
+      metalness: 0.45,
       clearcoat: 1,
-      clearcoatRoughness: 0.13,
-      envMapIntensity: 1,
+      clearcoatRoughness: 0.04,
+      envMapIntensity: 1.55,
       name: "car.paint." + team
-    });
+    }), { flop: 0.5, ao: 0.5 });
     paintCache.set(team, m);
     envUsers.add(m);
   }
@@ -8643,15 +8679,15 @@ function getAccent(hex) {
   const key = (hex || "#e8e8e8").toLowerCase();
   let m = accentCache.get(key);
   if (!m) {
-    m = new THREE14.MeshPhysicalMaterial({
+    m = carShading(new THREE14.MeshPhysicalMaterial({
       color: new THREE14.Color(key),
       roughness: 0.3,
-      metalness: 0.2,
+      metalness: 0.35,
       clearcoat: 1,
-      clearcoatRoughness: 0.14,
-      envMapIntensity: 0.9,
+      clearcoatRoughness: 0.05,
+      envMapIntensity: 1.3,
       name: "car.accent." + key
-    });
+    }), { flop: 0.4, ao: 0.45 });
     accentCache.set(key, m);
     envUsers.add(m);
   }
@@ -9207,6 +9243,22 @@ function createCarModel(ctx2, opts) {
     tyres.setMatrixAt(i, _m);
     rims.setMatrixAt(i, _m);
   }
+  const contact = new THREE17.Mesh(CONTACT_GEO, getContactMaterial());
+  contact.material = contact.material.clone();
+  {
+    const len3 = (cfg.hitboxSize.x + 22) / 100, wid = (cfg.hitboxSize.y + 26) / 100;
+    const groundY = (Math.min(
+      cfg.frontWheels.offset.z - (cfg.frontWheels.suspRest - 14) - cfg.frontWheels.radius,
+      cfg.backWheels.offset.z - (cfg.backWheels.suspRest - 14) - cfg.backWheels.radius
+    ) + 5.5) / 100;
+    contact.scale.set(len3, wid, 1);
+    contact.rotation.x = -Math.PI / 2;
+    contact.position.set(cfg.hitboxOffset.x / 100 * 0.6, groundY, 0);
+  }
+  contact.renderOrder = 1;
+  contact.frustumCulled = false;
+  carG.add(contact);
+  let contactAmt = 1;
   if (DEV_HITBOX) {
     const s2 = cfg.hitboxSize, o = cfg.hitboxOffset;
     const box = new THREE17.LineSegments(
@@ -9256,6 +9308,10 @@ function createCarModel(ctx2, opts) {
         accent = getAccent(accentHex);
         if (meshes.accent) meshes.accent.material = accent;
       }
+      const touching = (cv.numWheelsInContact || 0) / 4;
+      contactAmt += (touching - contactAmt) * Math.min(1, dt * 10);
+      contact.visible = contactAmt > 0.02;
+      contact.material.opacity = 0.62 * contactAmt;
       const ws = cv.wheels;
       if (ws && ws.length === 4) {
         const steer = cv.steer || 0;
@@ -9271,6 +9327,7 @@ function createCarModel(ctx2, opts) {
     },
     dispose() {
       glowMat.dispose();
+      contact.material.dispose();
       if (plate) plate.dispose();
       tyres.dispose();
       rims.dispose();
@@ -9278,6 +9335,35 @@ function createCarModel(ctx2, opts) {
   };
 }
 var _white = new THREE17.Color();
+var CONTACT_GEO = new THREE17.PlaneGeometry(1, 1);
+var contactMat = null;
+function getContactMaterial() {
+  if (contactMat) return contactMat;
+  const c = document.createElement("canvas");
+  c.width = 128;
+  c.height = 128;
+  const g = c.getContext("2d");
+  g.filter = "blur(14px)";
+  g.fillStyle = "#fff";
+  g.beginPath();
+  g.roundRect ? g.roundRect(26, 30, 76, 68, 26) : g.rect(26, 30, 76, 68);
+  g.fill();
+  const tex = new THREE17.CanvasTexture(c);
+  contactMat = new THREE17.MeshBasicMaterial({
+    color: 0,
+    alphaMap: tex,
+    transparent: true,
+    opacity: 0.6,
+    depthWrite: false,
+    polygonOffset: true,
+    polygonOffsetFactor: -4,
+    polygonOffsetUnits: -4,
+    toneMapped: false,
+    fog: false,
+    name: "car.contact"
+  });
+  return contactMat;
+}
 var TYRE_WIDEN = 1.35;
 var TYRE_OUT = 2.5;
 

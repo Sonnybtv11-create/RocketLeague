@@ -6,6 +6,28 @@
 import * as THREE from 'three';
 import { TEAM_COLORS } from '../../contracts.js';
 
+// Game-style car shading on top of PBR: baked height/cavity occlusion (lower body and underside
+// darker, so the car reads as solid rather than evenly lit) and, for paint, "flop" — the colour
+// deepens towards grazing angles like real metallic paint.
+function carShading(m, { flop = 0, ao = 0.5 } = {}) {
+  m.onBeforeCompile = (sh) => {
+    sh.vertexShader = sh.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying float vCarY;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvCarY = position.y;');
+    sh.fragmentShader = sh.fragmentShader
+      .replace('#include <common>', '#include <common>\nvarying float vCarY;')
+      .replace('#include <color_fragment>', `#include <color_fragment>
+      {
+        float occ = mix(${(1 - ao).toFixed(3)}, 1.0, smoothstep(-0.06, 0.24, vCarY));
+        diffuseColor.rgb *= occ;
+        ${flop > 0 ? `float ndv = clamp(dot(normalize(vNormal), normalize(vViewPosition)), 0.0, 1.0);
+        diffuseColor.rgb *= mix(${(1 - flop).toFixed(3)}, 1.0, pow(ndv, 0.55));` : ''}
+      }`);
+  };
+  m.customProgramCacheKey = () => `carshade:${flop}:${ao}`;
+  return m;
+}
+
 let shared = null;       // shared materials
 const paintCache = new Map();
 const accentCache = new Map();
@@ -16,13 +38,13 @@ let envState = null;     // 'fallback' | 'scene'
 export function getSharedMaterials() {
   if (shared) return shared;
   shared = {
-    trim: new THREE.MeshStandardMaterial({ color: 0x17191e, roughness: 0.55, metalness: 0.35, name: 'car.trim' }),
+    trim: carShading(new THREE.MeshPhysicalMaterial({ color: 0x25282e, roughness: 0.42, metalness: 0.55, clearcoat: 0.35, clearcoatRoughness: 0.3, name: 'car.trim' }), { ao: 0.45 }),
     glass: new THREE.MeshPhysicalMaterial({ color: 0x080b12, roughness: 0.16, metalness: 0.1, clearcoat: 0.6, clearcoatRoughness: 0.16, envMapIntensity: 1.0, name: 'car.glass' }),
     // instanced depth material for the tyres' shadow pass (keeps the instanced shadow program separate)
     tyreDepth: new THREE.MeshDepthMaterial({ name: 'car.tyre.depth' }),
     light: new THREE.MeshBasicMaterial({ vertexColors: true, toneMapped: false, name: 'car.lights' }),
     chrome: new THREE.MeshStandardMaterial({ color: 0xc4c8d0, roughness: 0.18, metalness: 1.0, name: 'car.chrome' }),
-    tyre: new THREE.MeshStandardMaterial({ color: 0x24262b, roughness: 0.88, metalness: 0.0, name: 'car.tyre' }),
+    tyre: new THREE.MeshStandardMaterial({ color: 0x151619, roughness: 0.72, metalness: 0.0, name: 'car.tyre' }),
     rim: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.28, metalness: 0.85, name: 'car.rim' }),
   };
   for (const m of Object.values(shared)) if (!m.isMeshDepthMaterial && !m.isMeshBasicMaterial) envUsers.add(m);
@@ -33,10 +55,10 @@ export function getPaint(team) {
   let m = paintCache.get(team);
   if (!m) {
     const tc = TEAM_COLORS[team] || TEAM_COLORS[0];
-    m = new THREE.MeshPhysicalMaterial({
-      color: tc.primary, roughness: 0.34, metalness: 0.12,
-      clearcoat: 1.0, clearcoatRoughness: 0.13, envMapIntensity: 1.0, name: 'car.paint.' + team,
-    });
+    m = carShading(new THREE.MeshPhysicalMaterial({
+      color: tc.primary, roughness: 0.3, metalness: 0.45,
+      clearcoat: 1.0, clearcoatRoughness: 0.04, envMapIntensity: 1.55, name: 'car.paint.' + team,
+    }), { flop: 0.5, ao: 0.5 });
     paintCache.set(team, m); envUsers.add(m);
   }
   return m;
@@ -46,10 +68,10 @@ export function getAccent(hex) {
   const key = (hex || '#e8e8e8').toLowerCase();
   let m = accentCache.get(key);
   if (!m) {
-    m = new THREE.MeshPhysicalMaterial({
-      color: new THREE.Color(key), roughness: 0.3, metalness: 0.2,
-      clearcoat: 1.0, clearcoatRoughness: 0.14, envMapIntensity: 0.9, name: 'car.accent.' + key,
-    });
+    m = carShading(new THREE.MeshPhysicalMaterial({
+      color: new THREE.Color(key), roughness: 0.3, metalness: 0.35,
+      clearcoat: 1.0, clearcoatRoughness: 0.05, envMapIntensity: 1.3, name: 'car.accent.' + key,
+    }), { flop: 0.4, ao: 0.45 });
     accentCache.set(key, m); envUsers.add(m);
   }
   return m;
