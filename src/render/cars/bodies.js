@@ -133,74 +133,78 @@ function nozzle(ps, x, y, z, r, len = 6, mirrored = false) {
 const BODY_SPECS = {
   // =========================================================================
   vector: {
+    // Octane-class buggy: low narrow nose with a barred grille cage and corner lamps, separate front
+    // fender pods, pinched waist, compact cabin set back, high rear deck with an exposed engine block,
+    // wide haunches and a big wing on struts. Floor raised for visible ground clearance.
     hitbox: 'OCTANE', tyre: { wF: 11.0, wB: 13.0, extraF: 6, extraB: 5, spokes: 5 },
-    nozzles: [[-51.2, 9.5, 0, 5.6]],
+    nozzles: [[-52.0, 13.0, 0, 5.6]],
     build(B) {
       const { ps, W } = B;
-      const x0 = -49, x1 = 77;
+      const x0 = -50, x1 = 70;
       const t = {
-        p0: [[x0, 4], [-40, -1.5], [60, -1.5], [x1, 3]],
-        p2w: [[x0, 29], [-44, 34.5], [-30, 36.5], [0, 36], [30, 34.5], [55, 33.5], [70, 30], [x1, 23.5]],
-        p2y: [[x0, 11], [-40, 10], [0, 9], [60, 8], [x1, 7]],
-        p3w: [[x0, 27], [-44, 33], [-30, 35], [0, 34.5], [30, 33], [60, 30.5], [72, 26], [x1, 19.5]],
-        // Octane-style stance: tall rounded cabin, upright screen, short high nose
-        p3y: [[x0, 26], [-42, 26.5], [-20, 25.5], [10, 24.5], [32, 23], [60, 18.5], [x1, 12.5]],
-        p4w: [[x0, 23], [-44, 27.5], [-38, 27], [-24, 24.5], [12, 24.5], [26, 29], [33, 29], [60, 27], [x1, 16]],
-        p4y: [[x0, 28.5], [-44, 31.5], [-38, 33], [-24, 38.5], [12, 39.5], [28, 27.5], [32, 25], [60, 19.8], [x1, 13.5]],
-        p5: [[x0, 30], [-44, 33], [-38, 35.5], [-24, 41.2], [-5, 43], [12, 42.2], [30, 26], [45, 23.5], [62, 20], [x1, 14]],
+        p0: [[x0, 6], [-40, 0], [55, 0], [x1, 4]],
+        p2w: [[x0, 30], [-44, 34], [-30, 35], [-16, 31], [-4, 26.5], [14, 25.5], [30, 24.5], [46, 22.5], [60, 20], [x1, 16.5]],
+        p2y: [[x0, 16], [-30, 17], [0, 16], [30, 13], [46, 11], [x1, 8.5]],
+        p3w: [[x0, 28], [-44, 32], [-30, 33], [-16, 29], [-4, 24.5], [14, 23.5], [30, 22.5], [46, 20.5], [60, 18], [x1, 14.5]],
+        p3y: [[x0, 30], [-40, 31], [-26, 29.5], [-14, 26.5], [0, 25], [14, 24.5], [26, 24], [36, 21.5], [46, 19], [58, 16.5], [x1, 12.5]],
+        p4w: [[x0, 25], [-44, 28], [-30, 27], [-24, 21], [-14, 19.5], [8, 19.5], [22, 20.5], [30, 21], [46, 19], [60, 16.5], [x1, 13]],
+        p4y: [[x0, 33], [-44, 34.5], [-30, 35.5], [-24, 38], [-14, 40], [6, 40], [22, 31], [28, 29], [36, 26], [46, 22], [58, 18.5], [x1, 14]],
+        p5: [[x0, 34], [-44, 35.5], [-30, 36.5], [-24, 39.5], [-14, 42], [6, 42], [24, 30.5], [30, 28], [36, 26.8], [46, 23], [58, 19.5], [x1, 15]],
       };
+      const [wf, wb] = W;
+      // only the rear wheels shape the body (haunches); the front wheels sit in separate pods
       const loft = new Loft({
-        section: sectionFn(t, W, 3.2), xs: stations(x0, x1, 2, [-40, -38, -24, 12, 13, 26, 30, 33, 72, 74]),
+        section: sectionFn(t, [wb], 3.2), xs: stations(x0, x1, 2, [-24, -23, -15, -14, 6, 7, 22, 24, 64, 66]),
         tension: [0, 0.35, 0.1, 0.45, 0.4, 0],
         classify: classifier([
-          { seg: 3, x0: -38, x1: 28, slot: 'glass' },
-          { seg: 4, x0: 13, x1: 30, slot: 'glass' },
-          { seg: 4, x0: -40, x1: -24, slot: 'glass' },
-          { seg: [1, 2], x0: 72, x1: 80, slot: 'trim' },  // grille / lower fascia
+          { seg: 3, x0: -22, x1: 21, slot: 'glass' },     // side windows
+          { seg: 4, x0: 7, x1: 23, slot: 'glass' },       // windscreen
+          { seg: 4, x0: -23, x1: -15, slot: 'glass' },    // small rear window
+          { seg: [1, 2], x0: 64, x1: 72, slot: 'trim' },  // lower fascia
           { seg: 1, x0: -60, x1: -44, slot: 'trim' },     // rear diffuser
-        ]),
+        ], ['trim', 'paint', 'paint', 'paint', 'paint']), // body colour down to the sills
         capSlot: 'paint',
       });
       loft.build(ps, 38);
       B.loft = loft;
-      // racing stripes over the roof/hood (accent)
-      loft.patch(ps, 'accent', -47.5, 75.5, 0.88, 0.955, 0.2, 60, 2);
-      loft.patch(ps, 'accent', -47.5, 75.5, -0.88, -0.955, 0.2, 60, 2);
-      // dark side skirts between the wheels
-      loft.patch(ps, 'trim', -20, 40, 0.24, 0.37, 0.25, 20, 2);
-      loft.patch(ps, 'trim', -20, 40, -0.24, -0.37, 0.25, 20, 2);
-      // front pods & rear haunches
-      const [wf, wb] = W;
-      fender(ps, 'paint', wf, { rin: 15.8, rout: 18.8, z0: 26, z1: 40.5, a0: -0.12, a1: Math.PI - 0.02 });
-      fender(ps, 'paint', wb, { rin: 18.3, rout: 23.5, z0: 28, z1: 44, a0: 0.12, a1: Math.PI + 0.12 });
-      fender(ps, 'trim', wf, { rin: 15.4, rout: 15.9, z0: 26.5, z1: 40, a0: -0.12, a1: Math.PI - 0.02, lip: 0.2 });
-      fender(ps, 'trim', wb, { rin: 17.9, rout: 18.4, z0: 28.5, z1: 42.2, a0: 0.12, a1: Math.PI + 0.12, lip: 0.2 });
-      // chunky front bumper block + rally bull bar with round lamps (rear bumper bar)
-      ps.add('trim', roundedBox(10, 9, 54, 2.2), M(73.5, 4.6, 0));
-      ps.add('trim', roundedBox(3.2, 3.2, 44, 1.5), M(81, 13.6, 0));       // top tube
-      ps.add('trim', roundedBox(3.2, 3.2, 50, 1.5), M(80, 3.4, 0));        // bottom tube
-      ps.addMirrored('trim', roundedBox(3, 11.5, 3, 1.4), M(80.6, 8.6, 15.5)); // uprights
-      ps.addMirrored('trim', roundedBox(8, 3, 3, 1.4), M(77.5, 13.4, 21, 0, -0.35, 0)); // side returns
-      for (const z of [8.5, -8.5]) {
-        ps.add('chrome', latheX([[0, 0.01], [0, 3.9], [-3.2, 4.1], [-3.4, 0.01]], 22, 40), M(85.2, 13.6, z));
-        ps.add('light', setColor(discX(3.3, 22, 1), ...HEAD), M(85.35, 13.6, z));
+      // racing stripes (accent)
+      loft.patch(ps, 'accent', -48.5, 68.5, 0.88, 0.955, 0.2, 60, 2);
+      loft.patch(ps, 'accent', -48.5, 68.5, -0.88, -0.955, 0.2, 60, 2);
+      // dark side scoops along the pinched waist
+      loft.patch(ps, 'trim', 12, 32, 0.22, 0.4, 0.25, 12, 2);   // scoop behind each front pod
+      loft.patch(ps, 'trim', 12, 32, -0.22, -0.4, 0.25, 12, 2);
+      // front fender pods standing off the narrow nose, joined by dark brackets; wide rear haunches
+      fender(ps, 'paint', wf, { rin: 15.4, rout: 19.8, z0: 23.5, z1: 43.5, a0: -0.12, a1: Math.PI - 0.02, lip: 1.6 });
+      fender(ps, 'trim', wf, { rin: 15.0, rout: 15.5, z0: 24, z1: 43, a0: -0.12, a1: Math.PI - 0.02, lip: 0.2 });
+      // sweep from the back of each pod into the body side
+      ps.addMirrored('paint', roundedBox(20, 3.4, 9, 1.4), M(wf.x - 22, wf.y + 15, 28.5, 0, 0.12, 0.1));
+      ps.addMirrored('trim', roundedBox(4, 9, 3, 1), M(wf.x - 9, wf.y + 6, 21.5));
+      fender(ps, 'paint', wb, { rin: 18.3, rout: 23.5, z0: 28, z1: 46, a0: 0.12, a1: Math.PI + 0.12 });
+      fender(ps, 'trim', wb, { rin: 17.9, rout: 18.4, z0: 28.5, z1: 45.5, a0: 0.12, a1: Math.PI + 0.12, lip: 0.2 });
+      // front: bumper block, barred grille cage, round lamps low at the corners
+      ps.add('trim', roundedBox(8, 8, 30, 2), M(67, 5.5, 0));
+      ps.add('trim', roundedBox(3, 3, 32, 1.4), M(73.5, 13, 0));        // top tube
+      ps.add('trim', roundedBox(3, 3, 40, 1.4), M(73, 2.5, 0));         // bottom tube
+      for (const z of [4.5, 11.5]) ps.addMirrored('trim', roundedBox(2.4, 10.5, 2.4, 1.1), M(73.3, 7.7, z)); // bars
+      ps.addMirrored('trim', roundedBox(7, 2.6, 2.6, 1.1), M(70.5, 12.8, 16.5, 0, -0.5, 0));
+      for (const z of [17.5, -17.5]) {
+        ps.add('chrome', latheX([[0, 0.01], [0, 3.6], [-3, 3.8], [-3.2, 0.01]], 22, 40), M(75.5, 4.3, z));
+        ps.add('light', setColor(discX(3.1, 22, 1), ...HEAD), M(75.65, 4.3, z));
       }
-      ps.add('trim', roundedBox(4, 5, 30, 1.2), M(-48.2, 6.5, 0));
-      // hood scoop
-      ps.add('trim', roundedBox(15, 3.4, 13, 1.3), M(48, 23.6, 0, 0, 0, -0.16));
-      ps.add('glow', roundedBox(0.6, 1.6, 10, 0.2), M(55.3, 22.6, 0, 0, 0, -0.16));
-      // spoiler: wing (accent), endplates & struts (trim)
-      const wing = extrudeSide([[-51.5, 47], [-49, 49.4], [-41, 49], [-39.5, 48], [-44, 47]], 60, 0.5);
+      light(ps, DRL, 1.2, 1.2, 4.5, 70.2, 11, 12.5, 0, 0, 0, 0.5);
+      // rear: bumper bar, tail lights, exposed engine block on the deck
+      ps.add('trim', roundedBox(4, 5, 30, 1.2), M(-49, 9.5, 0));
+      light(ps, TAIL, 2, 4.2, 11, -50.2, 27, 19, 0, 0, 0, 1.1);
+      light(ps, AMBER, 1.6, 1.4, 5, -50.1, 23.7, 22, 0, 0, 0, 0.5);
+      ps.add('trim', roundedBox(22, 4, 26, 1.5), M(-36, 36.5, 0));                 // engine bay plinth
+      ps.add('chrome', roundedBox(15, 7.5, 18, 1.8), M(-35, 41, 0));               // engine block
+      for (const z of [6, -6]) ps.add('light', setColor(roundedBox(7, 2.6, 5, 1), 0.55, 0.04, 0.03), M(-33, 45.5, z)); // red covers
+      ps.add('chrome', latheX([[0, 0.01], [0, 3.2], [3.5, 3.6], [4, 0.01]], 18, 40), M(-27, 41.5, 0, 0, 0, Math.PI / 2 - 0.3)); // intake
+      // big wing on struts above the deck
+      const wing = extrudeSide([[-54, 50], [-51.5, 52.5], [-42.5, 52.1], [-41, 51.1], [-46, 50]], 66, 0.5);
       ps.add('accent', wing);
-      ps.addMirrored('trim', roundedBox(13.5, 6.5, 1.4, 0.5), M(-45.5, 47, 30.8, 0, 0, 0.12));
-      ps.addMirrored('trim', roundedBox(3, 12.5, 1.6, 0.5), M(-43.5, 40.2, 14, 0, 0, -0.25));
-      // headlights / DRL / tail lights
-      for (const y of [6.2, 8.4]) ps.add('chrome', roundedBox(1, 0.8, 22, 0.35), M(78.6, y, 0));  // grille slats
-      light(ps, DRL, 1.4, 1.2, 6, 78.4, 4.2, 22.5, 0, 0, 0, 0.5);
-      light(ps, TAIL, 2, 4.6, 13, -49.2, 24.2, 18.5, 0, 0, 0, 1.1);
-      light(ps, AMBER, 1.6, 1.4, 5, -49.1, 20.6, 21.5, 0, 0, 0, 0.5);
-      // roof scoop
-      ps.add('trim', roundedBox(10, 2.2, 10, 1), M(-6, 43.2, 0));
+      ps.addMirrored('trim', roundedBox(14, 7, 1.4, 0.5), M(-47.5, 50.1, 33.6, 0, 0, 0.12));
+      ps.addMirrored('trim', roundedBox(3, 11, 1.6, 0.5), M(-45.5, 44.5, 13, 0, 0, -0.25));
     },
   },
   // =========================================================================
