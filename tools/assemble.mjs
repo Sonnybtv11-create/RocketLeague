@@ -1,7 +1,7 @@
 // Inlines all src/ modules into one self-contained index.html.
 // Dev:   node tools/assemble.mjs --dev   -> src/dev.html (modules loaded directly, three from node_modules)
 // Final: node tools/assemble.mjs         -> index.html  (bundled inline, three from jsDelivr via import map)
-import { readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { build } from 'esbuild';
 
 const THREE_VERSION = '0.186.1';
@@ -29,5 +29,7 @@ if (dev) {
     .replace('<!--HEADER_COMMENT-->', () => `<!--\n${header.replace(/--/g, '—')}\n-->`)
     .replace('<!--MAIN_SCRIPT-->', () => `<script type="module">\n${code}\n</script>`);
   writeFileSync('index.html', shell);
-  console.log(`wrote index.html (${(shell.length / 1024).toFixed(0)} KB)`);
+  mkdirSync('public', { recursive: true });
+  writeFileSync('public/index.html', shell); // what the Cloudflare Worker serves (wrangler.jsonc)
+  console.log(`wrote index.html + public/index.html (${(shell.length / 1024).toFixed(0)} KB)`);
 }

@@ -1,28 +1,21 @@
-// LAN play end-to-end: two headless browsers connect with the 6-digit game code (through the
-// public relay; needs internet) or, with --long, the offline copy/paste codes. The host starts a
-// 1v1 with no bots and the joiner drives its car with the keyboard.
-// Usage: node tools/e2e-lan.mjs [--long] [--shots]   (serves index.html; run tools/assemble.mjs first)
-import { createServer } from 'node:http';
-import { readFileSync, existsSync, statSync, mkdirSync } from 'node:fs';
-import { extname, join as pjoin, resolve } from 'node:path';
+// LAN play end-to-end: two headless browsers connect with the 6-digit game code through the site's
+// room worker, either directly (WebRTC) or, with --relay, with all game traffic relayed by the worker
+// (what happens on networks that block direct connections). The host starts a 1v1 with no bots and
+// the joiner drives its car with the keyboard.
+// Usage: npx wrangler dev --port 8787 &   then   node tools/e2e-lan.mjs [--relay | --block-p2p] [--shots] [--base=http://127.0.0.1:8787]
+// --block-p2p: direct connections fail on their own, so the game must fall back to the relay by itself
+import { existsSync, mkdirSync } from 'node:fs';
 import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
 let chromium;
 try { ({ chromium } = require('playwright')); } catch { ({ chromium } = require('/opt/node-tools/node_modules/playwright')); }
 const shots = process.argv.includes('--shots');
-const longCodes = process.argv.includes('--long');
-const root = resolve('.');
-const server = createServer((req, res) => {
-  let p = decodeURIComponent(req.url.split('?')[0]);
-  if (p === '/') p = '/index.html';
-  const f = pjoin(root, p);
-  if (!f.startsWith(root) || !existsSync(f) || statSync(f).isDirectory()) { res.writeHead(404); res.end('nf'); return; }
-  res.writeHead(200, { 'content-type': extname(f) === '.html' ? 'text/html' : 'application/octet-stream', 'cache-control': 'no-store' });
-  res.end(readFileSync(f));
-});
-await new Promise((r) => server.listen(0, r));
-const url = `http://127.0.0.1:${server.address().port}/index.html?q=low`;
+const blockP2P = process.argv.includes('--block-p2p'); // browsers can't make direct connections (like school Wi-Fi)
+const relay = process.argv.includes('--relay') || blockP2P;
+const forceRelay = process.argv.includes('--relay');
+const base = (process.argv.find((a) => a.startsWith('--base=')) || '--base=http://127.0.0.1:8787').slice(7);
+const url = `${base}/?q=low${forceRelay ? '&net=relay' : ''}`;
 const exe = '/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
 const launch = () => chromium.launch({
   executablePath: existsSync(exe) ? exe : undefined,
@@ -34,6 +27,8 @@ const [bA, bB] = await Promise.all([launch(), launch()]);
 const host = await bA.newPage({ viewport: { width: 640, height: 360 } });
 const join = await bB.newPage({ viewport: { width: 640, height: 360 } });
 const logs = [];
+// --block-p2p: drop every ICE candidate so direct connections can never form (as on isolated Wi-Fi)
+if (blockP2P) for (const pg of [host, join]) await pg.addInitScript(() => { RTCPeerConnection.prototype.addIceCandidate = async () => {}; });
 for (const [n, pg] of [['host', host], ['join', join]]) {
   pg.setDefaultTimeout(120000);
   pg.on('console', (m) => { if (m.type() === 'error' || m.type() === 'warning') logs.push(`[${n} ${m.type()}] ${m.text()}`); });
@@ -51,21 +46,7 @@ await host.evaluate(() => { window.__api.getSettings().game.playerName = 'Hosty'
 await join.evaluate(() => { window.__api.getSettings().game.playerName = 'Joiny'; });
 await host.click('text=Play LAN');
 await host.click('text=Host game');
-if (longCodes) {
-  await host.click('text=Invite with a long code');
-  await host.waitForFunction(() => window.__api.lanState().slots.some((s) => s.status === 'waiting'));
-  const invite = await host.evaluate(() => window.__api.lanState().slots[0].code);
-  check(/^TP1[zp]\./.test(invite), `long invite code (${invite.length} chars)`);
-  await join.click('text=Play LAN');
-  await join.click('text=Join game');
-  await join.fill('input.tp-codein', invite);
-  await join.click('button:has-text("Join")');
-  await join.waitForFunction(() => { const s = window.__api.lanState(); return s.client && s.client.status === 'waiting'; });
-  const reply = await join.evaluate(() => window.__api.lanState().client.replyCode);
-  check(/^TP1[zp]\./.test(reply), `reply code (${reply.length} chars)`);
-  await host.fill('textarea[data-key="rep-1"]', reply);
-  await host.click('button:has-text("Connect")');
-} else {
+{
   await host.waitForFunction(() => window.__api.lanState().relayStatus !== 'opening' && window.__api.lanState().relayStatus !== 'off', null, { timeout: 20000 });
   const st = await host.evaluate(() => window.__api.lanState());
   check(/^\d{6}$/.test(st.code), `game code "${st.code}" ${st.relayError || ''} (${Date.now() - t0} ms)`);
@@ -89,6 +70,8 @@ await host.waitForFunction(() => window.__api.lanState().slots.some((s) => s.sta
 });
 await join.waitForFunction(() => { const s = window.__api.lanState(); return s.client && s.client.status === 'connected' && s.client.lobby; }, null, { timeout: 20000 });
 const lobby = await join.evaluate(() => window.__api.lanState().client.lobby);
+const modes = [await host.evaluate(() => window.__api.lanState().slots.map((s) => s.mode).join(',')), await join.evaluate(() => window.__api.lanState().client.mode)];
+check(modes[0] === (relay ? 'relay' : 'p2p') && modes[1] === modes[0], `connection: host sees ${modes[0]}, joiner ${modes[1]}`);
 check(lobby.players.length === 2 && lobby.players.some((p) => p.name === 'Joiny'), `lobby: ${lobby.players.map((p) => p.name + ':' + p.team).join(', ')} (${Date.now() - t0} ms)`);
 if (shots) { await host.screenshot({ path: 'shots/lan-host-lobby.png' }); await join.screenshot({ path: 'shots/lan-join-lobby.png' }); }
 
@@ -141,5 +124,4 @@ const errs = logs.filter((l) => !/GPU stall|WebGL|swiftshader|AudioContext|Autom
 check(errs.length === 0, `no page errors${errs.length ? ':\n  ' + errs.slice(0, 10).join('\n  ') : ''}`);
 console.log(ok ? 'LAN E2E OK' : 'LAN E2E FAILED');
 await Promise.all([bA.close(), bB.close()]);
-server.close();
 process.exit(ok ? 0 : 1);

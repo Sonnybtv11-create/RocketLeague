@@ -430,11 +430,6 @@ export const CSS = String.raw`
 .tp-end .tp-nav { top: 52%; width: calc(var(--u) * 30); }
 
 /* LAN play */
-.tp-code { width: 100%; height: calc(var(--u) * 9); resize: none; padding: calc(var(--u) * 0.8) calc(var(--u) * 1.1); border: calc(var(--u) * 0.2) solid rgba(255, 255, 255, 0.2);
-  background: rgba(0, 0, 0, 0.4); color: #cfe0ff; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: calc(var(--u) * 1.35); line-height: 1.35; word-break: break-all;
-  outline: none; pointer-events: auto; user-select: text; -webkit-user-select: text; }
-.tp-code:focus, .tp-code.tp-focus { border-color: var(--gold); }
-.tp-code[readonly] { color: #ffe29a; }
 .tp-lan-slot { border-left: calc(var(--u) * 0.45) solid var(--blue); background: rgba(255, 255, 255, 0.04); padding: calc(var(--u) * 1.2) calc(var(--u) * 1.6); margin-bottom: calc(var(--u) * 1.2); }
 .tp-lan-slot.t1 { border-left-color: var(--orange); }
 .tp-lan-slot .top { display: flex; align-items: center; gap: calc(var(--u) * 1.4); }
@@ -455,7 +450,6 @@ export const CSS = String.raw`
 .tp-gamecode .sub b { color: #fff; }
 .tp-gamecode .act { display: flex; justify-content: center; margin: calc(var(--u) * 0.8) 0; }
 .tp-codein { height: calc(var(--u) * 8); text-align: center; font-size: calc(var(--u) * 5); font-weight: 800; letter-spacing: 0.3em; font-variant-numeric: tabular-nums; }
-.tp-codein.long { font-size: calc(var(--u) * 1.6); letter-spacing: 0; text-align: left; }
 .tp-note { font-size: calc(var(--u) * 1.6); color: var(--dim); line-height: 1.5; margin-bottom: calc(var(--u) * 2); }
 .tp-note b { color: #fff; }
 .tp-note.warn { color: #ffcf7a; }

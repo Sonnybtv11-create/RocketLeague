@@ -1,55 +1,57 @@
-// Matchmaking relay for 6-digit game codes (lead-owned). The host registers as
-// "turbopitch-v1-<code>" on the free public PeerJS server and joiners message that name; only
-// the connection setup (offer / answer / ICE candidates) goes through it. Game traffic then flows
-// directly between the computers over WebRTC. Needs an internet connection for the setup only.
-//
-// PeerJS server protocol: wss://<host>/peerjs?key=&id=&token=, server sends {type:'OPEN'} once
-// registered ('ID-TAKEN' / 'ERROR' otherwise), relays {type, dst, payload} to dst as {type, src, payload},
-// sends 'EXPIRE' back when dst isn't connected, and wants {type:'HEARTBEAT'} every few seconds.
-const SERVER = 'wss://0.peerjs.com:443/peerjs?key=peerjs';
-export const HOST_PREFIX = 'turbopitch-v1-';
-const UNREACHABLE = 'Couldn’t reach the matchmaking service. Game codes need an internet connection to connect (the game itself runs over your network).';
-
-// The public server only relays messages shaped like PeerJS's own data-connection signalling,
-// so offers / answers / candidates are wrapped exactly that way.
-export const wrapOffer = (connectionId, sdp, metadata) => ({ sdp, type: 'data', connectionId, label: connectionId, reliable: true, serialization: 'binary', metadata, browser: 'chrome' });
-export const wrapAnswer = (connectionId, sdp) => ({ sdp, type: 'data', connectionId, browser: 'chrome' });
-export const wrapCandidate = (connectionId, candidate) => ({ candidate, type: 'data', connectionId });
+// LAN-play rooms on the game's own website (lead-owned). The Cloudflare Worker in worker/index.js
+// gives every 6-digit game code a room; both computers connect to it over a WebSocket on the same
+// site that serves the game, so a school or office network that lets the game load also lets it
+// connect. The room carries the connection setup and, if the computers can't reach each other
+// directly, the game traffic too.
+const NO_SERVER = 'Network play isn’t set up on this website yet: it needs the TURBO PITCH Cloudflare Worker (see README). It won’t work from a downloaded file.';
+const UNREACHABLE = 'Couldn’t reach the game’s website to set up the game. Check this computer is online and try again.';
 
 export function randomGameCode() { return String(100000 + Math.floor(Math.random() * 900000)); }
-export const hostIdFor = (code) => HOST_PREFIX + code;
 
-export function openRelay(id, { timeoutMs = 10000 } = {}) {
+// Is the room service there? (same origin as the page)
+export async function checkServer() {
+  if (!/^https?:$/.test(location.protocol)) throw new Error(NO_SERVER);
+  let res;
+  try { res = await fetch('/api/health', { cache: 'no-store' }); } catch (e) { throw new Error(UNREACHABLE); }
+  let body = null;
+  try { body = res.ok ? await res.json() : null; } catch (e) { body = null; }
+  if (!body || body.service !== 'turbo-pitch') throw new Error(NO_SERVER);
+}
+
+// Open a room socket. Resolves once the room says _ok; rejects with {code: 'taken'|'nohost'|'unreachable'}.
+export function openRoom(code, role, { timeoutMs = 10000 } = {}) {
   return new Promise((resolve, reject) => {
-    const token = Math.random().toString(36).slice(2, 12);
+    const url = `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/api/room/${code}?role=${role}`;
     let ws;
-    try { ws = new WebSocket(`${SERVER}&id=${encodeURIComponent(id)}&token=${token}&version=1.5.4`); } catch (e) { reject(new Error(UNREACHABLE)); return; }
-    let opened = false;
-    const r = {
-      id, closed: false, onMessage: null, onClose: null,
-      send(type, dst, payload) { if (ws.readyState === 1) ws.send(JSON.stringify({ type, dst, payload })); },
-      close() {
-        if (r.closed) return;
-        r.closed = true; clearInterval(hb); clearTimeout(to);
-        try { ws.close(); } catch (e) { /* ignore */ }
-      },
+    try { ws = new WebSocket(url); } catch (e) { reject(Object.assign(new Error(UNREACHABLE), { code: 'unreachable' })); return; }
+    ws.binaryType = 'arraybuffer';
+    let settled = false;
+    const room = {
+      code, role, closed: false, onText: null, onBin: null, onClose: null,
+      get buffered() { return ws.bufferedAmount; },
+      send(text) { if (ws.readyState === 1) ws.send(text); },
+      sendBin(buf) { if (ws.readyState === 1 && ws.bufferedAmount < 1 << 20) ws.send(buf); },
+      close() { if (room.closed) return; room.closed = true; try { ws.close(1000); } catch (e) { /* ignore */ } },
     };
-    const fail = (err) => { if (!opened) { opened = true; r.close(); reject(err); } };
-    const to = setTimeout(() => fail(new Error(UNREACHABLE)), timeoutMs);
-    const hb = setInterval(() => { if (ws.readyState === 1) ws.send('{"type":"HEARTBEAT"}'); }, 5000);
+    const fail = (err) => { if (settled) return; settled = true; clearTimeout(to); room.closed = true; try { ws.close(); } catch (e) { /* ignore */ } reject(err); };
+    const to = setTimeout(() => fail(Object.assign(new Error(UNREACHABLE), { code: 'unreachable' })), timeoutMs);
     ws.onmessage = (e) => {
-      let m;
-      try { m = JSON.parse(e.data); } catch (err) { return; }
-      if (m.type === 'OPEN') { if (!opened) { opened = true; clearTimeout(to); resolve(r); } }
-      else if (m.type === 'ID-TAKEN') fail(Object.assign(new Error('That game code is in use.'), { taken: true }));
-      else if (m.type === 'ERROR' && !opened) fail(new Error(UNREACHABLE));
-      else if (m.type !== 'HEARTBEAT' && r.onMessage) r.onMessage(m);
+      if (typeof e.data !== 'string') { if (settled && room.onBin) room.onBin(e.data); return; }
+      const text = role === 'host' && e.data.startsWith('#|') ? e.data.slice(2) : e.data;
+      if (!settled) {
+        let m = null;
+        try { m = JSON.parse(text); } catch (err) { /* ignore */ }
+        if (m && m.t === '_ok') { settled = true; clearTimeout(to); resolve(room); return; }
+        if (m && m.t === '_taken') { fail(Object.assign(new Error('That game code is in use.'), { code: 'taken' })); return; }
+        if (m && m.t === '_nohost') { fail(Object.assign(new Error('No game with that code.'), { code: 'nohost' })); return; }
+        return;
+      }
+      room.onText && room.onText(e.data);
     };
     ws.onerror = () => {};
     ws.onclose = () => {
-      clearInterval(hb);
-      if (!opened) { fail(new Error(UNREACHABLE)); return; }
-      if (!r.closed) { r.closed = true; r.onClose && r.onClose(); }
+      if (!settled) { fail(Object.assign(new Error(UNREACHABLE), { code: 'unreachable' })); return; }
+      if (!room.closed) { room.closed = true; room.onClose && room.onClose(); }
     };
   });
 }

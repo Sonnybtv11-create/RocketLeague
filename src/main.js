@@ -22,7 +22,6 @@ import { createUI } from './ui/ui.js';
 import { createBot } from './bots/bot.js';
 import { createMatch } from './game/match.js';
 import { createNetHost, createNetClient } from './net/session.js';
-import { webrtcSupported } from './net/rtc.js';
 
 const params = new URLSearchParams(location.search);
 const { settings, stats } = loadAll();
@@ -159,7 +158,7 @@ function newSession(cfg, mode) {
   game.match = createMatch({ world, mode, teamSize, durationSec: cfg.durationSec || 300, rng: Math.random });
   if (lanSlots.length) {
     const roster = rosterOf(world);
-    for (const s of lanSlots) s.peer.send({ t: 'start', you: s.carId, roster, cfg: { teamSize, durationSec: cfg.durationSec || 300 } });
+    for (const s of lanSlots) s.link.send({ t: 'start', you: s.carId, roster, cfg: { teamSize, durationSec: cfg.durationSec || 300 } });
     game.netSentTick = -1; game.netMvAt = 0;
   }
   syncCarModels(world);
@@ -339,7 +338,7 @@ const api = {
   isFreePlay() { return game.mode === 'freeplay'; },
 
   // ---- LAN play (see src/net/)
-  lanSupported() { return webrtcSupported(); },
+  lanSupported() { return typeof WebSocket !== 'undefined'; },
   lanRole() { return game.net ? game.net.role : null; },
   lanInMatch() { return !!game.lan; },
   lanHost() { return lanHost(); },
@@ -347,14 +346,12 @@ const api = {
     const n = game.net;
     return {
       role: n ? n.role : null, notice: game.lanNotice || '',
-      slots: n && n.role === 'host' ? n.slots.map((s) => ({ id: s.id, status: s.status, team: s.team, name: s.name, code: s.code, error: s.error || '', manual: !!s.manual })) : [],
+      slots: n && n.role === 'host' ? n.slots.map((s) => ({ id: s.id, status: s.status, team: s.team, name: s.name, mode: s.mode })) : [],
       code: n && n.role === 'host' ? n.code : '', relayStatus: n && n.role === 'host' ? n.relayStatus : 'off', relayError: n && n.role === 'host' ? n.relayError : '',
-      client: n && n.role === 'client' ? { status: n.status, error: n.error, reason: n.reason, lobby: n.lobby, replyCode: n.replyCode } : null,
+      client: n && n.role === 'client' ? { status: n.status, error: n.error, reason: n.reason, lobby: n.lobby, mode: n.mode } : null,
     };
   },
-  lanInvite() { const h = lanHost(); return h.invite(); },
   lanRetryCode() { const h = lanHost(); return h.openLobby(); },
-  lanAcceptReply(id, code) { return game.net && game.net.role === 'host' ? game.net.acceptReply(id, code) : null; },
   lanSetTeam(id, team) {
     const n = game.net;
     if (!n || n.role !== 'host') return;
@@ -378,10 +375,8 @@ const api = {
     game.net = client;
     const profile = { name: settings.game.playerName || 'Player', bodyId: settings.game.carBody, accent: settings.game.accent };
     const digits = String(code || '').replace(/\D/g, '');
-    // 6-digit game code (normal) or a long copy/paste code (offline fallback)
-    if (/^\s*[\d\s-]+\s*$/.test(String(code || '')) && digits.length === 6) return client.joinCode(digits, profile);
-    if (/^\s*[\d\s-]*\s*$/.test(String(code || ''))) { client.error = 'Game codes are 6 digits — check the number on the host’s screen.'; lanChanged(); return ''; }
-    return client.join(code, profile);
+    if (digits.length !== 6) { client.error = 'Game codes are 6 digits — check the number on the host’s screen.'; lanChanged(); return ''; }
+    return client.joinCode(digits, profile);
   },
   lanLeave() { if (!game.lan) lanClose(); },
 };
