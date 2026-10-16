@@ -8022,7 +8022,7 @@ function getWheelGeometries(width = 0.8, spokes = 5) {
   return res;
 }
 function buildTyre(width) {
-  const W = width * 100, hw = W / 2, R = 100, ri = 64, c = 15;
+  const W = width * 100, hw = W / 2, R = 100, ri = 53, c = 17;
   const prof = [];
   prof.push([ri, -hw * 0.82, 0]);
   prof.push([ri + 10, -hw * 0.98, 0]);
@@ -8041,17 +8041,17 @@ function buildTyre(width) {
   prof.push([ri + 10, hw * 0.98, 0]);
   prof.push([ri, hw * 0.82, 0]);
   const P = prof.length;
-  const SEG = 40, BLOCKS = 10, depth = 4.2;
+  const SEG = 64, BLOCKS = 16, depth = 6.5;
   const pos = [], idx = [];
   for (let i = 0; i < SEG; i++) {
     const th = i / SEG * Math.PI * 2, ct = Math.cos(th), st = Math.sin(th);
     for (const [r, w, tread] of prof) {
       let rr2 = r;
       if (tread) {
-        const ph = i / SEG * BLOCKS + Math.abs(w) / W * 1.3;
+        const ph = i / SEG * BLOCKS + (w > 0 ? 0.5 : 0) + Math.abs(w) / W * 0.6;
         const f = ph - Math.floor(ph);
-        const groove = f > 0.7 ? 1 : 0;
-        const centreGroove = Math.abs(w) < W * 0.06 ? 1 : 0;
+        const groove = f > 0.62 ? 1 : 0;
+        const centreGroove = Math.abs(w) < W * 0.07 ? 1 : 0;
         rr2 -= depth * Math.max(groove, centreGroove);
       }
       pos.push(ct * rr2, st * rr2, w);
@@ -8122,7 +8122,7 @@ function buildRim(width, spokes) {
     for (const k of Object.keys(g.attributes)) if (!["position", "normal", "color"].includes(k)) g.deleteAttribute(k);
     return g.index ? g.toNonIndexed() : g;
   }), false);
-  m.scale(0.01, 0.01, 0.01);
+  m.scale(82e-4, 82e-4, 0.01);
   m.computeBoundingSphere();
   return m;
 }
@@ -8181,7 +8181,7 @@ function stations(x0, x1, step, extra = []) {
   for (const e of extra) if (e > x0 && e < x1) s2.add(+e.toFixed(3));
   return [...s2].sort((a, b) => a - b);
 }
-function classifier(rules, base = ["trim", "paint", "paint", "paint", "paint"]) {
+function classifier(rules, base = ["trim", "trim", "paint", "paint", "paint"]) {
   return (x, seg) => {
     let s2 = base[seg];
     for (const r of rules) {
@@ -8268,23 +8268,31 @@ var BODY_SPECS = {
       B.loft = loft;
       loft.patch(ps, "accent", -47.5, 75.5, 0.88, 0.955, 0.2, 60, 2);
       loft.patch(ps, "accent", -47.5, 75.5, -0.88, -0.955, 0.2, 60, 2);
-      loft.patch(ps, "accent", -16, 36, 0.27, 0.36, 0.25, 20, 2);
-      loft.patch(ps, "accent", -16, 36, -0.27, -0.36, 0.25, 20, 2);
+      loft.patch(ps, "trim", -20, 40, 0.24, 0.37, 0.25, 20, 2);
+      loft.patch(ps, "trim", -20, 40, -0.24, -0.37, 0.25, 20, 2);
       const [wf, wb] = W;
       fender(ps, "paint", wf, { rin: 15.8, rout: 18.8, z0: 26, z1: 40.5, a0: -0.12, a1: Math.PI - 0.02 });
       fender(ps, "paint", wb, { rin: 18.3, rout: 21.8, z0: 28, z1: 42.6, a0: 0.12, a1: Math.PI + 0.12 });
       fender(ps, "trim", wf, { rin: 15.4, rout: 15.9, z0: 26.5, z1: 40, a0: -0.12, a1: Math.PI - 0.02, lip: 0.2 });
       fender(ps, "trim", wb, { rin: 17.9, rout: 18.4, z0: 28.5, z1: 42.2, a0: 0.12, a1: Math.PI + 0.12, lip: 0.2 });
-      ps.add("trim", roundedBox(10, 3.2, 52, 1.2), M(74, 0.6, 0));
+      ps.add("trim", roundedBox(10, 9, 54, 2.2), M(73.5, 4.6, 0));
+      ps.add("trim", roundedBox(3.2, 3.2, 44, 1.5), M(81, 13.6, 0));
+      ps.add("trim", roundedBox(3.2, 3.2, 50, 1.5), M(80, 3.4, 0));
+      ps.addMirrored("trim", roundedBox(3, 11.5, 3, 1.4), M(80.6, 8.6, 15.5));
+      ps.addMirrored("trim", roundedBox(8, 3, 3, 1.4), M(77.5, 13.4, 21, 0, -0.35, 0));
+      for (const z of [8.5, -8.5]) {
+        ps.add("chrome", latheX([[0, 0.01], [0, 3.9], [-3.2, 4.1], [-3.4, 0.01]], 22, 40), M(85.2, 13.6, z));
+        ps.add("light", setColor2(discX(3.3, 22, 1), ...HEAD), M(85.35, 13.6, z));
+      }
       ps.add("trim", roundedBox(4, 5, 30, 1.2), M(-48.2, 6.5, 0));
+      ps.add("trim", roundedBox(15, 3.4, 13, 1.3), M(48, 21.3, 0, 0, 0, -0.18));
+      ps.add("glow", roundedBox(0.6, 1.6, 10, 0.2), M(55.3, 21.1, 0, 0, 0, -0.18));
       const wing = extrudeSide([[-51.5, 43.2], [-49, 45.6], [-41, 45.2], [-39.5, 44.2], [-44, 43.2]], 60, 0.5);
       ps.add("accent", wing);
       ps.addMirrored("trim", roundedBox(13.5, 6.5, 1.4, 0.5), M(-45.5, 43.2, 30.8, 0, 0, 0.12));
       ps.addMirrored("trim", roundedBox(3, 9, 1.6, 0.5), M(-43.5, 37.5, 14, 0, 0, -0.25));
-      ps.add("trim", roundedBox(2.4, 5.2, 20, 1), M(76.9, 6.4, 0));
-      for (const y of [5.2, 7.6]) ps.add("chrome", roundedBox(1, 0.8, 17, 0.35), M(78, y, 0));
-      light(ps, HEAD, 2.2, 3.6, 7.5, 77, 9.8, 15.2, 0, 0, 0, 1);
-      light(ps, DRL, 1.4, 1.2, 6, 76.6, 5.6, 17.5, 0, 0, 0, 0.5);
+      for (const y of [6.2, 8.4]) ps.add("chrome", roundedBox(1, 0.8, 22, 0.35), M(78.6, y, 0));
+      light(ps, DRL, 1.4, 1.2, 6, 78.4, 4.2, 22.5, 0, 0, 0, 0.5);
       light(ps, TAIL, 2, 4.6, 13, -49.2, 24.2, 18.5, 0, 0, 0, 1.1);
       light(ps, AMBER, 1.6, 1.4, 5, -49.1, 20.6, 21.5, 0, 0, 0, 0.5);
       ps.add("trim", roundedBox(10, 2.2, 10, 1), M(-6, 40.3, 0));
@@ -9156,8 +9164,8 @@ function createCarModel(ctx2, opts) {
   tyres.castShadow = true;
   tyres.customDepthMaterial = sh.tyreDepth;
   rims.castShadow = false;
-  const tyreW = [body.tyre.wF / 100, body.tyre.wB / 100];
-  const extra = [body.tyre.extraF, body.tyre.extraB];
+  const tyreW = [body.tyre.wF * TYRE_WIDEN / 100, body.tyre.wB * TYRE_WIDEN / 100];
+  const extra = [body.tyre.extraF + TYRE_OUT, body.tyre.extraB + TYRE_OUT];
   const restSusp = (cfgW) => cfgW.suspRest - 12 - 2;
   {
     const ws = [cfg.frontWheels, cfg.frontWheels, cfg.backWheels, cfg.backWheels];
@@ -9256,6 +9264,8 @@ function createCarModel(ctx2, opts) {
   };
 }
 var _white = new THREE17.Color();
+var TYRE_WIDEN = 1.35;
+var TYRE_OUT = 2.5;
 
 // src/render/vfx.js
 import * as THREE25 from "three";

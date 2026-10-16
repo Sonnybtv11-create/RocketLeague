@@ -102,8 +102,9 @@ export function createCarModel(ctx, opts) {
   tyres.name = 'tyres'; rims.name = 'rims';
   tyres.castShadow = true; tyres.customDepthMaterial = sh.tyreDepth; // rims sit inside the tyres: no shadow
   rims.castShadow = false;
-  const tyreW = [body.tyre.wF / 100, body.tyre.wB / 100];
-  const extra = [body.tyre.extraF, body.tyre.extraB];
+  // chunky tyres that poke out past the body (wider than the base spec, pushed outward)
+  const tyreW = [body.tyre.wF * TYRE_WIDEN / 100, body.tyre.wB * TYRE_WIDEN / 100];
+  const extra = [body.tyre.extraF + TYRE_OUT, body.tyre.extraB + TYRE_OUT];
 
   // initial wheel pose (rest) so the model looks right before the first update
   const restSusp = (cfgW) => cfgW.suspRest - 12 - 2;
@@ -200,3 +201,4 @@ export function createCarModel(ctx, opts) {
   };
 }
 const _white = new THREE.Color();
+const TYRE_WIDEN = 1.35, TYRE_OUT = 2.5;

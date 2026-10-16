@@ -19,7 +19,7 @@ export function getWheelGeometries(width = 0.8, spokes = 5) {
 }
 
 function buildTyre(width) {
-  const W = width * 100, hw = W / 2, R = 100, ri = 64, c = 15; // shoulder radius
+  const W = width * 100, hw = W / 2, R = 100, ri = 53, c = 17; // tall chunky sidewall, rounded shoulder
   // closed cross-section, (r, w) pairs; tread points flagged
   const prof = [];
   prof.push([ri, -hw * 0.82, 0]);
@@ -33,7 +33,7 @@ function buildTyre(width) {
   prof.push([ri + 10, hw * 0.98, 0]);
   prof.push([ri, hw * 0.82, 0]);
   const P = prof.length;
-  const SEG = 40, BLOCKS = 10, depth = 4.2;   // 4 segments per tread block
+  const SEG = 64, BLOCKS = 16, depth = 6.5;   // 4 segments per tread block: knobbly off-road blocks
   const pos = [], idx = [];
   for (let i = 0; i < SEG; i++) {
     const th = (i / SEG) * Math.PI * 2, ct = Math.cos(th), st = Math.sin(th);
@@ -41,10 +41,10 @@ function buildTyre(width) {
       let rr = r;
       if (tread) {
         // chevron tread: grooves alternate, offset by |w| for a V pattern
-        const ph = (i / SEG) * BLOCKS + Math.abs(w) / W * 1.3;
+        const ph = (i / SEG) * BLOCKS + (w > 0 ? 0.5 : 0) + Math.abs(w) / W * 0.6;
         const f = ph - Math.floor(ph);
-        const groove = f > 0.7 ? 1 : 0;
-        const centreGroove = Math.abs(w) < W * 0.06 ? 1 : 0;
+        const groove = f > 0.62 ? 1 : 0;
+        const centreGroove = Math.abs(w) < W * 0.07 ? 1 : 0;
         rr -= depth * Math.max(groove, centreGroove);
       }
       pos.push(ct * rr, st * rr, w);
@@ -119,7 +119,7 @@ function buildRim(width, spokes) {
     parts.push(setColor(n.toNonIndexed(), ...GRAPH));
   }
   const m = mergeGeometries(parts.map((g) => { for (const k of Object.keys(g.attributes)) if (!['position', 'normal', 'color'].includes(k)) g.deleteAttribute(k); return g.index ? g.toNonIndexed() : g; }), false);
-  m.scale(0.01, 0.01, 0.01);
+  m.scale(0.0082, 0.0082, 0.01); // smaller rim inside a taller tyre
   m.computeBoundingSphere();
   return m;
 }
