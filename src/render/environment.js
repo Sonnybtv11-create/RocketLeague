@@ -83,12 +83,18 @@ export function createEnvironment(ctx) {
   // pitch
   const field = makeFieldTextures(renderer);
   const detail = makeGrassDetail(renderer);
-  track(field.map); track(detail);
-  const floorMat = track(new THREE.MeshStandardMaterial({ map: field.map, roughness: 0.93, metalness: 0.0, envMapIntensity: 0.35 }));
+  track(field.map); track(field.bumpMap); track(detail);
+  const floorMat = track(new THREE.MeshStandardMaterial({ map: field.map, bumpMap: field.bumpMap, bumpScale: 3, roughness: 0.93, metalness: 0.0, envMapIntensity: 0.35 }));
   floorMat.onBeforeCompile = (sh) => {
     sh.uniforms.uDetail = { value: detail };
     sh.fragmentShader = sh.fragmentShader
-      .replace('#include <common>', '#include <common>\nuniform sampler2D uDetail;\n' + MOW_SHEEN)
+      .replace('#include <common>', '#include <common>\nuniform sampler2D uDetail;\nfloat gDetailH;\n' + MOW_SHEEN)
+      // blade-scale relief from the grass detail texture on top of the field bump map
+      .replace('#include <normal_fragment_maps>', `
+      #ifdef USE_BUMPMAP
+        vec2 dH = dHdxy_fwd() + vec2(dFdx(gDetailH), dFdy(gDetailH)) * 0.9;
+        normal = perturbNormalArb( - vViewPosition, normal, dH, faceDirection );
+      #endif`)
       .replace('#include <map_fragment>', `#include <map_fragment>
       diffuseColor.rgb *= mowSheen(vMapUv);
       {
@@ -96,6 +102,7 @@ export function createEnvironment(ctx) {
         float dA = texture2D(uDetail, duv).r;
         float dB = texture2D(uDetail, duv * 0.21 + 0.37).r;
         float dd = dA * 0.6 + dB * 0.4;
+        gDetailH = dA;
         diffuseColor.rgb *= 0.70 + 0.60 * dd;
       }`);
   };
@@ -157,12 +164,12 @@ export function createEnvironment(ctx) {
   // team picks its half of the texture atlas through the uv.
   {
     const tx = makeLowerWallAtlas(renderer);
-    track(tx.map); track(tx.emissiveMap);
+    track(tx.map); track(tx.emissiveMap); track(tx.bumpMap);
     // the blue half's ring runs the other way round as seen from inside: flip s
     scaleUV(geos.lower[0], -1 / WALL_TILE, 0.5 / V_LOWER, 0, 0);
     scaleUV(geos.lower[1], 1 / WALL_TILE, 0.5 / V_LOWER, 0, 0.5);
     const m = track(new THREE.MeshStandardMaterial({
-      map: tx.map, emissive: 0xffffff, emissiveMap: tx.emissiveMap, emissiveIntensity: 1.6,
+      map: tx.map, emissive: 0xffffff, emissiveMap: tx.emissiveMap, emissiveIntensity: 1.6, bumpMap: tx.bumpMap, bumpScale: 2.5,
       roughness: 0.55, metalness: 0.1, side: THREE.DoubleSide, envMapIntensity: 0.6,
     }));
     // back faces (seen only from outside the arena) are a plain dark structure

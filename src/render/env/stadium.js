@@ -266,8 +266,8 @@ export function createStadium(ctx) {
   setEmis(setColor(roofGeo, new THREE.Color(0x2c333e)), new THREE.Color(0x07090c));
   const shellGeo = track(merge([structGeo, roofGeo]));
   structGeo.dispose(); roofGeo.dispose();
-  const panelTex = track(makePanelTexture(renderer));
-  const shellMat = track(vertexEmissive(new THREE.MeshStandardMaterial({ map: panelTex, vertexColors: true, roughness: 0.88, metalness: 0.0, side: THREE.DoubleSide, envMapIntensity: 0.15 }), 'stadiumShell'));
+  const panelTex = makePanelTexture(renderer); track(panelTex.map); track(panelTex.bumpMap);
+  const shellMat = track(vertexEmissive(new THREE.MeshStandardMaterial({ map: panelTex.map, bumpMap: panelTex.bumpMap, bumpScale: 1.5, vertexColors: true, roughness: 0.88, metalness: 0.0, side: THREE.DoubleSide, envMapIntensity: 0.15 }), 'stadiumShell'));
   // the roof canopy would throw a hard-edged ring of shadow across the whole pitch (big light/dark
   // wedges); the floodlights fill that in, so only the stands and the arena itself cast shadows
   const shellMesh = new THREE.Mesh(shellGeo, shellMat); shellMesh.castShadow = false;
@@ -276,9 +276,9 @@ export function createStadium(ctx) {
   const structMat = track(new THREE.MeshStandardMaterial({ color: 0x7d838f, roughness: 0.92, metalness: 0.05 }));
 
   // seating tiers
-  const seatTex = track(makeSeatTexture(renderer));
+  const seatTex = makeSeatTexture(renderer); track(seatTex.map); track(seatTex.bumpMap);
   const seatGeo = track(buildStrips(path, [[SEC.lower, 256, ROW_DEPTH * 8 * 1.18], [SEC.upper, 256, ROW_DEPTH * 8 * 1.18]]));
-  const seatMat = track(new THREE.MeshStandardMaterial({ map: seatTex, roughness: 0.85, metalness: 0.0, side: THREE.DoubleSide }));
+  const seatMat = track(new THREE.MeshStandardMaterial({ map: seatTex.map, bumpMap: seatTex.bumpMap, bumpScale: 2, roughness: 0.85, metalness: 0.0, side: THREE.DoubleSide }));
   const seatMesh = new THREE.Mesh(seatGeo, seatMat); seatMesh.castShadow = true;
   group.add(seatMesh);
 

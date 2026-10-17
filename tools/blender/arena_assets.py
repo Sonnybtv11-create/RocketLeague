@@ -72,8 +72,8 @@ def sweep(name, path, prof, mats, coll, closed_path=False, cap=False):
     """Sweep a closed 2D profile along a path in the xz plane (y = depth).
     path: [(x, z)], prof: [(a, b, mat_index)] where a is along the in-plane normal (right of the
     tangent) and b along +y; the edge from prof[i] to prof[i+1] gets mat_index of prof[i].
-    Each profile edge gets its own vertices, so edges across the profile are sharp. Faces point along
-    (profile direction) x (path tangent): list the profile so that comes out of the solid."""
+    Each profile edge gets its own vertices, so edges across the profile are sharp; faces are wound
+    to point away from the profile's centre. cap=True closes the two ends (mat of prof[0])."""
     bm = bmesh.new()
     n = len(path)
     frames = []
@@ -81,32 +81,56 @@ def sweep(name, path, prof, mats, coll, closed_path=False, cap=False):
         p0 = Vector(path[max(0, i - 1)]); p1 = Vector(path[min(n - 1, i + 1)])
         if closed_path: p0 = Vector(path[(i - 1) % n]); p1 = Vector(path[(i + 1) % n])
         t = (p1 - p0).normalized()
-        nrm = Vector((t.y, -t.x))           # right-hand normal in the xz plane
-        frames.append((Vector(path[i]), nrm))
+        frames.append((Vector(path[i]), Vector((t.y, -t.x))))   # right-hand normal in the xz plane
     m = len(prof)
-    rings = []
-    for (c, nrm) in frames:
-        ring = []
-        for (a, b, _) in prof:
-            ring.append(bm.verts.new((c.x + nrm.x * a, b, c.y + nrm.y * a)))
-        rings.append(ring)
-    # duplicate per edge for sharp profile corners
-    edge_rings = []
-    for ring in rings:
-        er = []
-        for k in range(m):
-            v0 = ring[k]; v1 = ring[(k + 1) % m]
-            er.append((bm.verts.new(v0.co), bm.verts.new(v1.co)))
-        edge_rings.append(er)
-    for ring in rings:
-        for v in ring: bm.verts.remove(v)
+    ca = sum(p[0] for p in prof) / m; cb = sum(p[1] for p in prof) / m
+    P = lambda c, nrm, a, b: Vector((c.x + nrm.x * a, b, c.y + nrm.y * a))
     segs = n if closed_path else n - 1
-    for i in range(segs):
-        A = edge_rings[i]; B = edge_rings[(i + 1) % n]
-        for k in range(m):
-            f = bm.faces.new((A[k][0], A[k][1], B[k][1], B[k][0]))
-            f.material_index = prof[k][2]
+    for k in range(m):
+        (a0, b0, mi), (a1, b1, _) = prof[k], prof[(k + 1) % m]
+        ea, eb = b1 - b0, -(a1 - a0)                      # edge normal in the section
+        if ea * ((a0 + a1) / 2 - ca) + eb * ((b0 + b1) / 2 - cb) < 0: ea, eb = -ea, -eb
+        col = [(bm.verts.new(P(c, nrm, a0, b0)), bm.verts.new(P(c, nrm, a1, b1)), nrm) for c, nrm in frames]
+        for i in range(segs):
+            (A0, A1, nrm), (B0, B1, _) = col[i], col[(i + 1) % n]
+            out = Vector((nrm.x * ea, eb, nrm.y * ea))
+            vs = [A0, A1, B1, B0]
+            fn = (A1.co - A0.co).cross(B0.co - A0.co)
+            if fn.dot(out) < 0: vs.reverse()
+            f = bm.faces.new(vs); f.material_index = mi
+    if cap and not closed_path:
+        for idx, sgn in ((0, -1), (n - 1, 1)):
+            c, nrm = frames[idx]
+            vs = [bm.verts.new(P(c, nrm, a, b)) for (a, b, _) in prof]
+            f = bm.faces.new(vs); f.material_index = prof[0][2]
+            t = Vector(path[min(n - 1, idx + 1)]) - Vector(path[max(0, idx - 1)])
+            out = Vector((t.x, 0, t.y)) * sgn
+            f.normal_update()
+            if f.normal.dot(out) < 0: f.normal_flip()
     return new_obj(name, bm, mats, coll)
+
+def fillet_path(pts, r, n_arc=8):
+    """Polyline [(x, z)] with every interior corner rounded to radius r (clamped to fit)."""
+    out = [pts[0]]
+    for i in range(1, len(pts) - 1):
+        p0, p1, p2 = Vector(pts[i - 1]), Vector(pts[i]), Vector(pts[i + 1])
+        d0 = (p0 - p1).normalized(); d1 = (p2 - p1).normalized()
+        ang = math.acos(max(-1, min(1, d0.dot(d1))))
+        if ang > math.pi - 1e-3: out.append(pts[i]); continue
+        t = r / math.tan(ang / 2)
+        t = min(t, (p0 - p1).length * 0.45, (p2 - p1).length * 0.45)
+        rr = t * math.tan(ang / 2)
+        a = p1 + d0 * t; b = p1 + d1 * t
+        bis = (d0 + d1).normalized()
+        cen = p1 + bis * math.hypot(t, rr)
+        va, vb = a - cen, b - cen
+        a0 = math.atan2(va.y, va.x); a1 = math.atan2(vb.y, vb.x)
+        da = (a1 - a0 + math.pi) % (2 * math.pi) - math.pi
+        for k in range(n_arc + 1):
+            q = a0 + da * k / n_arc
+            out.append((cen.x + rr * math.cos(q), cen.y + rr * math.sin(q)))
+    out.append(pts[-1])
+    return out
 
 def lathe(name, prof, mats, coll, segs=48, phase=0.0):
     """Revolve [(r, z, mat_index)] about z; edge i -> i+1 gets prof[i] material; sharp profile edges.
@@ -159,12 +183,18 @@ def collection(name):
     c = bpy.data.collections.new(name); scene.collection.children.link(c); return c
 
 # ================================================================== GOAL
+# Modelled on the DFH Stadium goal (refs/dfh): a thick gunmetal rounded-rectangle ring around the mouth
+# with thin LED lines along its front edges and a lit strip on its inner face, a slimmer ring at the
+# back of the goal joined to it by rails along the rounded top edges, "wings" that run out from the
+# top corners and slope down the back wall, two lamp lanterns on each top corner, and dark slatted
+# grate walls (sides, roof, back) with team light strips between the slats.
 goal = collection('goal')
-W, D = 0.58, 0.78                  # frame beam: width in the mouth plane, depth along y
-B_FRONT = -0.3                     # frame front face sticks 30 cm out of the back wall into the arena
-XO, ZT, CR = GW + W / 2, GH + W / 2, 0.7
+FRAME = mat('metal_frame', (0.15, 0.16, 0.19))
+FRAME_L = mat('metal_light', (0.62, 0.64, 0.69))
+GRATE = mat('metal_grate', (0.34, 0.35, 0.39))
+GRATE_BACK = mat('dark_grateback', (0.1, 0.105, 0.12))
 
-def mouth_path(xo, zt, cr, z0=0.0, n_arc=14, n_line=6):
+def mouth_path(xo, zt, cr, z0=0.0, n_arc=16, n_line=6):
     pts = []
     for k in range(n_line): pts.append((xo, z0 + (zt - cr - z0) * k / n_line))
     for k in range(n_arc + 1):
@@ -178,88 +208,84 @@ def mouth_path(xo, zt, cr, z0=0.0, n_arc=14, n_line=6):
     for k in range(1, n_line + 1): pts.append((-xo, zt - cr - (zt - cr - z0) * k / n_line))
     return pts
 
-# path runs up the +x post, over the bar, down the -x post: the right-hand normal points away from
-# the opening (outward). Cross-section (a outward, b depth), chamfered, with:
-#   - a recessed LED channel on the front face (glow at the bottom of the groove)
-#   - a glowing strip on the inner face (towards the opening), set into a dark rubber gasket
-h, c = W / 2, 0.05
-b0, b1 = B_FRONT, B_FRONT + D
-g0, g1, gd = -0.09, 0.09, 0.045      # front groove across a, depth
-i0, i1 = B_FRONT + 0.10, B_FRONT + 0.34   # inner-face strip along b
-PROF = [
-    # front face (b = b0), from inner edge (a = -h) to outer edge (a = +h), with the groove
-    (-h, b0 + c, 0), (-h + c, b0, 0), (g0, b0, 3), (g0, b0 + gd, 2), (g1, b0 + gd, 3), (g1, b0, 0), (h - c, b0, 0), (h, b0 + c, 0),
-    # outer face (a = +h) back to the wall
-    (h, b1, 1),
-    # back face (inside the wall)
-    (-h, b1, 0),
-    # inner face (a = -h), from the back towards the front, with the glowing strip
-    (-h, i1 + 0.02, 3), (-h + 0.012, i1, 2), (-h + 0.012, i0, 3), (-h, i0 - 0.02, 0),
+# --- front ring: section 0.8 wide (inner face flush with the goal box), 1.45 deep, 45 cm proud of
+# the wall. Path runs up the +x post, over the bar, down the -x post; a points away from the opening.
+h, c = 0.4, 0.12
+XO, ZT, CR = GW + h, GH + h, 2.3
+b0, b1 = -0.45, 1.0
+g = 0.025                                   # LED groove depth
+RING = [
+    (-h, b0 + c, 1), (-h + c, b0, 1),                                       # inner chamfer (silver front face)
+    (-h + 0.13, b0, 2), (-h + 0.13, b0 + g, 2), (-h + 0.23, b0 + g, 1), (-h + 0.23, b0, 1),   # inner LED line
+    (h - 0.27, b0, 2), (h - 0.27, b0 + g, 2), (h - 0.17, b0 + g, 1), (h - 0.17, b0, 1),       # outer LED line
+    (h - c, b0, 2), (h, b0 + c, 0),                                         # outer chamfer (lit edge)
+    (h, b1, 0), (-h, b1, 1),                                                # outer face, back
+    (-h, 0.46, 2), (-h + 0.02, 0.44, 1), (-h + 0.02, 0.30, 2), (-h, 0.28, 1),  # lit strip on the inner face
 ]
-sweep('goal_frame', mouth_path(XO, ZT, CR), PROF, [PAINT, METAL_D, GLOW, DARK2], goal)
+sweep('goal_ring', mouth_path(XO, ZT, CR), RING, [FRAME, FRAME_L, GLOW], goal)
 
-# thin outer trim beam hugging the frame (metal), and a back plate where the frame meets the wall
-sweep('goal_frame_trim', mouth_path(XO + h + 0.06, ZT + h + 0.06, CR + h + 0.06),
-      [(-0.06, B_FRONT + 0.12, 0), (0.06, B_FRONT + 0.12, 0), (0.06, 0.05, 0), (-0.06, 0.05, 0)], [METAL_D], goal)
-
-# lamp units on top of the crossbar, near each corner: housing + lens + cooling fins
+# --- back ring + rails along the rounded top edges
+h2 = 0.26
+BACK = [(-h2, -0.26, 0), (-0.05, -0.26, 2), (-0.05, -0.24, 2), (0.05, -0.24, 0), (0.05, -0.26, 0), (h2, -0.26, 0), (h2, 0.26, 0), (-h2, 0.26, 0)]
+yb = GD - 0.4                               # just inside the back grate: framed portal deep in the goal
+sweep('goal_back_ring', mouth_path(GW + h2, GH + h2, 2.0), [(a, bb + yb, m) for a, bb, m in BACK], [FRAME, FRAME_L, GLOW], goal)
 for sx in (-1, 1):
-    for k in range(3):
-        x = sx * (GW - 0.7 - k * 0.62)
-        zb = ZT + h
-        box(f'goal_lamp_{sx}_{k}', (0.42, 0.34, 0.26), (x, B_FRONT + 0.22, zb + 0.13), METAL_D, goal, bevel=0.03)
-        box(f'goal_lens_{sx}_{k}', (0.32, 0.03, 0.15), (x, B_FRONT + 0.04, zb + 0.14), LAMP, goal, bevel=0.012)
-        for f in range(4):
-            box(f'goal_fin_{sx}_{k}_{f}', (0.36, 0.02, 0.06), (x, B_FRONT + 0.3 + f * 0.05, zb + 0.29), METAL, goal, bevel=0.0)
+    x45 = sx * (XO - CR + CR * math.cos(math.radians(45)))
+    z45 = ZT - CR + CR * math.sin(math.radians(45))
+    rod(f'goal_top_rail_{sx}', (x45 - sx * 0.25, b1 - 0.05, z45 - 0.25), (sx * (GW + h2 - 2.0 + 2.0 * 0.7071) - sx * 0.1, yb, GH + h2 - 2.0 + 2.0 * 0.7071 - 0.1), 0.17, FRAME, goal, segs=12)
+    rod(f'goal_floor_rail_{sx}', (sx * (GW + 0.25), b1 - 0.05, 0.12), (sx * (GW + 0.25), yb, 0.12), 0.14, FRAME, goal, segs=10)
 
-# net support frame: rods along the edges of the net box + a mid arch (metal)
-R = 0.055
-nb = [(-GW, 0.15, GH), (GW, 0.15, GH), (GW, GD, GH), (-GW, GD, GH)]
-rod('net_top_back', (-GW, GD, GH), (GW, GD, GH), R, METAL, goal)
+# --- wings: out from the top corners, sloping down the back wall (12 cm proud of it)
+WING = [(-0.22, -0.12, 0), (-0.05, -0.12, 2), (-0.05, -0.1, 2), (0.05, -0.1, 0), (0.05, -0.12, 0), (0.22, -0.12, 0), (0.22, 0.4, 0), (-0.22, 0.4, 0)]
 for sx in (-1, 1):
-    rod(f'net_top_side_{sx}', (sx * GW, 0.1, GH), (sx * GW, GD, GH), R, METAL, goal)
-    rod(f'net_back_post_{sx}', (sx * GW, GD, 0), (sx * GW, GD, GH), R, METAL, goal)
-    rod(f'net_mid_post_{sx}', (sx * GW, GD * 0.5, 0), (sx * GW, GD * 0.5, GH), R * 0.8, METAL, goal)
-rod('net_mid_bar', (-GW, GD * 0.5, GH), (GW, GD * 0.5, GH), R * 0.8, METAL, goal)
-rod('net_back_floor', (-GW, GD, 0.04), (GW, GD, 0.04), R, METAL, goal)
-for xx in (-GW / 3, GW / 3):  # back verticals
-    rod(f'net_back_v_{xx:.1f}', (xx, GD, 0), (xx, GD, GH), R * 0.7, METAL, goal)
-# corner brackets where the rods meet
-for p in nb[2:] + [(-GW, GD, 0.0), (GW, GD, 0.0)]:
-    box(f'net_bracket_{p[0]:.1f}_{p[2]:.1f}', (0.18, 0.18, 0.18), p, METAL_D, goal, bevel=0.03)
+    pts = [(XO + h - 0.15, GH - 0.25), (GW + 3.2, GH - 0.25), (GW + 6.6, 3.0), (GW + 11.0, 3.0)]
+    path = fillet_path([(sx * x, z) for x, z in pts], 0.9)
+    sweep(f'goal_wing_{sx}', path, WING, [FRAME, FRAME_L, GLOW], goal, cap=True)
+    for x, z in ((GW + 3.2, GH - 0.25), (GW + 6.6, 3.0)):           # mounting brackets at the bends
+        box(f'goal_wing_bracket_{sx}_{x:.1f}', (0.5, 0.25, 0.55), (sx * x, 0.42, z), METAL_D, goal, bevel=0.04)
 
-# housing around the net box: panelled shell with ribs and recessed light bars, seen through the net
-O = 0.7                                     # gap between the net and the housing
-HX, HY, HZ = GW + O, GD + O, GH + O
-PT = 0.06                                   # panel thickness
+# --- lanterns on the top corners
+for sx in (-1, 1):
+    for k, x in enumerate((GW - 1.55, GW - 2.3)):
+        o = lathe(f'goal_lamp_{sx}_{k}', [
+            (0.27, 0.0, 0), (0.27, 0.07, 0), (0.22, 0.09, 0),      # base (metal)
+            (0.2, 0.09, 1), (0.2, 0.5, 1),                          # glowing body
+            (0.24, 0.52, 0), (0.24, 0.6, 0), (0.12, 0.64, 0), (0.0, 0.64, 0)],   # cap
+            [METAL_D, GLOW], goal, segs=20)
+        o.location = (sx * x, 0.25, ZT + h)
+
+# --- grate walls just outside the goal box: slats over a dark backing, light strips in some gaps
+SL, GAP = 0.12, 0.34
+nz = int(GH / GAP)
+for sx in (-1, 1):
+    X0 = sx * (GW + 0.08)
+    box(f'grate_side_back_{sx}', (0.04, GD - b1, GH), (sx * (GW + 0.3), (GD + b1) / 2, GH / 2), GRATE_BACK, goal, bevel=0.0)
+    for k in range(nz):
+        z = (k + 0.5) * GAP
+        box(f'grate_side_{sx}_{k}', (0.08, GD - b1, SL), (X0 + sx * 0.04, (GD + b1) / 2, z), GRATE, goal, bevel=0.015)
+        if k % 3 == 1:
+            box(f'grate_side_led_{sx}_{k}', (0.02, GD - b1 - 0.4, 0.06), (sx * (GW + 0.27), (GD + b1) / 2, z + GAP / 2), GLOW, goal, bevel=0.0)
+    for y in (b1 + 0.2, (GD + b1) / 2, GD - 0.2):                 # vertical posts holding the slats
+        box(f'grate_side_post_{sx}_{y:.1f}', (0.14, 0.14, GH), (sx * (GW + 0.2), y, GH / 2), METAL_D, goal, bevel=0.02)
 # back wall
-box('house_back', (2 * HX, PT, HZ), (0, HY + PT / 2, HZ / 2), DARK, goal, bevel=0.0)
-# side walls
-for sx in (-1, 1):
-    box(f'house_side_{sx}', (PT, HY - 0.1, HZ), (sx * (HX + PT / 2), (HY + 0.1) / 2, HZ / 2), DARK, goal, bevel=0.0)
-# roof
-box('house_roof', (2 * HX + 2 * PT, HY - 0.1, PT), (0, (HY + 0.1) / 2, HZ + PT / 2), DARK, goal, bevel=0.0)
-# ribs: vertical on the back + sides, across the roof
-RIB = 0.12
-nrib = 9
-for k in range(nrib + 1):
-    x = -HX + 2 * HX * k / nrib
-    box(f'rib_back_{k}', (RIB, 0.16, HZ), (x, HY - 0.06, HZ / 2), METAL_D, goal, bevel=0.02)
-    box(f'rib_roof_{k}', (RIB, HY - 0.1, 0.16), (x, (HY + 0.1) / 2, HZ - 0.06), METAL_D, goal, bevel=0.02)
-for sx in (-1, 1):
-    for k in range(5):
-        y = 0.4 + (HY - 0.5) * k / 4
-        box(f'rib_side_{sx}_{k}', (0.16, RIB, HZ), (sx * (HX - 0.06), y, HZ / 2), METAL_D, goal, bevel=0.02)
-# horizontal rails + recessed light bars on the back wall and sides
-for zz, glow in ((0.18, False), (HZ * 0.34, True), (HZ * 0.68, True), (HZ - 0.25, False)):
-    box(f'rail_back_{zz:.2f}', (2 * HX, 0.1, 0.1), (0, HY - 0.1, zz), METAL, goal, bevel=0.02)
-    if glow:
-        box(f'bar_back_{zz:.2f}', (2 * HX - 0.6, 0.03, 0.12), (0, HY - 0.015, zz + 0.2), GLOW_DIM, goal, bevel=0.0)
-        for sx in (-1, 1):
-            box(f'bar_side_{sx}_{zz:.2f}', (0.03, HY - 0.8, 0.12), (sx * (HX - 0.015), HY / 2, zz + 0.2), GLOW_DIM, goal, bevel=0.0)
-# roof light bars running front to back
-for xx in (-HX * 0.5, 0, HX * 0.5):
-    box(f'bar_roof_{xx:.1f}', (0.14, HY - 0.9, 0.03), (xx + 0.35, HY / 2, HZ - 0.015), GLOW_DIM, goal, bevel=0.0)
+box('grate_back_back', (2 * GW, 0.04, GH), (0, GD + 0.3, GH / 2), GRATE_BACK, goal, bevel=0.0)
+for k in range(nz):
+    z = (k + 0.5) * GAP
+    box(f'grate_back_{k}', (2 * GW, 0.08, SL), (0, GD + 0.12, z), GRATE, goal, bevel=0.015)
+    if k % 3 == 1:
+        box(f'grate_back_led_{k}', (2 * GW - 0.6, 0.02, 0.06), (0, GD + 0.27, z + GAP / 2), GLOW, goal, bevel=0.0)
+for x in (-GW * 0.66, -GW * 0.33, 0, GW * 0.33, GW * 0.66):
+    box(f'grate_back_post_{x:.1f}', (0.14, 0.14, GH), (x, GD + 0.2, GH / 2), METAL_D, goal, bevel=0.02)
+# roof: slats running front to back
+box('grate_roof_back', (2 * GW, GD - b1, 0.04), (0, (GD + b1) / 2, GH + 0.3), GRATE_BACK, goal, bevel=0.0)
+nr = int(2 * GW / GAP)
+for k in range(nr):
+    x = -GW + (k + 0.5) * (2 * GW / nr)
+    box(f'grate_roof_{k}', (SL, GD - b1, 0.08), (x, (GD + b1) / 2, GH + 0.12), GRATE, goal, bevel=0.015)
+    if k % 4 == 2:
+        box(f'grate_roof_led_{k}', (0.06, GD - b1 - 0.4, 0.02), (x + GAP / 2, (GD + b1) / 2, GH + 0.27), GLOW, goal, bevel=0.0)
+for y in (b1 + 1.0, (GD + b1) / 2, GD - 0.4):
+    box(f'grate_roof_beam_{y:.1f}', (2 * GW, 0.16, 0.16), (0, y, GH + 0.2), METAL_D, goal, bevel=0.02)
 
 # ================================================================== BIG PAD
 big = collection('big_pad')
@@ -390,9 +416,9 @@ if PREVIEW:
         cam.rotation_euler = (Vector(target) - cam.location).to_track_quat('-Z', 'Y').to_euler()
         sc.render.filepath = f'{PREVIEW}-{fname}.png'
         bpy.ops.render.render(write_still=True)
-    shoot('goal-front', (0, 2, 3.2), 26, -90, 12, only=goal)
-    shoot('goal-34', (0, 3, 3.2), 24, -60, 22, only=goal)
-    shoot('goal-corner', (GW, 0, GH), 6, -55, 25, only=goal)
+    shoot('goal-front', (0, 2, 3.6), 30, -90, 8, only=goal)
+    shoot('goal-34', (0, 3, 3.6), 28, -55, 18, only=goal)
+    shoot('goal-corner', (GW, 0, GH), 7, -60, 28, only=goal)
     shoot('goal-inside', (0, GD, 3), 9, -100, 8, lens=24, only=goal)
     shoot('big', (0, 0, 0.1), 7, -60, 35, only=big)
     shoot('small', (0, 0, 0.05), 4, -60, 35, only=small)

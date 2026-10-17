@@ -26,6 +26,24 @@ function finish(tex, renderer, { srgb = true, repeat = false, aniso = true } = {
   return tex;
 }
 
+// Height maps for bump mapping: grey canvases (128 = surface level, brighter = raised), linear data.
+function heightCanvas(w, h, level = 128) {
+  const hc = canvas(w, h);
+  hc.g.fillStyle = `rgb(${level},${level},${level})`; hc.g.fillRect(0, 0, w, h);
+  return hc;
+}
+const grey = (v) => `rgb(${v},${v},${v})`;
+// a soft groove / ridge along a path: wide faint strokes down to a narrow strong one (no blur filters)
+function strokeProfile(g, path, width, level) {
+  g.save(); g.lineCap = 'round'; g.lineJoin = 'round';
+  for (const [f, a] of [[1, 0.25], [0.7, 0.35], [0.45, 0.6], [0.25, 1]]) {
+    g.globalAlpha = a; g.strokeStyle = grey(level); g.lineWidth = width * f;
+    if (path instanceof Path2D) g.stroke(path); else { g.beginPath(); path(g); g.stroke(); }
+  }
+  g.restore();
+}
+export function heightTexture(c, renderer, repeat = true) { return finish(new THREE.CanvasTexture(c), renderer, { srgb: false, repeat }); }
+
 // draw text scaled to fit maxW
 function fitText(g, text, x, y, maxW, size, weight = 'bold') {
   g.font = `${weight} ${size}px Arial, Helvetica, sans-serif`;
@@ -232,7 +250,51 @@ export function makeFieldTextures(renderer) {
   g.globalCompositeOperation = 'source-over';
 
   const map = finish(new THREE.CanvasTexture(c), renderer);
-  return { map };
+
+  // --- relief (bump map, 8 uu / px): bevelled hex plates in the corner aprons and the centre
+  // platform, a raised concrete midline strip with grooved edges, raised paint on the field edge
+  const HPX = 8, HW = W / 2, HHh = Hh / 2;
+  const hm = heightCanvas(HW, HHh);
+  const hg = hm.g;
+  hg.setTransform(1 / HPX, 0, 0, -1 / HPX, HW / 2, HHh / 2);
+  const hexPath = (cx, cy, r, rot = Math.PI / 6) => {
+    const p = new Path2D();
+    for (let k = 0; k <= 6; k++) { const a = rot + k * Math.PI / 3; const x = cx + r * Math.cos(a), y = cy + r * Math.sin(a); if (k) p.lineTo(x, y); else p.moveTo(x, y); }
+    return p;
+  };
+  const hexRelief = (r, groove) => {
+    hg.fillStyle = grey(150); hg.fillRect(-X, -Y, 2 * X, 2 * Y);
+    const w = Math.sqrt(3) * r;
+    for (let row = -Math.ceil(Y / (1.5 * r)) - 1; row <= Math.ceil(Y / (1.5 * r)) + 1; row++) {
+      for (let col = -Math.ceil(X / w) - 1; col <= Math.ceil(X / w) + 1; col++) {
+        strokeProfile(hg, hexPath(col * w + (row & 1 ? w / 2 : 0), row * 1.5 * r, r), groove, 45);
+      }
+    }
+  };
+  {
+    const inner = RF + 70 + 820;
+    const apron = ringPath(RF + 70);
+    ringPath(inner, apron);
+    for (const team of [0, 1]) {
+      const sgn = team === 0 ? -1 : 1;
+      hg.save();
+      hg.clip(apron, 'evenodd');
+      hg.beginPath();
+      for (const sx of [-1, 1]) hg.rect(sx > 0 ? 1350 : -X, sgn > 0 ? 1650 : -Y, X - 1350, Y - 1650);
+      hg.clip();
+      hexRelief(210, 40);
+      hg.restore();
+    }
+  }
+  hg.save(); hg.clip(ringPath(RF + 70));
+  hg.fillStyle = grey(160); hg.fillRect(-X, -95, 2 * X, 190);
+  for (const y of [-95, 95]) strokeProfile(hg, (q) => { q.moveTo(-X, y); q.lineTo(X, y); }, 28, 60);
+  hg.restore();
+  hg.save(); hg.clip(hexPath(0, 0, 640, 0)); hexRelief(105, 26); hg.restore();
+  strokeProfile(hg, hexPath(0, 0, 640, 0), 40, 50);
+  strokeProfile(hg, ringPath(RF + 70), 40, 150);
+  const bumpMap = heightTexture(hm.c, renderer, false);
+  return { map, bumpMap };
 }
 
 // Tileable grass detail (greyscale around 0.5), sampled at high frequency in the floor shader.
@@ -305,7 +367,22 @@ function drawLowerWall(team) {
       fitText(ctx2, words[k], x0 + bw / 2, vy(A1) + bh / 2 + 2, bw * 0.84, Math.round(bh * (k % 2 ? 0.8 : 0.5)));
     }
   }
-  return { c, e: e.c, W, Hh };
+  // height: recessed panel seams, raised team trims, an inset ad band with raised board frames
+  const hm = heightCanvas(W, Hh);
+  const hg = hm.g;
+  for (let s = 0; s < WALL_TILE; s += 256) strokeProfile(hg, (q) => { q.moveTo(sx(s), vy(0)); q.lineTo(sx(s), vy(A0)); }, 9, 40);
+  for (const v of [130, 270]) strokeProfile(hg, (q) => { q.moveTo(0, vy(v)); q.lineTo(W, vy(v)); }, 9, 40);
+  for (const [a, b] of trims) {
+    hg.fillStyle = grey(150); hg.fillRect(0, vy(b), W, vy(a) - vy(b));
+    hg.fillStyle = grey(176); hg.fillRect(0, vy(b) + 2, W, vy(a) - vy(b) - 4);
+  }
+  hg.fillStyle = grey(70); hg.fillRect(0, vy(A1), W, vy(A0) - vy(A1));
+  for (let k = 0; k < words.length; k++) {
+    const x0 = k * bw;
+    hg.fillStyle = grey(110); hg.fillRect(x0 + 4, vy(A1) + 4, bw - 8, bh - 8);
+    hg.fillStyle = grey(92); hg.fillRect(x0 + 10, vy(A1) + 10, bw - 20, bh - 20);
+  }
+  return { c, e: e.c, h: hm.c, W, Hh };
 }
 
 // Atlas with both teams: v in [0, 0.5] = blue wall, [0.5, 1] = orange wall
@@ -313,14 +390,16 @@ function drawLowerWall(team) {
 export function makeLowerWallAtlas(renderer) {
   const parts = [drawLowerWall(0), drawLowerWall(1)];
   const W = parts[0].W, Hh = parts[0].Hh;
-  const A = canvas(W, Hh * 2), E = canvas(W, Hh * 2);
+  const A = canvas(W, Hh * 2), E = canvas(W, Hh * 2), B = canvas(W, Hh * 2);
   // canvas top = v 1 (flipY): orange on top, blue below
   A.g.drawImage(parts[1].c, 0, 0); A.g.drawImage(parts[0].c, 0, Hh);
   E.g.drawImage(parts[1].e, 0, 0); E.g.drawImage(parts[0].e, 0, Hh);
+  B.g.drawImage(parts[1].h, 0, 0); B.g.drawImage(parts[0].h, 0, Hh);
   const map = finish(new THREE.CanvasTexture(A.c), renderer, { repeat: true });
   const emissiveMap = finish(new THREE.CanvasTexture(E.c), renderer, { repeat: true });
-  map.wrapT = emissiveMap.wrapT = THREE.ClampToEdgeWrapping;
-  return { map, emissiveMap };
+  const bumpMap = heightTexture(B.c, renderer);
+  map.wrapT = emissiveMap.wrapT = bumpMap.wrapT = THREE.ClampToEdgeWrapping;
+  return { map, emissiveMap, bumpMap };
 }
 
 // ------------------------------------------------------------------ glass hex grid
@@ -348,23 +427,6 @@ export function makeHexTexture(renderer) {
   return t;
 }
 
-// ------------------------------------------------------------------ goal net
-export function makeNetTexture(renderer) {
-  const N = 128;
-  const { c, g } = canvas(N, N);
-  g.clearRect(0, 0, N, N);
-  g.fillStyle = 'rgba(255,255,255,0.13)'; g.fillRect(0, 0, N, N); // faint backing so the net reads as a surface
-  g.strokeStyle = 'rgba(255,255,255,1)'; g.lineWidth = 3;
-  // diamond mesh: 2 cells per tile
-  g.beginPath();
-  for (let k = -2; k <= 2; k++) {
-    g.moveTo(k * N / 2, 0); g.lineTo(k * N / 2 + N, N);
-    g.moveTo(k * N / 2 + N, 0); g.lineTo(k * N / 2, N);
-  }
-  g.stroke();
-  return finish(new THREE.CanvasTexture(c), renderer, { repeat: true });
-}
-
 // ------------------------------------------------------------------ goal floor
 // Tileable hex floor: dark base, white hex lines (tinted per team by vertex colour /
 // emissive). 9 hex columns x 10 rows per tile.
@@ -380,7 +442,13 @@ export function makeGoalFloorTexture(renderer) {
     for (let i = 0; i <= 6; i++) { const ang = Math.PI / 6 + i * Math.PI / 3; const x = cx + a * 0.9 * Math.cos(ang), y = cy + a * 0.9 * Math.sin(ang); if (i) g.lineTo(x, y); else g.moveTo(x, y); }
     g.stroke();
   }
-  return finish(new THREE.CanvasTexture(c), renderer, { repeat: true });
+  // height: raised hex plates with bevelled grooves between them
+  const hm = heightCanvas(W, Hh, 165);
+  for (let row = -1; row <= 10; row++) for (let col = -1; col <= 9; col++) {
+    const cx = col * w + (row & 1 ? w / 2 : 0), cy = row * rh;
+    strokeProfile(hm.g, (q) => { for (let i = 0; i <= 6; i++) { const ang = Math.PI / 6 + i * Math.PI / 3; const x = cx + a * 0.9 * Math.cos(ang), y = cy + a * 0.9 * Math.sin(ang); if (i) q.lineTo(x, y); else q.moveTo(x, y); } }, 7, 40);
+  }
+  return { map: finish(new THREE.CanvasTexture(c), renderer, { repeat: true }), bumpMap: heightTexture(hm.c, renderer) };
 }
 
 // ------------------------------------------------------------------ stands
@@ -399,7 +467,16 @@ export function makeSeatTexture(renderer) {
       g.fillRect(s * 16 + 2, y0 + 8, 12, Hh / rows - 14);
     }
   }
-  return finish(new THREE.CanvasTexture(c), renderer, { repeat: true });
+  // height: each row a step (ramping up towards its front edge), seat backs standing proud
+  const hm = heightCanvas(W, Hh);
+  for (let r = 0; r < rows; r++) {
+    const y0 = r * Hh / rows, rhh = Hh / rows;
+    const gr = hm.g.createLinearGradient(0, y0, 0, y0 + rhh);
+    gr.addColorStop(0, grey(190)); gr.addColorStop(0.15, grey(150)); gr.addColorStop(1, grey(70));
+    hm.g.fillStyle = gr; hm.g.fillRect(0, y0, W, rhh);
+    for (let k = 0; k < 16; k++) { hm.g.fillStyle = grey(200); hm.g.fillRect(k * 16 + 3, y0 + 8, 10, 6); }
+  }
+  return { map: finish(new THREE.CanvasTexture(c), renderer, { repeat: true }), bumpMap: heightTexture(hm.c, renderer) };
 }
 
 // Banner / ad board for stand fascias (one tile = 4 boards)
@@ -436,5 +513,11 @@ export function makePanelTexture(renderer) {
   for (let k = 0; k < 4; k++) { g.beginPath(); g.moveTo(0, k * N / 4); g.lineTo(18, k * N / 4 + N / 8); g.lineTo(0, (k + 1) * N / 4); g.stroke(); }
   // cross beam
   g.fillStyle = '#80858f'; g.fillRect(0, N / 2 - 4, N, 8);
-  return finish(new THREE.CanvasTexture(c), renderer, { repeat: true });
+  // height: panel seams recessed, truss beam and cross beam standing out
+  const hm = heightCanvas(N, N);
+  for (let k = 0; k < 4; k++) strokeProfile(hm.g, (q) => { q.moveTo(0, k * N / 4 + 1); q.lineTo(N, k * N / 4 + 1); }, 6, 50);
+  for (let k = 0; k < 8; k++) strokeProfile(hm.g, (q) => { q.moveTo(k * N / 8 + 1, 0); q.lineTo(k * N / 8 + 1, N); }, 6, 50);
+  hm.g.fillStyle = grey(230); hm.g.fillRect(0, 0, 18, N);
+  hm.g.fillStyle = grey(200); hm.g.fillRect(0, N / 2 - 4, N, 8);
+  return { map: finish(new THREE.CanvasTexture(c), renderer, { repeat: true }), bumpMap: heightTexture(hm.c, renderer) };
 }
