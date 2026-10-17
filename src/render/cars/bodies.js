@@ -16,6 +16,7 @@ import { CAR_BODIES } from '../../contracts.js';
 import { smooth, PartSet, Loft, sweepArc, roundedBox, latheX, discX, extrudeSide, M, setColor, clamp } from './geo.js';
 import { getWheelGeometries } from './wheels.js';
 import { VECTOR_MESH_META, VECTOR_MESH_B64 } from './vectorMesh.js';
+import { VECTOR_WHEEL_META, VECTOR_WHEEL_B64 } from './vectorWheel.js';
 
 // HDR vertex colours for emissive parts (bloom picks these up)
 const HEAD = [2.1, 2.2, 2.5];   // bright but not a glare blob in daylight
@@ -137,8 +138,10 @@ const BODY_SPECS = {
     // Octane-class buggy: low narrow nose with a barred grille cage and corner lamps, separate front
     // fender pods, pinched waist, compact cabin set back, high rear deck with an exposed engine block,
     // wide haunches and a big wing on struts. Floor raised for visible ground clearance.
-    hitbox: 'OCTANE', tyre: { wF: 12.0, wB: 14.0, extraF: 0, extraB: 0, spokes: 6, modelled: true },
-    nozzles: [[-52.0, 13.0, 0, 5.6]],
+    // the modelled body (tools/blender/models/octane.blend) brings its own wheels and exhausts; its
+    // wheels sit 0.1 / 0.25 uu further out than the hitbox hard points, rear tyres are 15.4 uu wide
+    hitbox: 'OCTANE', tyre: { wF: 12.5, wB: 15.4, extraF: 0.1, extraB: 0.25, spokes: 6, modelled: true },
+    nozzles: [[-50.5, 9.3, 13.6, 2.6], [-50.5, 9.3, -13.6, 2.6]],
     build(B) {
       const { ps, W } = B;
       const x0 = -50, x1 = 70;
@@ -520,8 +523,10 @@ export function bodySpec(bodyId) {
 // Bodies modelled in Blender (tools/blender/*.py) ship as compact quantised meshes; decode into
 // per-slot non-indexed geometries in uu, car model axes (+X fwd, +Y up, +Z right).
 const MODELLED = { vector: [VECTOR_MESH_META, VECTOR_MESH_B64] };
+const MODELLED_WHEELS = { vector: [VECTOR_WHEEL_META, VECTOR_WHEEL_B64] };
+const unb64 = (b64) => Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)).buffer;
 function addModelled(ps, meta, b64) {
-  const bin = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)).buffer;
+  const bin = unb64(b64);
   const q = 1 / meta.q;
   for (const part of meta.parts) {
     const { nv, ni, off, wide, slot } = part;
@@ -537,7 +542,8 @@ function addModelled(ps, meta, b64) {
       // Blender (x, y left, z up) -> model (x, z, -y)
       pos[k * 3] = P[v * 3] * q; pos[k * 3 + 1] = P[v * 3 + 2] * q; pos[k * 3 + 2] = -P[v * 3 + 1] * q;
       let nx = N[v * 3], ny = N[v * 3 + 2], nz = -N[v * 3 + 1];
-      const l = Math.hypot(nx, ny, nz) || 1;
+      let l = Math.hypot(nx, ny, nz);
+      if (!l) { nx = 0; ny = 1; nz = 0; l = 1; } // never feed a zero normal to the shader (NaN -> bloom blowout)
       nrm[k * 3] = nx / l; nrm[k * 3 + 1] = ny / l; nrm[k * 3 + 2] = nz / l;
       const c = meta.palette[C[v]];
       col[k * 3] = c[0]; col[k * 3 + 1] = c[1]; col[k * 3 + 2] = c[2];
@@ -550,6 +556,33 @@ function addModelled(ps, meta, b64) {
   }
 }
 
+// Modelled wheels are stored already in wheel space (radius 1, width 1, axle +Z): indexed tyre / rim
+// geometries with the same contract as getWheelGeometries (rim colours as vertex colours).
+function decodeWheel(meta, b64) {
+  const bin = unb64(b64), q = 1 / meta.q, out = {};
+  for (const { nv, ni, off, wide, slot } of meta.parts) {
+    let o = off;
+    const P = new Int16Array(bin, o, nv * 3); o += nv * 6;
+    const N = new Int8Array(bin, o, nv * 3); o += nv * 3;
+    const C = new Uint8Array(bin, o, nv); o += nv;
+    o = (o + 3) & ~3;
+    const I = wide ? new Uint32Array(bin, o, ni) : new Uint16Array(bin, o, ni);
+    const pos = new Float32Array(nv * 3), nrm = new Float32Array(nv * 3), col = new Float32Array(nv * 3);
+    for (let v = 0; v < nv; v++) {
+      const l = Math.hypot(N[v * 3], N[v * 3 + 1], N[v * 3 + 2]) || 1, c = meta.palette[C[v]];
+      for (let k = 0; k < 3; k++) { pos[v * 3 + k] = P[v * 3 + k] * q; nrm[v * 3 + k] = N[v * 3 + k] / l; col[v * 3 + k] = c[k]; }
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    g.setAttribute('normal', new THREE.BufferAttribute(nrm, 3));
+    g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    g.setIndex(new THREE.BufferAttribute(wide ? new Uint32Array(I) : new Uint16Array(I), 1));
+    g.computeBoundingSphere();
+    out[slot] = g;
+  }
+  return out;
+}
+
 export function buildBody(bodyId) {
   const id = bodySpec(bodyId);
   if (cache.has(id)) return cache.get(id);
@@ -558,12 +591,16 @@ export function buildBody(bodyId) {
   const W = restWheels(spec.hitbox, spec.tyre.extraF, spec.tyre.extraB);
   const B = { ps, W, spec };
   const noModel = typeof location !== 'undefined' && /[?&]procedural=1/.test(location.search);
-  if (MODELLED[id] && !noModel) addModelled(ps, ...MODELLED[id]);
-  else spec.build(B);
-  for (const [x, y, z, r] of spec.nozzles) nozzle(ps, x, y, z, r, 6);
+  const modelled = MODELLED[id] && !noModel;
+  if (modelled) addModelled(ps, ...MODELLED[id]);
+  else {
+    spec.build(B);
+    for (const [x, y, z, r] of spec.nozzles) nozzle(ps, x, y, z, r, 6);
+  }
   const geoms = ps.build(0.01);
   const res = {
     id, hitbox: spec.hitbox, geoms, tyre: spec.tyre,
+    wheel: modelled && MODELLED_WHEELS[id] ? decodeWheel(...MODELLED_WHEELS[id]) : null,
     nozzles: spec.nozzles.map(([x, y, z]) => new THREE.Vector3(x / 100, y / 100, z / 100)),
     nozzleRadius: spec.nozzles.map((n) => n[3] / 100),
   };

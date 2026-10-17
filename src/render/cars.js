@@ -91,7 +91,7 @@ export function createCarModel(ctx, opts) {
     meshes[slot] = m;
   }
   // wheels: 2 instanced meshes
-  const wg = getWheelGeometries(1, body.tyre.spokes || 5);
+  const wg = body.wheel || getWheelGeometries(1, body.tyre.spokes || 5);
   const tyres = new THREE.InstancedMesh(wg.tyre, sh.tyre, 4);
   const rims = new THREE.InstancedMesh(wg.rim, sh.rim, 4);
   for (const im of [tyres, rims]) {

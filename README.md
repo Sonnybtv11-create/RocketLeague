@@ -51,14 +51,23 @@ but not LAN play. The LAN screen will say "Network play isn't set up on this web
 
 ## Car models (Blender)
 
-The Vector body is modelled in Blender by a script, `tools/blender/octane_build.py`: control cages
-smoothed with subdivision, creased and marked sharp on hard edges, plus bevelled mechanical parts.
-The script writes a compact quantised mesh to `src/render/cars/vectorMesh.js`, which the game
-decodes at start-up. Blender material names map to the game's material slots (`paint`, `trim`,
-`glass`, `chrome:red` and so on). To rebuild after editing the script:
+The Vector (Octane) car is the Blender model in `tools/blender/models/octane.blend`.
+`tools/blender/import_octane.py` converts it for the game:
+
+- **Body:** reduced to about 26k triangles and written to `src/render/cars/vectorMesh.js`.
+- **Wheel:** one wheel (front right), reduced to about 7k triangles and written to
+  `src/render/cars/vectorWheel.js`. The game uses it for all four wheels.
+- **Placement:** the model is placed so its wheel centres land on the game's wheel positions.
+- **Materials:** Blender material names map to the game's material slots:
+  - `Paint_Primary_Blue` becomes the team colour.
+  - Glass, trim, chrome and metals, and the lights keep their own looks.
+  - `Emit_Boost_Blue` glows in the team colour and brightens while boosting.
+
+To rebuild after editing the model:
 
     uv venv --python 3.13 .bl && uv pip install --python .bl/bin/python bpy
-    .bl/bin/python tools/blender/octane_build.py [--blend out.blend]
+    .bl/bin/python tools/blender/import_octane.py [--target 26000] [--wheel 7000]
     node tools/assemble.mjs
 
-`?procedural=1` in the URL shows the older code-built body for comparison.
+`tools/blender/octane_build.py` is the earlier script-built body. To use it again, run it in place
+of the importer. `?procedural=1` in the URL shows the older code-built body for comparison.
