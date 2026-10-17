@@ -233,14 +233,18 @@ function getContactMaterial() {
   const c = document.createElement('canvas');
   c.width = 128; c.height = 128;
   const g = c.getContext('2d');
-  g.filter = 'blur(14px)';
-  g.fillStyle = '#fff';
-  g.beginPath();
-  g.roundRect ? g.roundRect(26, 30, 76, 68, 26) : g.rect(26, 30, 76, 68);
-  g.fill();
+  // soft elliptical falloff drawn with a gradient (canvas blur filters are not supported everywhere,
+  // e.g. Safari, which left a hard dark box under the car)
+  const grd = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+  grd.addColorStop(0, 'rgba(255,255,255,1)');
+  grd.addColorStop(0.45, 'rgba(255,255,255,0.75)');
+  grd.addColorStop(0.75, 'rgba(255,255,255,0.25)');
+  grd.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = grd;
+  g.fillRect(0, 0, 128, 128);
   const tex = new THREE.CanvasTexture(c);
   contactMat = new THREE.MeshBasicMaterial({
-    color: 0x000000, alphaMap: tex, transparent: true, opacity: 0.6, depthWrite: false,
+    color: 0x000000, alphaMap: tex, transparent: true, opacity: 0.55, depthWrite: false,
     polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4, toneMapped: false, fog: false, name: 'car.contact',
   });
   return contactMat;

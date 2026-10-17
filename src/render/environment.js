@@ -13,7 +13,7 @@ import * as THREE from 'three';
 import { QUALITY, TEAM_COLORS } from '../contracts.js';
 import { arenaNormal, ARENA_PARAMS } from '../sim/arena.js';
 import { buildArenaGeometries, halfRing, PROFILE, SPLIT_ROW, RING_S, V_LOWER } from './env/arenaMesh.js';
-import { makeFieldTextures, makeGrassDetail, makeLowerWallAtlas, makeHexTexture, WALL_TILE, HEX_A } from './env/textures.js';
+import { makeFieldTextures, makeGrassDetail, makeLowerWallAtlas, makeHexTexture, WALL_TILE, HEX_A, STRIPE_W } from './env/textures.js';
 import { setColor, setEmis, vertexEmissive, merge, scaleUV } from './env/matUtil.js';
 import { createSky, createScenery } from './env/sky.js';
 import { createPads } from './env/pads.js';
@@ -91,6 +91,18 @@ function buildEnvScene(skyMaterial) {
   return sc;
 }
 
+// Mown-turf sheen: alternate stripes have their blades laid towards +y or -y, so each stripe looks
+// lighter when you look along its blades and darker against them; the pattern flips as the camera
+// turns round and fades when looking across the stripes. Needs vMapUv / vViewPosition (standard material).
+const MOW_SHEEN = `
+float mowSheen(vec2 muv) {
+  float band = floor((muv.y - 0.5) * ${(2 * Y / STRIPE_W).toFixed(4)});
+  float dir = mod(band, 2.0) < 0.5 ? 1.0 : -1.0;
+  vec3 mow = normalize((viewMatrix * vec4(0.0, 0.0, 1.0, 0.0)).xyz);
+  vec3 look = normalize(-vViewPosition);
+  return 1.0 + 0.24 * dir * dot(look, mow);
+}`;
+
 export function createEnvironment(ctx) {
   const { renderer, scene } = ctx;
   const root = new THREE.Group();
@@ -112,8 +124,9 @@ export function createEnvironment(ctx) {
   floorMat.onBeforeCompile = (sh) => {
     sh.uniforms.uDetail = { value: detail };
     sh.fragmentShader = sh.fragmentShader
-      .replace('#include <common>', '#include <common>\nuniform sampler2D uDetail;')
+      .replace('#include <common>', '#include <common>\nuniform sampler2D uDetail;\n' + MOW_SHEEN)
       .replace('#include <map_fragment>', `#include <map_fragment>
+      diffuseColor.rgb *= mowSheen(vMapUv);
       {
         vec2 duv = vMapUv * vec2(${(2 * X / 95).toFixed(2)}, ${(2 * Y / 95).toFixed(2)});
         float dA = texture2D(uDetail, duv).r;
@@ -144,7 +157,8 @@ export function createEnvironment(ctx) {
       .replace('#include <common>', `#include <common>
       varying float vShell;
       varying vec2 vBlade;
-      float gHash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }`)
+      float gHash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+      ${MOW_SHEEN}`)
       .replace('#include <clipping_planes_fragment>', `#include <clipping_planes_fragment>
       float gDist = length(vViewPosition);
       float gReach = 1.0 - smoothstep(9.0, 26.0, gDist);
@@ -158,7 +172,7 @@ export function createEnvironment(ctx) {
         if (vShell > hgt) discard;
         float r = 0.4 * pow(1.0 - vShell / max(hgt, 0.001), 0.8);
         if (dot(f, f) > r * r) discard;
-        diffuseColor.rgb *= mix(0.62, 1.12, vShell / max(hgt, 0.001));
+        diffuseColor.rgb *= mix(0.62, 1.12, vShell / max(hgt, 0.001)) * mowSheen(vMapUv);
       }`);
   };
   grassMat.customProgramCacheKey = () => 'tp-grass';
@@ -195,6 +209,10 @@ export function createEnvironment(ctx) {
             float rib = step(0.86, fract(vMapUv.x * 16.0));
             float band = step(0.47, fract(vMapUv.y * 2.0)) * step(fract(vMapUv.y * 2.0), 0.53);
             diffuseColor.rgb = vec3(0.13, 0.14, 0.16) + vec3(0.07) * max(rib, band);
+          } else {
+            // occlusion where the ramp meets the pitch: darkest at the floor, gone ~1.5 m up
+            vec3 wpos = cameraPosition + transpose(mat3(viewMatrix)) * (-vViewPosition);
+            diffuseColor.rgb *= mix(0.55, 1.0, smoothstep(0.0, 1.5, wpos.y)) * 0.9;
           }`)
         .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n if (!gl_FrontFacing) totalEmissiveRadiance = vec3(0.0);');
     };
@@ -258,6 +276,7 @@ export function createEnvironment(ctx) {
   sun.castShadow = true;
   sun.shadow.bias = -0.0004;
   sun.shadow.normalBias = 0.025;
+  sun.shadow.radius = 2.5;   // soft penumbra (PCF, Vogel-disk taps)
   const target = new THREE.Object3D();
   sun.target = target;
   root.add(target);
@@ -289,8 +308,13 @@ export function createEnvironment(ctx) {
     cam.updateProjectionMatrix();
   }
   root.add(sun);
-  const hemi = new THREE.HemisphereLight(0xc4dcff, 0x6e6a5e, 0.7);
+  const hemi = new THREE.HemisphereLight(0xc4dcff, 0x5a5a50, 0.5);
   root.add(hemi);
+  // floodlight fill: the roof-ring lamps light the arena from every side, so the side away from the
+  // sun is never flat ambient. A cooler, unshadowed key from the opposite quarter models that.
+  const fill = new THREE.DirectionalLight(0xdfe8ff, 0.75);
+  fill.position.set(-SUN_DIR.x, Math.max(0.6, SUN_DIR.y), -SUN_DIR.z).multiplyScalar(300);
+  root.add(fill);
 
   // environment map (reflections / IBL)
   const pmrem = new THREE.PMREMGenerator(renderer);

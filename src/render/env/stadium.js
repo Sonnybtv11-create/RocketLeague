@@ -139,14 +139,21 @@ void main() {
     arms = min(sdBox(p - vec2(-0.24 + wave, h - 0.12), vec2(0.045, 0.2), 0.04), sdBox(p - vec2(0.24 + wave, h - 0.12), vec2(0.045, 0.2), 0.04));
     d = min(d, arms);
   }
-  if (d > 0.0) discard;
+  // far away a person is only a few pixels tall: drawn as hard cut-outs the stands turn into
+  // sparkling confetti, so the silhouettes melt into a soft, darker band of colour with distance
+  float far = smoothstep(0.03, 0.09, fwidth(vL.y));
+  // anti-aliased silhouette (alpha-to-coverage with MSAA, cut-out without)
+  float cov = clamp(0.5 - d / max(fwidth(d), 1e-4), 0.0, 1.0);
+  if (cov <= 0.0) discard;
   vec3 skin = mix(vec3(0.95, 0.72, 0.55), vec3(0.35, 0.22, 0.14), vRnd.z);
   skin = pow(skin, vec3(2.2));
   vec3 c = (head < 0.0 || arms < 0.0 && p.y > h - 0.1) ? skin : vCol;
   if (head < 0.0 && p.y > h - 0.1 && vRnd.y > 0.45) c = pow(vec3(0.12, 0.08, 0.05) + vRnd.z * 0.15, vec3(2.2)); // hair
   float shade = 0.55 + 0.45 * smoothstep(0.0, h, p.y);
   shade *= 0.8 + 0.4 * fract(vRnd.x * 13.7);
-  gl_FragColor = vec4(c * uLight * shade, 1.0);
+  vec3 col = c * uLight * shade;
+  col = mix(col, mix(col, vec3(dot(col, vec3(0.3, 0.5, 0.2))), 0.45) * 0.8, far);
+  gl_FragColor = vec4(col, cov);
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
   #include <fog_fragment>
@@ -213,7 +220,7 @@ function buildCrowd(path, quality) {
   g.userData.total = n;
   const mat = new THREE.ShaderMaterial({
     uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, { uTime: { value: 0 }, uExcite: { value: 0.1 }, uLight: { value: new THREE.Color(0.4, 0.41, 0.46) } }]),
-    vertexShader: CROWD_VERT, fragmentShader: CROWD_FRAG, fog: true,
+    vertexShader: CROWD_VERT, fragmentShader: CROWD_FRAG, fog: true, alphaToCoverage: true,
   });
   const mesh = new THREE.Mesh(g, mat);
   mesh.frustumCulled = false;
@@ -260,7 +267,9 @@ export function createStadium(ctx) {
   structGeo.dispose(); roofGeo.dispose();
   const panelTex = track(makePanelTexture(renderer));
   const shellMat = track(vertexEmissive(new THREE.MeshStandardMaterial({ map: panelTex, vertexColors: true, roughness: 0.88, metalness: 0.0, side: THREE.DoubleSide, envMapIntensity: 0.15 }), 'stadiumShell'));
-  const shellMesh = new THREE.Mesh(shellGeo, shellMat); shellMesh.castShadow = true;
+  // the roof canopy would throw a hard-edged ring of shadow across the whole pitch (big light/dark
+  // wedges); the floodlights fill that in, so only the stands and the arena itself cast shadows
+  const shellMesh = new THREE.Mesh(shellGeo, shellMat); shellMesh.castShadow = false;
   shellMesh.name = 'stadiumStructure';
   group.add(shellMesh);
   const structMat = track(new THREE.MeshStandardMaterial({ color: 0x7d838f, roughness: 0.92, metalness: 0.05 }));

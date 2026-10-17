@@ -37,12 +37,12 @@ function fitText(g, text, x, y, maxW, size, weight = 'bold') {
 
 export const TEAM_CSS = ['#2f78ff', '#ff7c1c'];
 export const TEAM_PAINT = ['#2457c8', '#f27a1a']; // field paint
-const PAINT_ALPHA = [1.0, 1.3]; // orange needs more coverage to not read as brown over green
 export const TEAM_CSS_LIGHT = ['#7fb2ff', '#ffb36e'];
 
 // ------------------------------------------------------------------ field
 // Canvas covers x in [-X, X], y in [-Y, Y] at 4 uu / px. Drawing is done in sim
 // units through a transform (y up = towards the orange goal = canvas top).
+export const STRIPE_W = 512, STRIPES = 20; // mowing stripes (uu); the floor shader uses the same layout
 export function makeFieldTextures(renderer) {
   const PX = 4;
   const W = (2 * X) / PX, Hh = (2 * Y) / PX;
@@ -50,30 +50,19 @@ export function makeFieldTextures(renderer) {
   const R = rng(1337);
   const toSim = () => g.setTransform(1 / PX, 0, 0, -1 / PX, W / 2, Hh / 2);
 
-  // --- turf base: checkerboard mowing squares + team-half tint
+  // --- turf base: mowing stripes across the pitch (parallel to the goal lines) + team-half tint.
+  // The albedo difference is kept small: most of the stripe contrast comes from the floor shader's
+  // view-dependent sheen (blades mown towards / away from the camera), like real turf.
   g.setTransform(1, 0, 0, 1, 0, 0);
   toSim();
-  const SQ = 1024, OX = SQ / 2; // half-square x offset: no light/dark seam on x = 0
-  for (let ix = -5; ix < 5; ix++) {
-    for (let iy = -5; iy < 5; iy++) {
-      const light = ((ix + iy) & 1) === 0;
-      const team = iy < 0 ? 0 : 1;
-      let r = light ? 50 : 38, gg = light ? 108 : 88, b = light ? 42 : 34;
-      if (team === 0) { r -= 2; b += 4; } else { r += 4; b -= 2; }
-      g.fillStyle = `rgb(${r},${gg},${b})`;
-      g.fillRect(ix * SQ + OX, iy * SQ, SQ, SQ);
-    }
+  for (let iy = -STRIPES / 2; iy < STRIPES / 2; iy++) {
+    const light = (iy & 1) === 0;
+    const team = iy < 0 ? 0 : 1;
+    let r = light ? 45 : 40, gg = light ? 99 : 91, b = light ? 38 : 35;
+    if (team === 0) { r -= 2; b += 4; } else { r += 4; b -= 2; }
+    g.fillStyle = `rgb(${r},${gg},${b})`;
+    g.fillRect(-X, iy * STRIPE_W, 2 * X, STRIPE_W);
   }
-  // fine mowing stripes inside each square (alternating direction per square)
-  g.globalAlpha = 0.025;
-  for (let ix = -5; ix < 5; ix++) for (let iy = -5; iy < 5; iy++) {
-    const horiz = ((ix + iy) & 1) === 0;
-    for (let k = 0; k < 8; k += 2) {
-      g.fillStyle = '#ffffff';
-      if (horiz) g.fillRect(ix * SQ + OX, iy * SQ + k * 128, SQ, 128); else g.fillRect(ix * SQ + OX + k * 128, iy * SQ, 128, SQ);
-    }
-  }
-  g.globalAlpha = 1;
   // low/medium-frequency mottling: tiny random canvases scaled up with smoothing
   // and overlaid (fast 2D-canvas primitives, no per-pixel JS loop)
   g.setTransform(1, 0, 0, 1, 0, 0);
@@ -127,24 +116,13 @@ export function makeFieldTextures(renderer) {
     }
   };
 
-  // --- team zones: broad translucent team bands and thin glowing "circuit" lines in each half
+  // --- team zones: thin glowing "circuit" lines in each half
   for (const team of [0, 1]) {
     const s = team === 0 ? -1 : 1;
-    const col = TEAM_PAINT[team], light = TEAM_CSS_LIGHT[team];
+    const light = TEAM_CSS_LIGHT[team];
     g.save();
     g.clip(ringPath(RF + 70));
     g.beginPath(); g.rect(-X, s > 0 ? 0 : -Y, 2 * X, Y); g.clip();
-    // broad bands running from the goal end towards midfield
-    g.fillStyle = col; g.globalAlpha = 0.2 * PAINT_ALPHA[team];
-    for (const sx of [-1, 1]) {
-      for (const [x0, len, ang] of [[700, 3600, 0.32], [1900, 2600, 0.5]]) {
-        g.save();
-        g.translate(sx * x0, s * (Y - 400));
-        g.rotate(-s * sx * ang + (s > 0 ? Math.PI : 0));
-        g.fillRect(-160, 0, 320, len);
-        g.restore();
-      }
-    }
     g.globalAlpha = 1;
     // circuit lines: straight runs with 45-degree bends, mirrored left/right
     const Rl = rng(77 + team);
@@ -239,6 +217,19 @@ export function makeFieldTextures(renderer) {
     g.fillStyle = 'rgba(30,30,20,0.35)'; g.beginPath(); g.arc(p[0], p[1], 260, 0, Math.PI * 2); g.fill();
     line(18, 'rgba(255,214,90,0.7)'); g.beginPath(); g.arc(p[0], p[1], 260, 0, Math.PI * 2); g.stroke();
   }
+
+  // --- lighting bake: floodlit centre falling off gently towards the ends, and occlusion where the
+  // pitch meets the walls (the ramps block part of the sky and the floodlights there)
+  g.setTransform(1, 0, 0, 1, 0, 0);
+  g.globalCompositeOperation = 'multiply';
+  const fall = g.createRadialGradient(W / 2, Hh / 2, Hh * 0.12, W / 2, Hh / 2, Hh * 0.62);
+  fall.addColorStop(0, '#ffffff'); fall.addColorStop(1, '#d6d6d6');
+  g.fillStyle = fall; g.fillRect(0, 0, W, Hh);
+  toSim();
+  for (const [w, a] of [[520, 0.05], [380, 0.06], [260, 0.08], [160, 0.1], [80, 0.12]]) {
+    line(w, `rgba(0,0,0,${a})`); g.stroke(ringPath(RF));
+  }
+  g.globalCompositeOperation = 'source-over';
 
   const map = finish(new THREE.CanvasTexture(c), renderer);
   return { map };

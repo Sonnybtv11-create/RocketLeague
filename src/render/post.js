@@ -111,6 +111,7 @@ uniform sampler2D tBloom;
 uniform sampler2D tAO;
 uniform float uBloom;
 uniform float uAO;
+uniform float uAspect;
 #include <tonemapping_pars_fragment>
 #include <colorspace_pars_fragment>
 varying vec2 vUv;
@@ -133,7 +134,15 @@ void main() {
   #ifdef SRGB_TRANSFER
     c = sRGBTransferOETF(c);
   #endif
-  gl_FragColor = c;
+  // grade (display space): slightly muted saturation, a gentle S-curve and a soft lens vignette,
+  // so the frame reads like a camera image instead of flat flood-filled colour
+  vec3 g = clamp(c.rgb, 0.0, 1.0);
+  float lum = dot(g, vec3(0.2126, 0.7152, 0.0722));
+  g = mix(vec3(lum), g, 0.9);
+  g = mix(g, g * g * (3.0 - 2.0 * g), 0.22);
+  vec2 v = (vUv - 0.5) * vec2(uAspect, 1.0);
+  g *= 1.0 - 0.3 * smoothstep(0.4, 1.15, length(v));
+  gl_FragColor = vec4(g, 1.0);
 }`;
 
 function raw(fs, uniforms, extra = {}) {
@@ -159,7 +168,7 @@ export function createPost(ctx) {
   });
   const outMat = raw(OUT_FS, {
     tScene: { value: null }, tBloom: { value: null }, tAO: { value: null },
-    uBloom: { value: BLOOM_STRENGTH }, uAO: { value: 0.85 }, toneMappingExposure: { value: 1 },
+    uBloom: { value: BLOOM_STRENGTH }, uAO: { value: 0.85 }, uAspect: { value: 16 / 9 }, toneMappingExposure: { value: 1 },
   });
   const fxaaMat = new THREE.ShaderMaterial({
     uniforms: THREE.UniformsUtils.clone(FXAAShader.uniforms), vertexShader: FXAAShader.vertexShader, fragmentShader: FXAAShader.fragmentShader,
@@ -310,6 +319,7 @@ export function createPost(ctx) {
       outMat.uniforms.tBloom.value = bloomTex;
       outMat.uniforms.tAO.value = gtao ? gtao.pdRenderTarget.texture : null;
       outMat.uniforms.toneMappingExposure.value = renderer.toneMappingExposure;
+      outMat.uniforms.uAspect.value = width / Math.max(1, height);
       if (ldrRT) {
         pass(outMat, ldrRT);
         fxaaMat.uniforms.tDiffuse.value = ldrRT.texture;

@@ -5441,8 +5441,9 @@ function fitText(g, text, x, y, maxW, size, weight = "bold") {
 }
 var TEAM_CSS = ["#2f78ff", "#ff7c1c"];
 var TEAM_PAINT = ["#2457c8", "#f27a1a"];
-var PAINT_ALPHA = [1, 1.3];
 var TEAM_CSS_LIGHT = ["#7fb2ff", "#ffb36e"];
+var STRIPE_W = 512;
+var STRIPES = 20;
 function makeFieldTextures(renderer2) {
   const PX = 4;
   const W = 2 * X3 / PX, Hh = 2 * Y3 / PX;
@@ -5451,33 +5452,20 @@ function makeFieldTextures(renderer2) {
   const toSim = () => g.setTransform(1 / PX, 0, 0, -1 / PX, W / 2, Hh / 2);
   g.setTransform(1, 0, 0, 1, 0, 0);
   toSim();
-  const SQ = 1024, OX = SQ / 2;
-  for (let ix = -5; ix < 5; ix++) {
-    for (let iy = -5; iy < 5; iy++) {
-      const light2 = (ix + iy & 1) === 0;
-      const team = iy < 0 ? 0 : 1;
-      let r = light2 ? 50 : 38, gg = light2 ? 108 : 88, b = light2 ? 42 : 34;
-      if (team === 0) {
-        r -= 2;
-        b += 4;
-      } else {
-        r += 4;
-        b -= 2;
-      }
-      g.fillStyle = `rgb(${r},${gg},${b})`;
-      g.fillRect(ix * SQ + OX, iy * SQ, SQ, SQ);
+  for (let iy = -STRIPES / 2; iy < STRIPES / 2; iy++) {
+    const light2 = (iy & 1) === 0;
+    const team = iy < 0 ? 0 : 1;
+    let r = light2 ? 45 : 40, gg = light2 ? 99 : 91, b = light2 ? 38 : 35;
+    if (team === 0) {
+      r -= 2;
+      b += 4;
+    } else {
+      r += 4;
+      b -= 2;
     }
+    g.fillStyle = `rgb(${r},${gg},${b})`;
+    g.fillRect(-X3, iy * STRIPE_W, 2 * X3, STRIPE_W);
   }
-  g.globalAlpha = 0.025;
-  for (let ix = -5; ix < 5; ix++) for (let iy = -5; iy < 5; iy++) {
-    const horiz = (ix + iy & 1) === 0;
-    for (let k = 0; k < 8; k += 2) {
-      g.fillStyle = "#ffffff";
-      if (horiz) g.fillRect(ix * SQ + OX, iy * SQ + k * 128, SQ, 128);
-      else g.fillRect(ix * SQ + OX + k * 128, iy * SQ, 128, SQ);
-    }
-  }
-  g.globalAlpha = 1;
   g.setTransform(1, 0, 0, 1, 0, 0);
   g.imageSmoothingEnabled = true;
   g.globalCompositeOperation = "overlay";
@@ -5558,23 +5546,12 @@ function makeFieldTextures(renderer2) {
   };
   for (const team of [0, 1]) {
     const s2 = team === 0 ? -1 : 1;
-    const col = TEAM_PAINT[team], light2 = TEAM_CSS_LIGHT[team];
+    const light2 = TEAM_CSS_LIGHT[team];
     g.save();
     g.clip(ringPath(RF3 + 70));
     g.beginPath();
     g.rect(-X3, s2 > 0 ? 0 : -Y3, 2 * X3, Y3);
     g.clip();
-    g.fillStyle = col;
-    g.globalAlpha = 0.2 * PAINT_ALPHA[team];
-    for (const sx of [-1, 1]) {
-      for (const [x0, len3, ang] of [[700, 3600, 0.32], [1900, 2600, 0.5]]) {
-        g.save();
-        g.translate(sx * x0, s2 * (Y3 - 400));
-        g.rotate(-s2 * sx * ang + (s2 > 0 ? Math.PI : 0));
-        g.fillRect(-160, 0, 320, len3);
-        g.restore();
-      }
-    }
     g.globalAlpha = 1;
     const Rl = rng(77 + team);
     for (let n = 0; n < 5; n++) {
@@ -5711,6 +5688,19 @@ function makeFieldTextures(renderer2) {
     g.arc(p[0], p[1], 260, 0, Math.PI * 2);
     g.stroke();
   }
+  g.setTransform(1, 0, 0, 1, 0, 0);
+  g.globalCompositeOperation = "multiply";
+  const fall = g.createRadialGradient(W / 2, Hh / 2, Hh * 0.12, W / 2, Hh / 2, Hh * 0.62);
+  fall.addColorStop(0, "#ffffff");
+  fall.addColorStop(1, "#d6d6d6");
+  g.fillStyle = fall;
+  g.fillRect(0, 0, W, Hh);
+  toSim();
+  for (const [w, a] of [[520, 0.05], [380, 0.06], [260, 0.08], [160, 0.1], [80, 0.12]]) {
+    line(w, `rgba(0,0,0,${a})`);
+    g.stroke(ringPath(RF3));
+  }
+  g.globalCompositeOperation = "source-over";
   const map = finish(new THREE3.CanvasTexture(c), renderer2);
   return { map };
 }
@@ -6674,14 +6664,21 @@ void main() {
     arms = min(sdBox(p - vec2(-0.24 + wave, h - 0.12), vec2(0.045, 0.2), 0.04), sdBox(p - vec2(0.24 + wave, h - 0.12), vec2(0.045, 0.2), 0.04));
     d = min(d, arms);
   }
-  if (d > 0.0) discard;
+  // far away a person is only a few pixels tall: drawn as hard cut-outs the stands turn into
+  // sparkling confetti, so the silhouettes melt into a soft, darker band of colour with distance
+  float far = smoothstep(0.03, 0.09, fwidth(vL.y));
+  // anti-aliased silhouette (alpha-to-coverage with MSAA, cut-out without)
+  float cov = clamp(0.5 - d / max(fwidth(d), 1e-4), 0.0, 1.0);
+  if (cov <= 0.0) discard;
   vec3 skin = mix(vec3(0.95, 0.72, 0.55), vec3(0.35, 0.22, 0.14), vRnd.z);
   skin = pow(skin, vec3(2.2));
   vec3 c = (head < 0.0 || arms < 0.0 && p.y > h - 0.1) ? skin : vCol;
   if (head < 0.0 && p.y > h - 0.1 && vRnd.y > 0.45) c = pow(vec3(0.12, 0.08, 0.05) + vRnd.z * 0.15, vec3(2.2)); // hair
   float shade = 0.55 + 0.45 * smoothstep(0.0, h, p.y);
   shade *= 0.8 + 0.4 * fract(vRnd.x * 13.7);
-  gl_FragColor = vec4(c * uLight * shade, 1.0);
+  vec3 col = c * uLight * shade;
+  col = mix(col, mix(col, vec3(dot(col, vec3(0.3, 0.5, 0.2))), 0.45) * 0.8, far);
+  gl_FragColor = vec4(col, cov);
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
   #include <fog_fragment>
@@ -6758,7 +6755,8 @@ function buildCrowd(path, quality) {
     uniforms: THREE8.UniformsUtils.merge([THREE8.UniformsLib.fog, { uTime: { value: 0 }, uExcite: { value: 0.1 }, uLight: { value: new THREE8.Color(0.4, 0.41, 0.46) } }]),
     vertexShader: CROWD_VERT,
     fragmentShader: CROWD_FRAG,
-    fog: true
+    fog: true,
+    alphaToCoverage: true
   });
   const mesh = new THREE8.Mesh(g, mat);
   mesh.frustumCulled = false;
@@ -6810,7 +6808,7 @@ function createStadium(ctx2) {
   const panelTex = track(makePanelTexture(renderer2));
   const shellMat = track(vertexEmissive(new THREE8.MeshStandardMaterial({ map: panelTex, vertexColors: true, roughness: 0.88, metalness: 0, side: THREE8.DoubleSide, envMapIntensity: 0.15 }), "stadiumShell"));
   const shellMesh = new THREE8.Mesh(shellGeo, shellMat);
-  shellMesh.castShadow = true;
+  shellMesh.castShadow = false;
   shellMesh.name = "stadiumStructure";
   group.add(shellMesh);
   const structMat = track(new THREE8.MeshStandardMaterial({ color: 8225679, roughness: 0.92, metalness: 0.05 }));
@@ -7337,6 +7335,14 @@ function buildEnvScene(skyMaterial) {
   }
   return sc;
 }
+var MOW_SHEEN = `
+float mowSheen(vec2 muv) {
+  float band = floor((muv.y - 0.5) * ${(2 * Y5 / STRIPE_W).toFixed(4)});
+  float dir = mod(band, 2.0) < 0.5 ? 1.0 : -1.0;
+  vec3 mow = normalize((viewMatrix * vec4(0.0, 0.0, 1.0, 0.0)).xyz);
+  vec3 look = normalize(-vViewPosition);
+  return 1.0 + 0.24 * dir * dot(look, mow);
+}`;
 function createEnvironment(ctx2) {
   const { renderer: renderer2, scene: scene2 } = ctx2;
   const root = new THREE10.Group();
@@ -7357,7 +7363,8 @@ function createEnvironment(ctx2) {
   const floorMat = track(new THREE10.MeshStandardMaterial({ map: field.map, roughness: 0.93, metalness: 0, envMapIntensity: 0.35 }));
   floorMat.onBeforeCompile = (sh) => {
     sh.uniforms.uDetail = { value: detail };
-    sh.fragmentShader = sh.fragmentShader.replace("#include <common>", "#include <common>\nuniform sampler2D uDetail;").replace("#include <map_fragment>", `#include <map_fragment>
+    sh.fragmentShader = sh.fragmentShader.replace("#include <common>", "#include <common>\nuniform sampler2D uDetail;\n" + MOW_SHEEN).replace("#include <map_fragment>", `#include <map_fragment>
+      diffuseColor.rgb *= mowSheen(vMapUv);
       {
         vec2 duv = vMapUv * vec2(${(2 * X4 / 95).toFixed(2)}, ${(2 * Y5 / 95).toFixed(2)});
         float dA = texture2D(uDetail, duv).r;
@@ -7380,7 +7387,8 @@ function createEnvironment(ctx2) {
     sh.fragmentShader = sh.fragmentShader.replace("#include <common>", `#include <common>
       varying float vShell;
       varying vec2 vBlade;
-      float gHash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }`).replace("#include <clipping_planes_fragment>", `#include <clipping_planes_fragment>
+      float gHash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+      ${MOW_SHEEN}`).replace("#include <clipping_planes_fragment>", `#include <clipping_planes_fragment>
       float gDist = length(vViewPosition);
       float gReach = 1.0 - smoothstep(9.0, 26.0, gDist);
       if (vShell > gReach) discard;`).replace("#include <map_fragment>", `#include <map_fragment>
@@ -7392,7 +7400,7 @@ function createEnvironment(ctx2) {
         if (vShell > hgt) discard;
         float r = 0.4 * pow(1.0 - vShell / max(hgt, 0.001), 0.8);
         if (dot(f, f) > r * r) discard;
-        diffuseColor.rgb *= mix(0.62, 1.12, vShell / max(hgt, 0.001));
+        diffuseColor.rgb *= mix(0.62, 1.12, vShell / max(hgt, 0.001)) * mowSheen(vMapUv);
       }`);
   };
   grassMat.customProgramCacheKey = () => "tp-grass";
@@ -7432,6 +7440,10 @@ function createEnvironment(ctx2) {
             float rib = step(0.86, fract(vMapUv.x * 16.0));
             float band = step(0.47, fract(vMapUv.y * 2.0)) * step(fract(vMapUv.y * 2.0), 0.53);
             diffuseColor.rgb = vec3(0.13, 0.14, 0.16) + vec3(0.07) * max(rib, band);
+          } else {
+            // occlusion where the ramp meets the pitch: darkest at the floor, gone ~1.5 m up
+            vec3 wpos = cameraPosition + transpose(mat3(viewMatrix)) * (-vViewPosition);
+            diffuseColor.rgb *= mix(0.55, 1.0, smoothstep(0.0, 1.5, wpos.y)) * 0.9;
           }`).replace("#include <emissivemap_fragment>", "#include <emissivemap_fragment>\n if (!gl_FrontFacing) totalEmissiveRadiance = vec3(0.0);");
     };
     m.customProgramCacheKey = () => "tp-lowerwall";
@@ -7494,6 +7506,7 @@ function createEnvironment(ctx2) {
   sun.castShadow = true;
   sun.shadow.bias = -4e-4;
   sun.shadow.normalBias = 0.025;
+  sun.shadow.radius = 2.5;
   const target = new THREE10.Object3D();
   sun.target = target;
   root.add(target);
@@ -7529,8 +7542,11 @@ function createEnvironment(ctx2) {
     cam.updateProjectionMatrix();
   }
   root.add(sun);
-  const hemi = new THREE10.HemisphereLight(12901631, 7236190, 0.7);
+  const hemi = new THREE10.HemisphereLight(12901631, 5921360, 0.5);
   root.add(hemi);
+  const fill = new THREE10.DirectionalLight(14674175, 0.75);
+  fill.position.set(-SUN_DIR.x, Math.max(0.6, SUN_DIR.y), -SUN_DIR.z).multiplyScalar(300);
+  root.add(fill);
   const pmrem = new THREE10.PMREMGenerator(renderer2);
   const envScene = buildEnvScene(sky.material);
   let envRT = null, envSize = 0;
@@ -9591,17 +9607,19 @@ function getContactMaterial() {
   c.width = 128;
   c.height = 128;
   const g = c.getContext("2d");
-  g.filter = "blur(14px)";
-  g.fillStyle = "#fff";
-  g.beginPath();
-  g.roundRect ? g.roundRect(26, 30, 76, 68, 26) : g.rect(26, 30, 76, 68);
-  g.fill();
+  const grd = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+  grd.addColorStop(0, "rgba(255,255,255,1)");
+  grd.addColorStop(0.45, "rgba(255,255,255,0.75)");
+  grd.addColorStop(0.75, "rgba(255,255,255,0.25)");
+  grd.addColorStop(1, "rgba(255,255,255,0)");
+  g.fillStyle = grd;
+  g.fillRect(0, 0, 128, 128);
   const tex = new THREE17.CanvasTexture(c);
   contactMat = new THREE17.MeshBasicMaterial({
     color: 0,
     alphaMap: tex,
     transparent: true,
-    opacity: 0.6,
+    opacity: 0.55,
     depthWrite: false,
     polygonOffset: true,
     polygonOffsetFactor: -4,
@@ -11877,6 +11895,7 @@ uniform sampler2D tBloom;
 uniform sampler2D tAO;
 uniform float uBloom;
 uniform float uAO;
+uniform float uAspect;
 #include <tonemapping_pars_fragment>
 #include <colorspace_pars_fragment>
 varying vec2 vUv;
@@ -11899,7 +11918,15 @@ void main() {
   #ifdef SRGB_TRANSFER
     c = sRGBTransferOETF(c);
   #endif
-  gl_FragColor = c;
+  // grade (display space): slightly muted saturation, a gentle S-curve and a soft lens vignette,
+  // so the frame reads like a camera image instead of flat flood-filled colour
+  vec3 g = clamp(c.rgb, 0.0, 1.0);
+  float lum = dot(g, vec3(0.2126, 0.7152, 0.0722));
+  g = mix(vec3(lum), g, 0.9);
+  g = mix(g, g * g * (3.0 - 2.0 * g), 0.22);
+  vec2 v = (vUv - 0.5) * vec2(uAspect, 1.0);
+  g *= 1.0 - 0.3 * smoothstep(0.4, 1.15, length(v));
+  gl_FragColor = vec4(g, 1.0);
 }`
 );
 function raw(fs, uniforms, extra = {}) {
@@ -11934,6 +11961,7 @@ function createPost(ctx2) {
     tAO: { value: null },
     uBloom: { value: BLOOM_STRENGTH },
     uAO: { value: 0.85 },
+    uAspect: { value: 16 / 9 },
     toneMappingExposure: { value: 1 }
   });
   const fxaaMat = new THREE26.ShaderMaterial({
@@ -12092,6 +12120,7 @@ function createPost(ctx2) {
       outMat.uniforms.tBloom.value = bloomTex;
       outMat.uniforms.tAO.value = gtao ? gtao.pdRenderTarget.texture : null;
       outMat.uniforms.toneMappingExposure.value = renderer2.toneMappingExposure;
+      outMat.uniforms.uAspect.value = width / Math.max(1, height);
       if (ldrRT) {
         pass(outMat, ldrRT);
         fxaaMat.uniforms.tDiffuse.value = ldrRT.texture;
