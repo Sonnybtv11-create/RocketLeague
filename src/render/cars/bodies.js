@@ -17,6 +17,7 @@ import { smooth, PartSet, Loft, sweepArc, roundedBox, latheX, discX, extrudeSide
 import { getWheelGeometries } from './wheels.js';
 import { VECTOR_MESH_META, VECTOR_MESH_B64 } from './vectorMesh.js';
 import { VECTOR_WHEEL_META, VECTOR_WHEEL_B64 } from './vectorWheel.js';
+import { decodeMesh } from '../meshpack.js';
 
 // HDR vertex colours for emissive parts (bloom picks these up)
 const HEAD = [2.1, 2.2, 2.5];   // bright but not a glare blob in daylight
@@ -558,30 +559,7 @@ function addModelled(ps, meta, b64) {
 
 // Modelled wheels are stored already in wheel space (radius 1, width 1, axle +Z): indexed tyre / rim
 // geometries with the same contract as getWheelGeometries (rim colours as vertex colours).
-function decodeWheel(meta, b64) {
-  const bin = unb64(b64), q = 1 / meta.q, out = {};
-  for (const { nv, ni, off, wide, slot } of meta.parts) {
-    let o = off;
-    const P = new Int16Array(bin, o, nv * 3); o += nv * 6;
-    const N = new Int8Array(bin, o, nv * 3); o += nv * 3;
-    const C = new Uint8Array(bin, o, nv); o += nv;
-    o = (o + 3) & ~3;
-    const I = wide ? new Uint32Array(bin, o, ni) : new Uint16Array(bin, o, ni);
-    const pos = new Float32Array(nv * 3), nrm = new Float32Array(nv * 3), col = new Float32Array(nv * 3);
-    for (let v = 0; v < nv; v++) {
-      const l = Math.hypot(N[v * 3], N[v * 3 + 1], N[v * 3 + 2]) || 1, c = meta.palette[C[v]];
-      for (let k = 0; k < 3; k++) { pos[v * 3 + k] = P[v * 3 + k] * q; nrm[v * 3 + k] = N[v * 3 + k] / l; col[v * 3 + k] = c[k]; }
-    }
-    const g = new THREE.BufferGeometry();
-    g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-    g.setAttribute('normal', new THREE.BufferAttribute(nrm, 3));
-    g.setAttribute('color', new THREE.BufferAttribute(col, 3));
-    g.setIndex(new THREE.BufferAttribute(wide ? new Uint32Array(I) : new Uint16Array(I), 1));
-    g.computeBoundingSphere();
-    out[slot] = g;
-  }
-  return out;
-}
+const decodeWheel = (meta, b64) => decodeMesh(meta, b64, { blenderAxes: false });
 
 export function buildBody(bodyId) {
   const id = bodySpec(bodyId);

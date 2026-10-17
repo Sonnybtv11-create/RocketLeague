@@ -15,6 +15,7 @@ import { BALL_RADIUS, TEAM_COLORS } from '../../contracts.js';
 import { applySimTransform } from '../util.js';
 import { syncEnvironment, registerEnvUser } from './materials.js';
 import { BALL_MESH_META, BALL_MESH_B64 } from './ballMesh.js';
+import { decodeMesh } from '../meshpack.js';
 
 const R_M = BALL_RADIUS / 100;
 
@@ -29,46 +30,6 @@ function panelCentres() {
     if (v[i].distanceTo(v[j]) < minD) out.push(v[i].clone().add(v[j]).normalize());
   }
   return out; // 12 + 30
-}
-
-// Decode ballMesh.js into indexed per-slot geometries in metres, three axes (Blender (x, y, z up) ->
-// (x, z, -y)); the core slot keeps its UVs.
-function decodeBallMesh(meta, b64) {
-  const bin = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)).buffer;
-  const q = 1 / (meta.q * 100), out = {};
-  for (const { nv, ni, off, wide, slot, uv } of meta.parts) {
-    let o = off;
-    const P = new Int16Array(bin, o, nv * 3); o += nv * 6;
-    const N = new Int8Array(bin, o, nv * 3); o += nv * 3;
-    const C = new Uint8Array(bin, o, nv); o += nv;
-    o = (o + 3) & ~3;
-    let U = null;
-    if (uv) { U = new Uint16Array(bin, o, nv * 2); o += nv * 4; }
-    const I = wide ? new Uint32Array(bin, o, ni) : new Uint16Array(bin, o, ni);
-    const pos = new Float32Array(nv * 3), nrm = new Float32Array(nv * 3), col = new Float32Array(nv * 3);
-    for (let v = 0; v < nv; v++) {
-      pos[v * 3] = P[v * 3] * q; pos[v * 3 + 1] = P[v * 3 + 2] * q; pos[v * 3 + 2] = -P[v * 3 + 1] * q;
-      let nx = N[v * 3], ny = N[v * 3 + 2], nz = -N[v * 3 + 1];
-      let l = Math.hypot(nx, ny, nz);
-      if (!l) { nx = 0; ny = 1; nz = 0; l = 1; }
-      nrm[v * 3] = nx / l; nrm[v * 3 + 1] = ny / l; nrm[v * 3 + 2] = nz / l;
-      const c = meta.palette[C[v]];
-      col[v * 3] = c[0]; col[v * 3 + 1] = c[1]; col[v * 3 + 2] = c[2];
-    }
-    const g = new THREE.BufferGeometry();
-    g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-    g.setAttribute('normal', new THREE.BufferAttribute(nrm, 3));
-    g.setAttribute('color', new THREE.BufferAttribute(col, 3));
-    if (U) {
-      const t = new Float32Array(nv * 2);
-      for (let k = 0; k < nv * 2; k++) t[k] = U[k] / meta.uvq;
-      g.setAttribute('uv', new THREE.BufferAttribute(t, 2));
-    }
-    g.setIndex(new THREE.BufferAttribute(wide ? new Uint32Array(I) : new Uint16Array(I), 1));
-    g.computeBoundingSphere();
-    out[slot] = g;
-  }
-  return out;
 }
 
 // Honeycomb core: the model's honeycomb texture (3060 x 1820 px) is a triangular lattice of flat-topped
@@ -92,7 +53,7 @@ void honeycomb(vec2 uv) {
 }`;
 
 function buildModelBall(glow) { // glow: the live pitch-half colour (THREE.Color, updated by the caller)
-  const geo = decodeBallMesh(BALL_MESH_META, BALL_MESH_B64);
+  const geo = decodeMesh(BALL_MESH_META, BALL_MESH_B64, { scale: 1 / 100 }); // uu -> metres, Blender axes
   const group = new THREE.Group();
   const core = new THREE.MeshPhysicalMaterial({ color: 0xffffff, metalness: 0.7, roughness: 0.42, envMapIntensity: 1.0, name: 'ball.core' });
   core.onBeforeCompile = (sh) => {

@@ -1,9 +1,11 @@
-// Boost pads, instanced. Big pads: dark metal base with glowing light blocks,
-// licking flames and a floating golden orb. Small pads: round base with a
-// glowing puck + small flame. Empty pads (isActive false): dim base, no orb,
-// no flames, dark puck.
+// Boost pads, instanced. The pedestals are modelled in Blender (tools/blender/arena_assets.py ->
+// arenaAssets.js): big pads are a stepped metal ring with vents, a raised collar around a glowing
+// well and three lamp lobes, with licking flames and a floating golden orb on top; small pads are a
+// bevelled disc with a glowing puck and ring. Empty pads (isActive false): dim glow, no orb, no flames.
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { decodeMesh } from '../meshpack.js';
+import { BIG_PAD_META, BIG_PAD_B64, SMALL_PAD_META, SMALL_PAD_B64 } from './arenaAssets.js';
 
 const S = 0.01;
 const FULL = new THREE.Color(1.0, 0.5, 0.04).multiplyScalar(1.5);
@@ -80,42 +82,13 @@ void main() {
   #include <fog_fragment>
 }`;
 
-function bigBaseGeometry() {
-  // tri-lobed dark platform: lathe disc + three lobes
-  const parts = [];
-  const prof = [new THREE.Vector2(0, 0.0), new THREE.Vector2(1.05, 0.0), new THREE.Vector2(1.12, 0.04), new THREE.Vector2(1.06, 0.12), new THREE.Vector2(0.72, 0.16), new THREE.Vector2(0.62, 0.1), new THREE.Vector2(0, 0.1)];
-  parts.push(new THREE.LatheGeometry(prof, 36));
-  for (let k = 0; k < 3; k++) {
-    const lobe = new THREE.BoxGeometry(0.8, 0.12, 0.62);
-    const a = k / 3 * Math.PI * 2 + Math.PI / 6;
-    lobe.translate(1.25, 0.06, 0);
-    lobe.rotateY(a);
-    parts.push(lobe);
-  }
-  return mergeGeometries(parts.map((p) => p.toNonIndexed()), false);
-}
-function bigGlowGeometry() {
-  const parts = [];
-  const ring = new THREE.RingGeometry(0.42, 0.6, 36); ring.rotateX(-Math.PI / 2); ring.translate(0, 0.165, 0); parts.push(ring);
-  const disc = new THREE.CircleGeometry(0.4, 36); disc.rotateX(-Math.PI / 2); disc.translate(0, 0.105, 0); parts.push(disc);
-  for (let k = 0; k < 3; k++) {
-    const blk = new THREE.BoxGeometry(0.46, 0.06, 0.38);
-    const a = k / 3 * Math.PI * 2 + Math.PI / 6;
-    blk.translate(1.3, 0.13, 0);
-    blk.rotateY(a);
-    parts.push(blk);
-  }
-  return mergeGeometries(parts.map((p) => p.toNonIndexed()), false);
-}
-function smallBaseGeometry() {
-  const prof = [new THREE.Vector2(0, 0.0), new THREE.Vector2(0.72, 0.0), new THREE.Vector2(0.76, 0.03), new THREE.Vector2(0.7, 0.08), new THREE.Vector2(0.44, 0.1), new THREE.Vector2(0.4, 0.06), new THREE.Vector2(0, 0.06)];
-  return new THREE.LatheGeometry(prof, 28);
-}
-function smallGlowGeometry() {
-  // flat glowing puck (low, slightly bevelled) + thin outer light ring
-  const puck = new THREE.CylinderGeometry(0.36, 0.4, 0.05, 28); puck.translate(0, 0.085, 0);
-  const ring = new THREE.RingGeometry(0.5, 0.58, 28); ring.rotateX(-Math.PI / 2); ring.translate(0, 0.105, 0);
-  return mergeGeometries([puck.toNonIndexed(), ring.toNonIndexed()], false);
+// modelled pedestal: every lit slot (metal / dark) merged into one vertex-coloured base, glow apart
+function padGeometries(meta, b64) {
+  const g = decodeMesh(meta, b64, { scale: S });
+  const lit = Object.keys(g).filter((k) => k !== 'glow').map((k) => g[k]);
+  const base = mergeGeometries(lit, false);
+  for (const x of lit) x.dispose();
+  return { base, glow: g.glow };
 }
 function flameGeometry() {
   // open cone, uv.x around, uv.y up
@@ -127,8 +100,8 @@ function flameGeometry() {
 export function createPads(ctx) {
   const group = new THREE.Group();
   group.name = 'boostPads';
-  const metal = new THREE.MeshStandardMaterial({ color: 0x6a6e78, metalness: 0.6, roughness: 0.4 });
-  const glowMat = new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: true });
+  const metal = new THREE.MeshStandardMaterial({ vertexColors: true, metalness: 0.7, roughness: 0.38 });
+  const glowMat = new THREE.MeshBasicMaterial({ vertexColors: true, toneMapped: true });
   const flameMat = new THREE.ShaderMaterial({
     uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, { uTime: { value: 0 } }]),
     vertexShader: FLAME_VERT, fragmentShader: FLAME_FRAG,
@@ -154,13 +127,14 @@ export function createPads(ctx) {
       group.add(m);
       return m;
     };
+    const bigG = padGeometries(BIG_PAD_META, BIG_PAD_B64), smallG = padGeometries(SMALL_PAD_META, SMALL_PAD_B64);
     meshes = {
-      bigBase: mk(bigBaseGeometry(), metal, big.length, true),
-      bigGlow: mk(bigGlowGeometry(), glowMat, big.length),
+      bigBase: mk(bigG.base, metal, big.length, true),
+      bigGlow: mk(bigG.glow, glowMat, big.length),
       bigOrb: mk(new THREE.SphereGeometry(0.5, 28, 18), orbMat, big.length),
       bigFlame: mk(flameGeometry(), flameMat, big.length),
-      smallBase: mk(smallBaseGeometry(), metal, small.length, true),
-      smallGlow: mk(smallGlowGeometry(), glowMat, small.length),
+      smallBase: mk(smallG.base, metal, small.length, true),
+      smallGlow: mk(smallG.glow, glowMat, small.length),
     };
     // flames and glow use instanceColor for the on/off state
     for (const k of ['bigGlow', 'smallGlow']) {

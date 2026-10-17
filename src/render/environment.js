@@ -18,7 +18,7 @@ import { setColor, setEmis, vertexEmissive, merge, scaleUV } from './env/matUtil
 import { createSky, createScenery } from './env/sky.js';
 import { createPads } from './env/pads.js';
 import { createGoals } from './env/goals.js';
-import { createStadium, STADIUM_EXTENT } from './env/stadium.js';
+import { createStadium } from './env/stadium.js';
 import { createSkyline } from './env/skyline.js';
 
 const S = 0.01;
@@ -280,39 +280,42 @@ export function createEnvironment(ctx) {
   const target = new THREE.Object3D();
   sun.target = target;
   root.add(target);
-  // Tight shadow camera: X/Y extents fit the arena volume (incl. goals) in
-  // light space, so car/ball shadows stay crisp. The depth range additionally
-  // reaches up to the stadium roof/stands towards the sun, so the stadium casts
-  // its shadow onto the pitch without widening the shadow map footprint.
-  {
-    const dist = 320;
-    sun.position.copy(SUN_DIR).multiplyScalar(dist);
-    target.position.set(0, 0, 0);
-    const rot = new THREE.Matrix4().lookAt(sun.position, target.position, new THREE.Vector3(0, 1, 0));
-    const inv = rot.clone().invert();
-    const tmp = new THREE.Vector3();
-    const toLight = (x, y, z) => tmp.set(x * S, z * S, y * S).sub(sun.position).applyMatrix4(inv);
-    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity, minZ = Infinity, maxZ = -Infinity;
-    for (const x of [-X, X]) for (const y of [-GD, GD]) for (const z of [0, H]) {
-      const p = toLight(x, y, z);
-      minX = Math.min(minX, p.x); maxX = Math.max(maxX, p.x); minY = Math.min(minY, p.y); maxY = Math.max(maxY, p.y);
-      minZ = Math.min(minZ, p.z); maxZ = Math.max(maxZ, p.z);
-    }
-    for (const x of [-STADIUM_EXTENT.x, STADIUM_EXTENT.x]) for (const y of [-STADIUM_EXTENT.y, STADIUM_EXTENT.y]) for (const z of [0, STADIUM_EXTENT.z]) {
-      const p = toLight(x, y, z);
-      maxZ = Math.max(maxZ, p.z); // nearest to the sun
-    }
-    const cam = sun.shadow.camera;
-    cam.left = minX - 1; cam.right = maxX + 1; cam.bottom = minY - 1; cam.top = maxY + 1;
-    cam.near = Math.max(0.5, -maxZ - 5); cam.far = -minZ + 5;
-    cam.updateProjectionMatrix();
+  // Shadow camera follows the view: a SHADOW_HALF-metre square (light space) centred on the point of
+  // the pitch the camera looks at, snapped to whole shadow texels so edges don't crawl as it moves.
+  // This keeps car and ball shadows sharp (2048 px over ~56 m) instead of spreading the map over the
+  // whole arena. The depth range reaches the stands, so they still shadow the pitch edges in view.
+  const SHADOW_HALF = 28, SHADOW_DIST = 320;
+  const cam = sun.shadow.camera;
+  cam.left = -SHADOW_HALF; cam.right = SHADOW_HALF; cam.bottom = -SHADOW_HALF; cam.top = SHADOW_HALF;
+  cam.near = 1; cam.far = SHADOW_DIST + 120;
+  cam.updateProjectionMatrix();
+  const lightRot = new THREE.Matrix4().lookAt(SUN_DIR, new THREE.Vector3(), new THREE.Vector3(0, 1, 0));
+  const lightInv = lightRot.clone().invert();
+  const _f = new THREE.Vector3(), _d = new THREE.Vector3(), _ls = new THREE.Vector3();
+  const LIM_X = X * S - 4, LIM_Z = (Y + GD) * S - 4;
+  function fitShadow(camera) {
+    if (!camera) return;
+    // focus: where the view ray meets the floor (or 22 m ahead when looking up), clamped to the arena
+    camera.getWorldPosition(_f); camera.getWorldDirection(_d);
+    let t = _d.y < -0.05 ? Math.min(22, -_f.y / _d.y) : 22;
+    _f.addScaledVector(_d, t);
+    _f.x = Math.max(-LIM_X, Math.min(LIM_X, _f.x)); _f.z = Math.max(-LIM_Z, Math.min(LIM_Z, _f.z)); _f.y = 0;
+    // snap in light space
+    const texel = (2 * SHADOW_HALF) / sun.shadow.mapSize.x;
+    _ls.copy(_f).applyMatrix4(lightInv);
+    _ls.x = Math.round(_ls.x / texel) * texel; _ls.y = Math.round(_ls.y / texel) * texel;
+    _f.copy(_ls).applyMatrix4(lightRot);
+    target.position.copy(_f);
+    sun.position.copy(SUN_DIR).multiplyScalar(SHADOW_DIST).add(_f);
+    target.updateMatrixWorld();
   }
+  sun.position.copy(SUN_DIR).multiplyScalar(SHADOW_DIST);
   root.add(sun);
   const hemi = new THREE.HemisphereLight(0xc4dcff, 0x5a5a50, 0.5);
   root.add(hemi);
   // floodlight fill: the roof-ring lamps light the arena from every side, so the side away from the
   // sun is never flat ambient. A cooler, unshadowed key from the opposite quarter models that.
-  const fill = new THREE.DirectionalLight(0xdfe8ff, 0.75);
+  const fill = new THREE.DirectionalLight(0xdfe8ff, 0.5);
   fill.position.set(-SUN_DIR.x, Math.max(0.6, SUN_DIR.y), -SUN_DIR.z).multiplyScalar(300);
   root.add(fill);
 
@@ -396,6 +399,7 @@ export function createEnvironment(ctx) {
       if (envDelay > 0 && --envDelay === 0) buildEnv(envWanted);
       if (view) pads.update(view, dt);
       stadium.update(view, dt, ctx.camera);
+      fitShadow(ctx.camera);
     },
     setQuality,
     setGrass,
