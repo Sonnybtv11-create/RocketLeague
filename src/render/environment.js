@@ -11,14 +11,15 @@
 // PMREM environment map for reflections).
 import * as THREE from 'three';
 import { QUALITY, TEAM_COLORS } from '../contracts.js';
-import { arenaNormal, ARENA_PARAMS } from '../sim/arena.js';
-import { buildArenaGeometries, halfRing, PROFILE, SPLIT_ROW, RING_S, V_LOWER } from './env/arenaMesh.js';
+import { ARENA_PARAMS } from '../sim/arena.js';
+import { buildArenaGeometries, V_LOWER } from './env/arenaMesh.js';
 import { makeFieldTextures, makeGrassDetail, makeLowerWallAtlas, makeHexTexture, WALL_TILE, HEX_A, STRIPE_W } from './env/textures.js';
 import { setColor, setEmis, vertexEmissive, merge, scaleUV } from './env/matUtil.js';
 import { createSky, createScenery } from './env/sky.js';
 import { createPads } from './env/pads.js';
 import { createGoals } from './env/goals.js';
 import { createStadium } from './env/stadium.js';
+import { buildWallDetail } from './env/wallDetail.js';
 import { createSkyline } from './env/skyline.js';
 
 const S = 0.01;
@@ -30,43 +31,6 @@ const SUN_DIR = new THREE.Vector3(SUN_SIM.x, SUN_SIM.z, SUN_SIM.y);
 const HAZE = 0xa9c6dc;
 
 // glowing vertical light lines on the glass (team coloured), following the profile
-function buildMullions(team) {
-  const sign = team === 0 ? -1 : 1;
-  const pos = [], idx = [];
-  const W = 14; // half width uu
-  const total = RING_S[RING_S.length - 1];
-  const n = new THREE.Vector3();
-  const stations = [];
-  for (let s = 600; s < total - 300; s += 1150) stations.push(s);
-  // straight vertical lines: crossbar height up to where the ceiling fillet starts
-  const rows = PROFILE.slice(SPLIT_ROW, SPLIT_ROW + 2);
-  for (const s0 of stations) {
-    const base = pos.length / 3;
-    for (const row of rows) {
-      const ring = halfRing(row.u, sign);
-      for (const ds of [-W, W]) {
-        const s = s0 + ds;
-        let i = 0;
-        while (i < RING_S.length - 2 && RING_S[i + 1] < s) i++;
-        const f = (s - RING_S[i]) / Math.max(1e-6, RING_S[i + 1] - RING_S[i]);
-        const x = ring[i][0] + (ring[i + 1][0] - ring[i][0]) * f;
-        const y = ring[i][1] + (ring[i + 1][1] - ring[i][1]) * f;
-        arenaNormal(x, y, Math.min(row.z, H - 1), n);
-        const off = 3;
-        pos.push((x + n.x * off) * S, (row.z + n.z * off) * S, (y + n.y * off) * S);
-      }
-    }
-    for (let j = 0; j < rows.length - 1; j++) {
-      const a = base + j * 2;
-      idx.push(a, a + 1, a + 3, a, a + 3, a + 2);
-    }
-  }
-  const g = new THREE.BufferGeometry();
-  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-  g.setIndex(idx);
-  return g;
-}
-
 // env-map scene: sky + pitch + stands ring + floodlights, rendered once to PMREM
 function buildEnvScene(skyMaterial) {
   const sc = new THREE.Scene();
@@ -245,12 +209,17 @@ export function createEnvironment(ctx) {
     root.add(glass);
   }
 
-  // glowing mullions (both teams, unlit)
+  // physical wall detail: panel ribs, rim beam with LED strip, glass frame (lit metal + unlit glow)
   {
-    const parts = [0, 1].map((team) => setColor(buildMullions(team), new THREE.Color(TEAM_COLORS[team].glow).multiplyScalar(2.2)));
-    const mull = new THREE.Mesh(track(merge(parts)), track(new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide })));
-    mull.name = 'mullions';
-    root.add(mull);
+    const wd = buildWallDetail();
+    const lit = track(merge([wd.metal, wd.dark].filter(Boolean)));
+    const wm = new THREE.Mesh(lit, track(new THREE.MeshStandardMaterial({ vertexColors: true, metalness: 0.65, roughness: 0.34, envMapIntensity: 0.9 })));
+    wm.name = 'wallDetail'; wm.receiveShadow = true; wm.castShadow = true;
+    root.add(wm);
+    const wg = new THREE.Mesh(track(wd.glow), track(new THREE.MeshBasicMaterial({ vertexColors: true })));
+    wg.name = 'wallGlow';
+    root.add(wg);
+    for (const k of ['metal', 'dark']) if (wd[k]) wd[k].dispose();
   }
 
   // ------------------------------------------------------------ goals, stadium, pads

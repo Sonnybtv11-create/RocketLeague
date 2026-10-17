@@ -74,11 +74,20 @@ The ball is the Blender model in `tools/blender/models/ball.blend`, converted by
 - **Lights:** the lenses glow cyan in midfield and blue or orange in each team's half. The whole ball
   lights up briefly when a car hits it.
 
-To rebuild after editing either model:
+Arena props are modelled by a script, `tools/blender/arena_assets.py`: the goal structure, both
+boost pads, the floodlight rigs and the roof trusses. It saves them to
+`tools/blender/models/arena_assets.blend` and exports `src/render/env/arenaAssets.js`. Material names
+start with the game slot they map to (`paint`, `metal`, `dark`, `glow`, `light`). The wall ribs,
+the rim and the glass frame follow the arena's curved walls exactly, so they are built in code
+(`src/render/env/wallDetail.js`) from the same profile as the collision walls. All Blender scripts
+share `tools/blender/meshpack.py` for export.
+
+To rebuild after editing a model:
 
     uv venv --python 3.13 .bl && uv pip install --python .bl/bin/python bpy
     .bl/bin/python tools/blender/import_octane.py [--target 26000] [--wheel 7000]
     .bl/bin/python tools/blender/import_ball.py [--target 46000] [--print 9000]
+    .bl/bin/python tools/blender/arena_assets.py [--preview out_prefix]
     node tools/assemble.mjs
 
 `tools/blender/octane_build.py` is the earlier script-built body. To use it again, run it in place

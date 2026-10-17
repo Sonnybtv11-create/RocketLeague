@@ -1,9 +1,12 @@
 // Stadium around the arena: two-tier stand bowl (rounded rectangle), LED
-// ribbons, slim steel roof ring with floodlight banks + glow sprites, instanced crowd
+// ribbons, slim steel roof ring on steel trusses with floodlight rigs (both modelled in Blender,
+// arena_assets.py) + glow sprites, instanced crowd
 // (shader-drawn silhouettes, subtle idle motion, cheering on goals).
 import * as THREE from 'three';
 import { rng, makeSeatTexture, makeFasciaTexture, makePanelTexture } from './textures.js';
 import { setColor, setEmis, vertexEmissive, merge } from './matUtil.js';
+import { decodeMesh } from '../meshpack.js';
+import { FLOODLIGHT_META, FLOODLIGHT_B64, ROOF_TRUSS_META, ROOF_TRUSS_B64 } from './arenaAssets.js';
 
 const S = 0.01;
 // rounded-rectangle footprint of the stand bowl (sim uu)
@@ -23,8 +26,6 @@ const SEC = {
   roofUnder: [[2700, 4860], [4400, 4640]],
 };
 const ROW_DEPTH = 87.5;
-// conservative outer bounds of the stadium structure (sim uu), for shadow fitting
-export const STADIUM_EXTENT = { x: 4800 + 4500, y: 6550 + 4500, z: 5400 };
 
 // Path along the bowl footprint (CCW), with outward normals and arc length.
 function bowlPath(cornerSegs = 18, straightStep = 1400) {
@@ -319,14 +320,25 @@ export function createStadium(ctx) {
         const f = t / len;
         const nx = a.nx + (b.nx - a.nx) * f, ny = a.ny + (b.ny - a.ny) * f, nl = Math.hypot(nx, ny);
         lamps.push({ x: ax + (bx - ax) * f, y: ay + (by - ay) * f, nx: nx / nl, ny: ny / nl });
-        t += 1250;
+        t += 2100;
       }
       acc = t - len;
     }
   }
-  const lampGeo = track(new THREE.BoxGeometry(3.6, 1.2, 0.5));
-  const lampMat = track(new THREE.MeshBasicMaterial({ color: new THREE.Color(1.0, 0.95, 0.82).multiplyScalar(5) }));
-  const lampMesh = new THREE.InstancedMesh(lampGeo, lampMat, lamps.length);
+  // modelled floodlight rigs (arena_assets.py): one instanced mesh per material slot
+  const flood = decodeMesh(FLOODLIGHT_META, FLOODLIGHT_B64, { scale: S });
+  const rigMats = {
+    metal: track(new THREE.MeshStandardMaterial({ vertexColors: true, metalness: 0.75, roughness: 0.4 })),
+    dark: track(new THREE.MeshStandardMaterial({ vertexColors: true, metalness: 0.3, roughness: 0.7 })),
+    light: track(new THREE.MeshBasicMaterial({ vertexColors: true, color: new THREE.Color(1.0, 0.95, 0.82).multiplyScalar(2.2) })),
+  };
+  const rigMeshes = Object.entries(flood).map(([slot, g]) => {
+    track(g);
+    const m = new THREE.InstancedMesh(g, rigMats[slot] || rigMats.metal, lamps.length);
+    m.name = 'floodlight.' + slot;
+    group.add(m);
+    return m;
+  });
   const glowPos = new Float32Array(lamps.length * 3), glowSize = new Float32Array(lamps.length);
   lamps.forEach((l, i) => {
     const x = (l.x - l.nx * 40) * S, y = 48.3, z = (l.y - l.ny * 40) * S;
@@ -335,11 +347,28 @@ export function createStadium(ctx) {
     dummy.lookAt(x - l.nx, y - 0.9, z - l.ny); // face the pitch, tilted down
     dummy.scale.set(1, 1, 1);
     dummy.updateMatrix();
-    lampMesh.setMatrixAt(i, dummy.matrix);
+    for (const m of rigMeshes) m.setMatrixAt(i, dummy.matrix);
     glowPos[i * 3] = x - l.nx * 0.5; glowPos[i * 3 + 1] = y - 0.3; glowPos[i * 3 + 2] = z - l.ny * 0.5;
     glowSize[i] = 520;
   });
-  group.add(lampMesh);
+
+  // steel trusses under the roof ring, from its inner edge out over each pylon
+  const truss = decodeMesh(ROOF_TRUSS_META, ROOF_TRUSS_B64, { scale: S });
+  const trussMat = track(new THREE.MeshStandardMaterial({ vertexColors: true, metalness: 0.7, roughness: 0.45 }));
+  const trussMeshes = [];
+  for (const g of Object.values(truss)) {
+    track(g);
+    const m = new THREE.InstancedMesh(g, trussMat, pylons.length);
+    m.name = 'roofTruss';
+    pylons.forEach((p, i) => {
+      dummy.position.set((p.x + p.nx * 2700) * S, 48.6, (p.y + p.ny * 2700) * S);
+      dummy.rotation.set(0, Math.atan2(-p.ny, p.nx), 0); // model +x -> radially outward
+      dummy.scale.set(1, 1, 1); dummy.updateMatrix();
+      m.setMatrixAt(i, dummy.matrix);
+    });
+    group.add(m);
+    trussMeshes.push(m);
+  }
   const glowGeo = track(new THREE.BufferGeometry());
   glowGeo.setAttribute('position', new THREE.BufferAttribute(glowPos, 3));
   glowGeo.setAttribute('aSize', new THREE.BufferAttribute(glowSize, 1));
@@ -382,7 +411,10 @@ export function createStadium(ctx) {
       glowMat.uniforms.uScale.value = h / (2 * Math.tan(THREE.MathUtils.degToRad(fov) / 2)) * 0.01;
     },
     setCrowd(q) { crowd.geometry.instanceCount = Math.round(crowd.geometry.userData.total * q); crowd.visible = q > 0; },
-    setDetail(level) { pylonMesh.visible = level > 0; glows.visible = level > 0; },
-    dispose() { for (const d of disposables) d.dispose && d.dispose(); lampMesh.dispose(); pylonMesh.dispose(); },
+    setDetail(level) {
+      pylonMesh.visible = level > 0; glows.visible = level > 0;
+      for (const m of trussMeshes) m.visible = level > 0;   // ~45k triangles of steelwork: not on Low
+    },
+    dispose() { for (const d of disposables) d.dispose && d.dispose(); for (const m of [...rigMeshes, ...trussMeshes]) m.dispose(); pylonMesh.dispose(); },
   };
 }

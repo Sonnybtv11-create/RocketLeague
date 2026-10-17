@@ -1,4 +1,4 @@
-# TURBO PITCH — arena props modelled in Blender: goal structure and boost pads.
+# TURBO PITCH — arena props modelled in Blender: goal structure, boost pads, floodlight rigs, roof trusses.
 # Run:  <python with bpy> tools/blender/arena_assets.py [--preview out_prefix]
 # Builds every prop from code into tools/blender/models/arena_assets.blend (one collection per prop,
 # open it to inspect or tweak), then exports src/render/env/arenaAssets.js.
@@ -7,6 +7,8 @@
 #   goal       mouth plane at y = 0 (the back wall), the goal box extends towards +y (into the goal),
 #              x across; the game mirrors it for the blue goal.
 #   pads       centred on the origin, ground at z = 0.
+#   floodlight lamps face -y, centred on the origin (the frame's centre).
+#   roof_truss runs along +x from the roof's inner edge (origin), top following the roof underside.
 # Material names start with the game slot they map to: paint (team colour), metal, dark, glow (team /
 # pad glow colour), light (white-hot lamps). The rest of the name is free; the base colour becomes the
 # vertex colour.
@@ -300,6 +302,56 @@ for k in range(4):
     rot = Matrix.Rotation(a, 3, 'Z')
     box(f'small_notch_{k}', (0.16, 0.06, 0.05), rot @ Vector((0.62, 0, 0.06)), METAL_D, small, bevel=0.015, rot=rot)
 
+# ================================================================== FLOODLIGHT BANK
+# A roof-edge floodlight rig, lamps facing -y (the game turns -y towards the pitch): a back beam on two
+# yoke arms, a frame holding 2 x 5 lamp heads (housing, rim, visor, glowing lens), cable trays.
+flood = collection('floodlight')
+box('fl_beam', (4.2, 0.3, 0.3), (0, 0.55, 0.0), METAL_D, flood, bevel=0.04)
+for sx in (-1, 1):
+    box(f'fl_arm_{sx}', (0.16, 0.6, 0.16), (sx * 1.7, 0.25, 0.0), METAL, flood, bevel=0.03)
+box('fl_frame_top', (4.0, 0.14, 0.12), (0, 0.0, 0.78), METAL_D, flood, bevel=0.02)
+box('fl_frame_bot', (4.0, 0.14, 0.12), (0, 0.0, -0.78), METAL_D, flood, bevel=0.02)
+for sx in (-1, 1):
+    box(f'fl_frame_side_{sx}', (0.12, 0.14, 1.68), (sx * 2.0, 0.0, 0.0), METAL_D, flood, bevel=0.02)
+for row, z in enumerate((0.38, -0.38)):
+    for k in range(5):
+        x = -1.56 + k * 0.78
+        # housing: lathe around the local y axis -> build around z then rotate
+        o = lathe(f'fl_head_{row}_{k}', [
+            (0.0, -0.42, 1), (0.28, -0.42, 1), (0.33, -0.06, 0), (0.36, 0.03, 0),
+            (0.29, 0.0, 2), (0.0, 0.0, 2)],
+            [METAL, METAL_D, LAMP], flood, segs=12)
+        o.rotation_euler = (math.radians(90), 0, 0)
+        o.location = (x, -0.05, z)
+        # visor over the top half of the lens
+        v = box(f'fl_visor_{row}_{k}', (0.66, 0.16, 0.03), (x, -0.13, z + 0.33), METAL_D, flood, bevel=0.0)
+for k in range(3):
+    box(f'fl_tray_{k}', (3.9, 0.08, 0.05), (0, 0.18, 0.62 - k * 0.62), DARK2, flood, bevel=0.0)
+
+# ================================================================== ROOF TRUSS
+# Triangular steel truss hung under the roof ring, running outward (+x) 17 m from the roof's inner
+# edge; its top follows the roof underside (2.2 m drop over the span), 1.5 m deep.
+truss = collection('roof_truss')
+L, DROP, DEPTH, HW = 17.0, 2.2, 1.5, 0.7
+top = lambda x: -0.15 - DROP * x / L
+CH = 0.09
+for sy in (-1, 1):
+    rod(f'tr_top_{sy}', (0, sy * HW, top(0)), (L, sy * HW, top(L)), CH, METAL_D, truss, segs=6)
+rod('tr_bottom', (0.4, 0, top(0.4) - DEPTH), (L - 0.4, 0, top(L - 0.4) - DEPTH), CH * 1.2, METAL_D, truss, segs=6)
+NP = 12
+for k in range(NP + 1):
+    x = 0.4 + (L - 0.8) * k / NP
+    x2 = 0.4 + (L - 0.8) * (k + 0.5) / NP
+    rod(f'tr_cross_{k}', (x, -HW, top(x)), (x, HW, top(x)), CH * 0.5, METAL, truss, segs=6)
+    if k < NP:
+        for sy in (-1, 1):
+            rod(f'tr_diag_a_{k}_{sy}', (x, sy * HW, top(x)), (x2, 0, top(x2) - DEPTH), CH * 0.45, METAL, truss, segs=6)
+            x3 = 0.4 + (L - 0.8) * (k + 1) / NP
+            rod(f'tr_diag_b_{k}_{sy}', (x2, 0, top(x2) - DEPTH), (x3, sy * HW, top(x3)), CH * 0.45, METAL, truss, segs=6)
+# end plates where it meets the roof edge and the back pylon
+box('tr_plate_in', (0.12, 1.7, 1.9), (0.05, 0, top(0) - 0.85), METAL_D, truss, bevel=0.02)
+box('tr_plate_out', (0.12, 1.7, 1.9), (L - 0.05, 0, top(L) - 0.85), METAL_D, truss, bevel=0.02)
+
 # ------------------------------------------------------------------ save, preview, export
 bpy.ops.wm.save_as_mainfile(filepath=BLEND)
 
@@ -311,7 +363,7 @@ def tris(coll):
 
 exports = {}
 Q = 16   # 1/16 uu precision, range ±2048 uu
-for name, coll in (('GOAL', goal), ('BIG_PAD', big), ('SMALL_PAD', small)):
+for name, coll in (('GOAL', goal), ('BIG_PAD', big), ('SMALL_PAD', small), ('FLOODLIGHT', flood), ('ROOF_TRUSS', truss)):
     hdr, blob = meshpack.pack(meshpack.collect(list(coll.objects), slot_of, lambda p: p * 100, q=Q), q=Q)
     exports[name] = (hdr, blob)
     print(name, 'tris', tris(coll), {m['slot']: m['ni'] // 3 for m in hdr['parts']}, 'bytes', len(blob))
@@ -331,7 +383,7 @@ if PREVIEW:
     sc.render.resolution_x = 960; sc.render.resolution_y = 600
     cam = bpy.data.objects.new('cam', bpy.data.cameras.new('cam')); sc.collection.objects.link(cam); sc.camera = cam
     def shoot(fname, target, dist, az, el, lens=35, only=None):
-        for c in (goal, big, small): c.hide_render = only is not None and c is not only
+        for c in (goal, big, small, flood, truss): c.hide_render = only is not None and c is not only
         a, e = math.radians(az), math.radians(el)
         cam.data.lens = lens
         cam.location = Vector(target) + dist * Vector((math.cos(e) * math.cos(a), math.cos(e) * math.sin(a), math.sin(e)))
@@ -344,3 +396,5 @@ if PREVIEW:
     shoot('goal-inside', (0, GD, 3), 9, -100, 8, lens=24, only=goal)
     shoot('big', (0, 0, 0.1), 7, -60, 35, only=big)
     shoot('small', (0, 0, 0.05), 4, -60, 35, only=small)
+    shoot('flood', (0, 0, 0), 9, -110, 15, only=flood)
+    shoot('truss', (8.5, 0, -1.5), 20, -70, -10, only=truss)
