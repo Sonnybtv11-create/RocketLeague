@@ -1,5 +1,8 @@
 // TURBO PITCH — the ball (car agent).
-// Original panelled design: 42 panels (12 dark pentagonal "cores" with a glowing inset ring +
+// The ball is the Blender model in tools/blender/models/ball.blend (tools/blender/import_ball.py ->
+// ballMesh.js): a gunmetal honeycomb core under armoured hubs, oval scale panels and glowing lenses.
+// The core's hex holes are redrawn per pixel from its UVs (see HONEYCOMB below). ?procedural=1 shows
+// the earlier code-built ball: 42 panels (12 dark pentagonal "cores" with a glowing inset ring +
 // 30 light hexagonal plates) computed per-pixel from a geodesic set of panel centres (spherical
 // Voronoi), with dark grooves between panels. Emissive accents are tinted by the half of the
 // pitch the ball is in (blue / neutral / orange). A touch (large velocity change near a car)
@@ -11,6 +14,7 @@ import * as THREE from 'three';
 import { BALL_RADIUS, TEAM_COLORS } from '../../contracts.js';
 import { applySimTransform } from '../util.js';
 import { syncEnvironment, registerEnvUser } from './materials.js';
+import { BALL_MESH_META, BALL_MESH_B64 } from './ballMesh.js';
 
 const R_M = BALL_RADIUS / 100;
 
@@ -27,6 +31,115 @@ function panelCentres() {
   return out; // 12 + 30
 }
 
+// Decode ballMesh.js into indexed per-slot geometries in metres, three axes (Blender (x, y, z up) ->
+// (x, z, -y)); the core slot keeps its UVs.
+function decodeBallMesh(meta, b64) {
+  const bin = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)).buffer;
+  const q = 1 / (meta.q * 100), out = {};
+  for (const { nv, ni, off, wide, slot, uv } of meta.parts) {
+    let o = off;
+    const P = new Int16Array(bin, o, nv * 3); o += nv * 6;
+    const N = new Int8Array(bin, o, nv * 3); o += nv * 3;
+    const C = new Uint8Array(bin, o, nv); o += nv;
+    o = (o + 3) & ~3;
+    let U = null;
+    if (uv) { U = new Uint16Array(bin, o, nv * 2); o += nv * 4; }
+    const I = wide ? new Uint32Array(bin, o, ni) : new Uint16Array(bin, o, ni);
+    const pos = new Float32Array(nv * 3), nrm = new Float32Array(nv * 3), col = new Float32Array(nv * 3);
+    for (let v = 0; v < nv; v++) {
+      pos[v * 3] = P[v * 3] * q; pos[v * 3 + 1] = P[v * 3 + 2] * q; pos[v * 3 + 2] = -P[v * 3 + 1] * q;
+      let nx = N[v * 3], ny = N[v * 3 + 2], nz = -N[v * 3 + 1];
+      let l = Math.hypot(nx, ny, nz);
+      if (!l) { nx = 0; ny = 1; nz = 0; l = 1; }
+      nrm[v * 3] = nx / l; nrm[v * 3 + 1] = ny / l; nrm[v * 3 + 2] = nz / l;
+      const c = meta.palette[C[v]];
+      col[v * 3] = c[0]; col[v * 3 + 1] = c[1]; col[v * 3 + 2] = c[2];
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    g.setAttribute('normal', new THREE.BufferAttribute(nrm, 3));
+    g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    if (U) {
+      const t = new Float32Array(nv * 2);
+      for (let k = 0; k < nv * 2; k++) t[k] = U[k] / meta.uvq;
+      g.setAttribute('uv', new THREE.BufferAttribute(t, 2));
+    }
+    g.setIndex(new THREE.BufferAttribute(wide ? new Uint32Array(I) : new Uint16Array(I), 1));
+    g.computeBoundingSphere();
+    out[slot] = g;
+  }
+  return out;
+}
+
+// Honeycomb core: the model's honeycomb texture (3060 x 1820 px) is a triangular lattice of flat-topped
+// hexagonal holes, pitch 24.65 px, apothem 10.3 px; holes are recessed ~0.6 uu (displacement) and
+// darker. Redrawn here in texture-pixel space with a bump, fading to the average tone once a cell
+// gets smaller than a few screen pixels.
+const HONEYCOMB = `
+float hcHole; float hcAA;
+void honeycomb(vec2 uv) {
+  vec2 p = uv * vec2(3060.0, 1820.0);
+  const float P = 24.65;
+  vec2 s = vec2(P, P * 1.7320508);
+  vec2 a = mod(p, s) - 0.5 * s;
+  vec2 b = mod(p - 0.5 * s, s) - 0.5 * s;
+  vec2 q = dot(a, a) < dot(b, b) ? a : b;
+  q = abs(q);
+  float d = max(q.y, 0.8660254 * q.x + 0.5 * q.y) - 10.3;   // < 0 inside a hole
+  float fw = fwidth(d);
+  hcAA = smoothstep(2.5, 6.0, fw);                          // 1 = cells below pixel size
+  hcHole = mix(1.0 - smoothstep(-0.75 * fw, 0.75 * fw, d), 0.69, hcAA);
+}`;
+
+function buildModelBall(glow) { // glow: the live pitch-half colour (THREE.Color, updated by the caller)
+  const geo = decodeBallMesh(BALL_MESH_META, BALL_MESH_B64);
+  const group = new THREE.Group();
+  const core = new THREE.MeshPhysicalMaterial({ color: 0xffffff, metalness: 0.7, roughness: 0.42, envMapIntensity: 1.0, name: 'ball.core' });
+  core.onBeforeCompile = (sh) => {
+    sh.fragmentShader = sh.fragmentShader
+      .replace('#include <common>', '#include <common>\n' + HONEYCOMB)
+      .replace('#include <color_fragment>', `#include <color_fragment>
+honeycomb(vUv);
+diffuseColor.rgb = mix(vec3(0.13, 0.135, 0.145), vec3(0.03, 0.032, 0.036), hcHole);`)
+      .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
+{
+  // bump from the hole edges: height falls 0.6 cm into each hole
+  float h = -0.0059 * hcHole * (1.0 - hcAA);
+  vec3 sx = dFdx(-vViewPosition), sy = dFdy(-vViewPosition);
+  vec3 r1 = cross(sy, normal), r2 = cross(normal, sx);
+  float det = dot(sx, r1);
+  vec3 grad = sign(det) * (dFdx(h) * r1 + dFdy(h) * r2);
+  normal = normalize(abs(det) * normal - grad);
+}`)
+      .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
+roughnessFactor = mix(roughnessFactor, 0.6, hcHole * 0.6);`);
+    sh.vertexShader = sh.vertexShader.replace('#include <uv_pars_vertex>', '#include <uv_pars_vertex>\nvarying vec2 vUv;')
+      .replace('#include <uv_vertex>', '#include <uv_vertex>\nvUv = uv;');
+    sh.fragmentShader = sh.fragmentShader.replace('#include <uv_pars_fragment>', '#include <uv_pars_fragment>\nvarying vec2 vUv;');
+  };
+  core.customProgramCacheKey = () => 'turbo-ball-core-v1';
+  const shell = new THREE.MeshPhysicalMaterial({ vertexColors: true, metalness: 0.5, roughness: 0.36, clearcoat: 0.3, clearcoatRoughness: 0.3, envMapIntensity: 1.0, name: 'ball.shell' });
+  const print = new THREE.MeshStandardMaterial({ color: new THREE.Color().setRGB(0.92, 0.93, 0.94, THREE.LinearSRGBColorSpace), roughness: 0.4, metalness: 0, name: 'ball.print' });
+  const lights = new THREE.MeshBasicMaterial({ vertexColors: true, toneMapped: false, name: 'ball.lights' });
+  const mats = { core, shell, print, glow: lights };
+  for (const m of [core, shell, print]) registerEnvUser(m);
+  for (const [slot, g] of Object.entries(geo)) {
+    const m = new THREE.Mesh(g, mats[slot] || shell);
+    m.name = 'ball.' + slot;
+    m.castShadow = false; m.receiveShadow = slot !== 'glow';
+    group.add(m);
+  }
+  return {
+    object: group,
+    // lenses glow in the pitch-half colour (bright, for bloom) and everything lifts on a touch
+    update(f) {
+      lights.color.copy(glow).multiplyScalar(2.2 + f * 3);
+      for (const m of [core, shell, print]) m.emissive.setScalar(f * 0.35);
+    },
+    dispose() { for (const g of Object.values(geo)) g.dispose(); for (const m of Object.values(mats)) m.dispose(); },
+  };
+}
+
 export function createBallModel(ctx) {
   const group = new THREE.Group();
   group.name = 'ball';
@@ -36,56 +149,65 @@ export function createBallModel(ctx) {
     uGlow: { value: new THREE.Color(1, 1, 1) },
     uFlash: { value: 0 },
   };
-  const mat = new THREE.MeshPhysicalMaterial({
-    color: 0xffffff, roughness: 0.34, metalness: 0.12, clearcoat: 0.7, clearcoatRoughness: 0.18,
-    emissive: 0xffffff, envMapIntensity: 1.0, name: 'ball',
-  });
-  mat.onBeforeCompile = (sh) => {
-    Object.assign(sh.uniforms, uniforms);
-    sh.vertexShader = sh.vertexShader
-      .replace('#include <common>', '#include <common>\nvarying vec3 vBallDir;')
-      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvBallDir = normalize(position);');
-    sh.fragmentShader = sh.fragmentShader
-      .replace('#include <common>', `#include <common>
-varying vec3 vBallDir;
-uniform vec3 uCentres[42];
-uniform vec3 uGlow;
-uniform float uFlash;
-float gPanelEdge; float gPent; float gRing; float gHash; float gCore;
-void ballPanels() {
-  vec3 d = normalize(vBallDir);
-  float d1 = -2.0, d2 = -2.0; int id = 0;
-  for (int i = 0; i < 42; i++) {
-    float k = dot(d, uCentres[i]);
-    if (k > d1) { d2 = d1; d1 = k; id = i; } else if (k > d2) { d2 = k; }
+  const procedural = typeof location !== 'undefined' && /[?&]procedural=1/.test(location.search);
+  let ball, model = null, legacyDispose = null;
+  if (!procedural) {
+    model = buildModelBall(uniforms.uGlow.value);
+    ball = model.object;
+  } else {
+    const mat = new THREE.MeshPhysicalMaterial({
+      color: 0xffffff, roughness: 0.34, metalness: 0.12, clearcoat: 0.7, clearcoatRoughness: 0.18,
+      emissive: 0xffffff, envMapIntensity: 1.0, name: 'ball',
+    });
+    mat.onBeforeCompile = (sh) => {
+      Object.assign(sh.uniforms, uniforms);
+      sh.vertexShader = sh.vertexShader
+        .replace('#include <common>', '#include <common>\nvarying vec3 vBallDir;')
+        .replace('#include <begin_vertex>', '#include <begin_vertex>\nvBallDir = normalize(position);');
+      sh.fragmentShader = sh.fragmentShader
+        .replace('#include <common>', `#include <common>
+  varying vec3 vBallDir;
+  uniform vec3 uCentres[42];
+  uniform vec3 uGlow;
+  uniform float uFlash;
+  float gPanelEdge; float gPent; float gRing; float gHash; float gCore;
+  void ballPanels() {
+    vec3 d = normalize(vBallDir);
+    float d1 = -2.0, d2 = -2.0; int id = 0;
+    for (int i = 0; i < 42; i++) {
+      float k = dot(d, uCentres[i]);
+      if (k > d1) { d2 = d1; d1 = k; id = i; } else if (k > d2) { d2 = k; }
+    }
+    // e ~ angular distance to the nearest panel border
+    float e = (d1 - d2) / max(1e-4, sqrt(max(0.0, 1.0 - d1 * d1)) + 0.35);
+    float fw = fwidth(e) * 1.2 + 1e-4;
+    gPanelEdge = 1.0 - smoothstep(0.010, 0.010 + fw, e);           // groove between panels
+    gPent = id < 12 ? 1.0 : 0.0;
+    float ang = acos(clamp(d1, -1.0, 1.0));                          // angle from the panel centre
+    float fa = fwidth(ang) * 1.2 + 1e-4;
+    gCore = gPent * (1.0 - smoothstep(0.115, 0.115 + fa, ang));      // dark core disc on the 12 pentagons
+    gRing = gPent * (smoothstep(0.128 - fa, 0.128, ang) - smoothstep(0.158, 0.158 + fa, ang)); // glowing ring
+    gHash = fract(sin(float(id) * 12.9898) * 43758.5453);
+  }`)
+        .replace('#include <color_fragment>', `#include <color_fragment>
+  ballPanels();
+  vec3 panelCol = mix(vec3(0.82, 0.84, 0.88), vec3(0.72, 0.75, 0.8), step(0.55, gHash));
+  panelCol = mix(panelCol, vec3(0.13, 0.14, 0.17), gCore);
+  panelCol = mix(panelCol, vec3(0.9), gRing);
+  diffuseColor.rgb = mix(panelCol, vec3(0.05, 0.055, 0.065), gPanelEdge);`)
+        .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
+  roughnessFactor = mix(roughnessFactor, 0.75, gPanelEdge);`)
+        .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
+  totalEmissiveRadiance = uGlow * (gRing * 2.6 + gCore * 0.12) + vec3(1.0, 0.97, 0.9) * uFlash * (1.0 - gPanelEdge * 0.7) * 0.9;`);
+    };
+    mat.customProgramCacheKey = () => 'turbo-ball-v1';
+    registerEnvUser(mat);
+    ball = new THREE.Mesh(new THREE.SphereGeometry(R_M, 64, 40), mat);
+    ball.castShadow = false; // the blob decal below is THE landing cue; a sun-shadow blob would be ambiguous
+    ball.receiveShadow = true;
+    legacyDispose = () => { ball.geometry.dispose(); mat.dispose(); };
   }
-  // e ~ angular distance to the nearest panel border
-  float e = (d1 - d2) / max(1e-4, sqrt(max(0.0, 1.0 - d1 * d1)) + 0.35);
-  float fw = fwidth(e) * 1.2 + 1e-4;
-  gPanelEdge = 1.0 - smoothstep(0.010, 0.010 + fw, e);           // groove between panels
-  gPent = id < 12 ? 1.0 : 0.0;
-  float ang = acos(clamp(d1, -1.0, 1.0));                          // angle from the panel centre
-  float fa = fwidth(ang) * 1.2 + 1e-4;
-  gCore = gPent * (1.0 - smoothstep(0.115, 0.115 + fa, ang));      // dark core disc on the 12 pentagons
-  gRing = gPent * (smoothstep(0.128 - fa, 0.128, ang) - smoothstep(0.158, 0.158 + fa, ang)); // glowing ring
-  gHash = fract(sin(float(id) * 12.9898) * 43758.5453);
-}`)
-      .replace('#include <color_fragment>', `#include <color_fragment>
-ballPanels();
-vec3 panelCol = mix(vec3(0.82, 0.84, 0.88), vec3(0.72, 0.75, 0.8), step(0.55, gHash));
-panelCol = mix(panelCol, vec3(0.13, 0.14, 0.17), gCore);
-panelCol = mix(panelCol, vec3(0.9), gRing);
-diffuseColor.rgb = mix(panelCol, vec3(0.05, 0.055, 0.065), gPanelEdge);`)
-      .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
-roughnessFactor = mix(roughnessFactor, 0.75, gPanelEdge);`)
-      .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
-totalEmissiveRadiance = uGlow * (gRing * 2.6 + gCore * 0.12) + vec3(1.0, 0.97, 0.9) * uFlash * (1.0 - gPanelEdge * 0.7) * 0.9;`);
-  };
-  mat.customProgramCacheKey = () => 'turbo-ball-v1';
-  registerEnvUser(mat);
-  const ball = new THREE.Mesh(new THREE.SphereGeometry(R_M, 64, 40), mat);
-  ball.castShadow = false; // the blob decal below is THE landing cue; a sun-shadow blob would be ambiguous
-  ball.receiveShadow = true;
+  ball.name = 'ball.model';
   group.add(ball);
 
   // ------------------------------------------------------------------ shadow decal
@@ -134,7 +256,9 @@ totalEmissiveRadiance = uGlow * (gRing * 2.6 + gCore * 0.12) + vec3(1.0, 0.97, 0
   const N = new THREE.Vector3(), T = new THREE.Vector3(), Bt = new THREE.Vector3(), H = new THREE.Vector3();
   const prevVel = new THREE.Vector3(), prevPos = new THREE.Vector3();
   let havePrev = false, flash = 0;
-  const blue = new THREE.Color(TEAM_COLORS[0].glow), orange = new THREE.Color(TEAM_COLORS[1].glow), white = new THREE.Color(0.85, 0.92, 1.0);
+  const blue = new THREE.Color(TEAM_COLORS[0].glow), orange = new THREE.Color(TEAM_COLORS[1].glow);
+  // neutral glow: the model's cyan lens colour (old ball: cool white)
+  const white = procedural ? new THREE.Color(0.85, 0.92, 1.0) : new THREE.Color().setRGB(0.55, 0.9, 1.0, THREE.LinearSRGBColorSpace);
   const glow = uniforms.uGlow.value;
   const LIFT = 1.2; // uu above the surface
   const raycast = ctx.arena && ctx.arena.raycast;
@@ -207,16 +331,19 @@ totalEmissiveRadiance = uGlow * (gRing * 2.6 + gCore * 0.12) + vec3(1.0, 0.97, 0
       }
       prevVel.set(bv.vel.x, bv.vel.y, bv.vel.z); prevPos.set(bv.pos.x, bv.pos.y, bv.pos.z); havePrev = true;
       uniforms.uFlash.value = flash;
+
       if (dbg) { dbg.peakFlash = Math.max(dbg.peakFlash, flash); dbg.flash = flash; }
       // --- accent glow tint by pitch half (sim +Y = orange half)
       const wO = THREE.MathUtils.smoothstep(bv.pos.y, 150, 1400), wB = THREE.MathUtils.smoothstep(-bv.pos.y, 150, 1400);
       const wW = 1 - wO - wB;
       glow.setRGB(white.r * wW + blue.r * wB + orange.r * wO, white.g * wW + blue.g * wB + orange.g * wO, white.b * wW + blue.b * wB + orange.b * wO);
+      if (model) model.update(flash);
       // --- shadow
       shadow.visible = placeShadow(bv.pos);
     },
     dispose() {
-      ball.geometry.dispose(); mat.dispose(); sg.dispose(); smat.dispose();
+      if (model) model.dispose(); else legacyDispose();
+      sg.dispose(); smat.dispose();
     },
   };
 }

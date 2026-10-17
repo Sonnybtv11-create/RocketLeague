@@ -63,11 +63,23 @@ The Vector (Octane) car is the Blender model in `tools/blender/models/octane.ble
   - Glass, trim, chrome and metals, and the lights keep their own looks.
   - `Emit_Boost_Blue` glows in the team colour and brightens while boosting.
 
-To rebuild after editing the model:
+The ball is the Blender model in `tools/blender/models/ball.blend`, converted by
+`tools/blender/import_ball.py` into `src/render/cars/ballMesh.js`. The importer:
+
+- **Core:** replaces the honeycomb core (about a million displaced faces) with a 5k-triangle sphere
+  that keeps the model's UVs. The game redraws the hex holes per pixel from those UVs, with the same
+  spacing, size, colours and recess as the honeycomb texture.
+- **Other parts:** reduces the scale panels and armour to fit a budget, keeps the small parts (lenses,
+  vents, clips) close to their original shape, and gives the lettering its own budget.
+- **Lights:** the lenses glow cyan in midfield and blue or orange in each team's half. The whole ball
+  lights up briefly when a car hits it.
+
+To rebuild after editing either model:
 
     uv venv --python 3.13 .bl && uv pip install --python .bl/bin/python bpy
     .bl/bin/python tools/blender/import_octane.py [--target 26000] [--wheel 7000]
+    .bl/bin/python tools/blender/import_ball.py [--target 46000] [--print 9000]
     node tools/assemble.mjs
 
 `tools/blender/octane_build.py` is the earlier script-built body. To use it again, run it in place
-of the importer. `?procedural=1` in the URL shows the older code-built body for comparison.
+of the importer. `?procedural=1` in the URL shows the older code-built car and ball for comparison.
