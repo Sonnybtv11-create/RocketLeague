@@ -1,7 +1,8 @@
 // TURBO PITCH — modifier codes.
 // Typed into the Play (bots) lobby or the LAN host lobby before a match. They are written like
 // Rocket League's training-pack codes: 16 hexadecimal characters in four groups, e.g. A503-264B-E09A-0F2E,
-// or a short word code (letters and digits, e.g. JEEP).
+// or a short word code (letters and digits, e.g. JEEP). Profile reward codes (game/profile.js) use the
+// same format.
 // The accepted codes travel with the match config as cfg.modifiers (array of codes) and each code's
 // apply(cfg) runs when the match is set up (newSession), so a modifier can change anything the config
 // controls.
@@ -9,10 +10,7 @@
 // To add one, put an entry in MODIFIERS:
 //   'A503-264B-E09A-0F2E': { name: 'Moon ball', description: 'Low gravity for the ball', apply(cfg) { ... } },
 
-export const MODIFIERS = {
-  // Classic Roblox jeep skin on the player's car (Octane hitbox), see src/render/cars/skins.js
-  JEEP: { name: 'Classic Jeep skin', description: 'Your car becomes the classic jeep (Octane hitbox).', apply(cfg) { cfg.bodyId = 'jeep'; } },
-};
+export const MODIFIERS = {};
 
 export const CODE_EXAMPLE = 'A503-264B-E09A-0F2E';
 

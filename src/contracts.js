@@ -90,7 +90,7 @@ export const CAR_BODIES = [
 ];
 // Skins unlocked by modifier codes (not in the garage): a different look on an existing hitbox.
 export const CAR_SKINS = [
-  { id: 'jeep', name: 'Classic Jeep', hitbox: 'OCTANE' },
+  { id: 'jeep', name: 'Jeep', hitbox: 'OCTANE' },
 ];
 
 // ---- Controls (input) schema ---------------------------------------------

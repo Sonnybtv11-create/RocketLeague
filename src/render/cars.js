@@ -82,14 +82,15 @@ export function createCarModel(ctx, opts) {
   const carG = new THREE.Group();
   root.add(carG);
   const meshes = {};
-  const mats = { paint, trim: sh.trim, accent, glass: sh.glass, light: sh.light, chrome: sh.chrome, glow: glowMat };
+  const mats = { paint, trim: sh.trim, accent, glass: sh.glass, light: sh.light, chrome: sh.chrome, glow: glowMat,
+    ...(body.materialsFor ? body.materialsFor(team) : null) };   // skins bring their own (team-coloured) materials
   for (const slot of Object.keys(body.geoms)) {
     const g = body.geoms[slot];
     if (!g) continue;
-    const m = new THREE.Mesh(g, (body.materials && body.materials[slot]) || mats[slot]);
+    const m = new THREE.Mesh(g, mats[slot]);
     m.name = slot;
     m.castShadow = slot !== 'light' && slot !== 'glow' && !slot.startsWith('decal');
-    m.receiveShadow = slot === 'paint' || slot === 'accent' || slot === 'trim' || slot === 'wood';
+    m.receiveShadow = slot === 'paint' || slot === 'accent' || slot === 'trim' || slot.startsWith('wood');
     carG.add(m);
     meshes[slot] = m;
   }
@@ -125,12 +126,14 @@ export function createCarModel(ctx, opts) {
   function setWheel(i, w, steer) {
     const front = w.front, left = w.left;
     const ex = front ? extra[0] : extra[1];
-    _p.set(w.offset.x / 100, (w.offset.z - w.suspLen) / 100, (w.offset.y + (left ? -ex : ex)) / 100);
+    // skins may draw their wheels elsewhere / at another size than the hitbox's: same contact height
+    const vx = body.tyre.x ? body.tyre.x[front ? 0 : 1] : w.offset.x, vr = body.tyre.r || w.radius;
+    _p.set(vx / 100, (w.offset.z - w.suspLen - w.radius + vr) / 100, (w.offset.y + (left ? -ex : ex)) / 100);
     _qs.setFromAxisAngle(AX_Z, left ? w.spin : -w.spin);
     if (front && steer) { _qf.setFromAxisAngle(AX_Y, -steer); _q.copy(_qf); } else _q.identity();
     if (left) _q.multiply(Q_FLIP);
     _q.multiply(_qs);
-    const r = w.radius / 100;
+    const r = vr / 100;
     _s.set(r, r, front ? tyreW[0] : tyreW[1]);
     _m.compose(_p, _q, _s);
     tyres.setMatrixAt(i, _m);

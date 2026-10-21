@@ -1,10 +1,13 @@
-// TURBO PITCH — car skins: alternative looks unlocked with modifier codes (src/game/modifiers.js).
-// A skin keeps the hitbox of the car it replaces; it brings its own body mesh, wheel, materials and
-// boost nozzles. buildSkin(id) returns the same shape as bodies.js buildBody(), plus `materials`
-// (per body slot) and `wheelMaterials` ({ tyre, rim }), which cars.js uses instead of its own.
+// TURBO PITCH — car skins: extra cars unlocked with profile reward codes (src/game/profile.js), then
+// picked in the garage. A skin drives on an existing hitbox but brings its own body mesh, wheel,
+// materials and boost nozzle. buildSkin(id) returns the same shape as bodies.js buildBody(), plus
+// materialsFor(team) -> { [body slot]: material } and wheelMaterials ({ tyre, rim }), which cars.js
+// uses instead of its own, and optional tyre.x / tyre.r: where its wheels are drawn (uu) when they
+// differ from the hitbox's.
 import * as THREE from 'three';
 import { decodeMesh } from '../meshpack.js';
 import { registerEnvUser } from './materials.js';
+import { TEAM_COLORS } from '../../contracts.js';
 import { JEEP_MESH_META, JEEP_MESH_B64, JEEP_WHEEL_META, JEEP_WHEEL_B64, JEEP_TEX } from './jeepMesh.js';
 
 function texture(url, { repeat = 1, wrap = true } = {}) {
@@ -16,29 +19,53 @@ function texture(url, { repeat = 1, wrap = true } = {}) {
 }
 
 const SKINS = {
-  // Classic Roblox jeep (tools/blender/import_jeep.py), Octane hitbox. Its wheels are 4 studs wide and
-  // fitted to the Octane's axles; the tyre width / offsets below put them where the jeep has them.
+  // Classic Roblox jeep (tools/blender/import_jeep.py), Octane hitbox, scaled uniformly to the Octane's
+  // footprint. Its green parts take the team colour. Wheels: 4 studs (28 uu) wide, radius 14, drawn
+  // at the jeep's own axles.
   jeep: {
     hitbox: 'OCTANE',
-    tyre: { wF: 27.6, wB: 27.6, extraF: 1.7, extraB: -1.9, spokes: 0, modelled: true },
-    nozzles: [[-61.3, -6.6, 9.0, 3.5]],
+    tyre: { wF: 28, wB: 28, extraF: 2.1, extraB: -1.5, spokes: 0, modelled: true, x: [38.38, -24.62], r: 14 },
+    nozzles: [[-52.6, -6.4, 9.1, 3.5]],
     build() {
       const wood = texture(JEEP_TEX.wood, { repeat: 0.25 });   // Roblox maps the grain at 4 studs per tile
-      const woodMat = new THREE.MeshStandardMaterial({ vertexColors: true, map: wood, roughness: 0.62, metalness: 0, name: 'skin.jeep.wood' });
-      const plastic = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.22, metalness: 0, name: 'skin.jeep.plastic' });
+      // the original multiplies the part colour by the grain texture (mean ~0.5): match its brightness
+      const woodMat = (opts) => {
+        const m = new THREE.MeshStandardMaterial({ vertexColors: true, map: wood, roughness: 0.62, metalness: 0, ...opts });
+        m.onBeforeCompile = (sh) => {
+          sh.fragmentShader = sh.fragmentShader.replace('#include <map_fragment>', '#include <map_fragment>\ndiffuseColor.rgb *= 2.0;');
+        };
+        m.customProgramCacheKey = () => 'skin-wood-x2';
+        registerEnvUser(m);
+        return m;
+      };
+      const plasticMat = (opts) => { const m = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.22, metalness: 0, ...opts }); registerEnvUser(m); return m; };
       const decal = (url, name) => new THREE.MeshStandardMaterial({ map: texture(url, { wrap: false }), transparent: true, alphaTest: 0.05, roughness: 0.45,
         polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2, name });
-      // the original multiplies the part colour by the grain texture (mean ~0.5): match its brightness
-      woodMat.onBeforeCompile = (sh) => {
-        sh.fragmentShader = sh.fragmentShader.replace('#include <map_fragment>', '#include <map_fragment>\ndiffuseColor.rgb *= 2.0;');
+      const shared = {
+        wood: woodMat({ name: 'skin.jeep.wood' }),
+        plastic: plasticMat({ name: 'skin.jeep.plastic' }),
+        decal_grille: decal(JEEP_TEX.grille, 'skin.jeep.grille'),
+        decal_roblox: decal(JEEP_TEX.roblox, 'skin.jeep.roblox'),
       };
-      woodMat.customProgramCacheKey = () => 'skin-wood-x2';
-      for (const m of [woodMat, plastic]) registerEnvUser(m);
+      const perTeam = new Map();
       return {
         mesh: [JEEP_MESH_META, JEEP_MESH_B64],
         wheel: [JEEP_WHEEL_META, JEEP_WHEEL_B64],
-        materials: { wood: woodMat, plastic, decal_grille: decal(JEEP_TEX.grille, 'skin.jeep.grille'), decal_roblox: decal(JEEP_TEX.roblox, 'skin.jeep.roblox') },
-        wheelMaterials: { tyre: woodMat, rim: woodMat },
+        materialsFor(team) {
+          const t = team === 1 ? 1 : 0;
+          if (!perTeam.has(t)) {
+            const tc = TEAM_COLORS[t];
+            const main = new THREE.Color(tc.primary).multiplyScalar(0.62), dark = new THREE.Color(tc.dark);
+            perTeam.set(t, {
+              ...shared,
+              wood_team: woodMat({ color: main, name: 'skin.jeep.team' + t }),
+              wood_team_dark: woodMat({ color: dark, name: 'skin.jeep.teamdark' + t }),
+              plastic_team_dark: plasticMat({ color: dark, name: 'skin.jeep.lamps' + t }),
+            });
+          }
+          return perTeam.get(t);
+        },
+        wheelMaterials: { tyre: shared.wood, rim: shared.wood },
       };
     },
   },
@@ -55,7 +82,7 @@ export function buildSkin(id) {
     id, hitbox: spec.hitbox, tyre: spec.tyre,
     geoms: decodeMesh(...b.mesh, { scale: 0.01 }),          // uu -> metres, Blender axes -> model axes
     wheel: decodeMesh(...b.wheel, { blenderAxes: false }),   // already in wheel space
-    materials: b.materials, wheelMaterials: b.wheelMaterials,
+    materialsFor: b.materialsFor, wheelMaterials: b.wheelMaterials,
     nozzles: spec.nozzles.map(([x, y, z]) => new THREE.Vector3(x / 100, y / 100, z / 100)),
     nozzleRadius: spec.nozzles.map((n) => n[3] / 100),
   };

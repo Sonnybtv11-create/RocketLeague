@@ -3,11 +3,10 @@
 # Writes src/render/cars/jeepMesh.js: body + one wheel (meshpack format, with UVs) and its textures.
 #
 # The model is in Roblox studs, Blender axes (+X forward, +Y left, +Z up), ground at z = 0, wheels
-# r = 2 studs at x = 3.5 / -5.5, y = ±4. The skin uses the Octane hitbox, so the jeep is fitted to the
-# Octane's wheels: between the axles x is scaled so the axles land on the Octane's (wheelbase 85 uu);
-# everywhere else (overhangs, y, z) it is scaled uniformly by K = 6.9 uu / stud, which also puts the
-# wheel centres on the Octane's track width and wheel height. The model is all axis-aligned blocks, so
-# this per-axis mapping keeps every block a block.
+# r = 2 studs at x = 3.5 / -5.5, y = ±4. The skin keeps the jeep's own proportions: one uniform scale,
+# K = 7 uu / stud, makes it 119 x 84 uu, the Octane hitbox's footprint (118 x 84), centred on the
+# hitbox. Its wheels are drawn where the jeep has them (skins.js `tyre.x`), while the car still drives
+# on the Octane's wheels.
 import bpy, math, sys, os, io, base64
 from mathutils import Vector
 
@@ -22,21 +21,19 @@ OUT = os.path.join(ROOT, 'src', 'render', 'cars', 'jeepMesh.js')
 bpy.ops.wm.open_mainfile(filepath=SRC, load_ui=False)
 scene = bpy.context.scene
 
-K = 6.9                                    # uu per stud (y, z, overhangs)
-FX, RX = 3.5, -5.5                         # jeep axle x (studs)
-GFX, GRX = 51.25, -33.75                   # Octane axle x (uu)
-KX = (GFX - GRX) / (FX - RX)               # 9.44 uu / stud between the axles
+K = 7.0                                    # uu per stud
+CX = 13.88                                 # Octane hitbox centre x (uu); the jeep's bumpers span ±8.5 studs
 GROUND = -16.9                             # Octane model-space ground height (uu), as for the Vector body
 
-def map_x(x):
-    if x > FX: return GFX + (x - FX) * K
-    if x < RX: return GRX + (x - RX) * K
-    return GRX + (x - RX) * KX
 def to_game(p):
-    return Vector((map_x(p.x), p.y * K, GROUND + p.z * K))
+    return Vector((CX + p.x * K, p.y * K, GROUND + p.z * K))
+for n, x in (('front', 3.5), ('rear', -5.5)):
+    print(f'{n} axle x', round(CX + x * K, 2), 'uu; wheel centre height', round(GROUND + 2 * K, 2), 'radius', 2 * K, 'track ±', 4 * K)
 
 # ------------------------------------------------------------------ materials -> slots
 # wood:  Roblox "Wood" parts (part colour x wood grain texture)      plastic: smooth plastic parts
+# *_team / *_team_dark: the green parts, drawn in the team colour (camo body -> team colour, earth
+# green floor / seats / headlights -> dark team colour); their vertex colour is white.
 # decal_grille / decal_roblox: the two decals (textured, alpha)
 def part_colour(m):
     for n in m.node_tree.nodes:
@@ -49,10 +46,12 @@ def slot_of(m):
     if m is None: return 'plastic', (0.5, 0.5, 0.5)
     if m.name.startswith('Decal grille'): return 'decal_grille', (1, 1, 1)
     if m.name.startswith('Decal roblox'): return 'decal_roblox', (1, 1, 1)
-    if 'Plastic' in m.name: return 'plastic', part_colour(m)
-    return 'wood', part_colour(m)
+    kind = 'plastic' if 'Plastic' in m.name else 'wood'
+    if '(Camo)' in m.name: return kind + '_team', (1, 1, 1)
+    if '(Earth green)' in m.name: return kind + '_team_dark', (1, 1, 1)
+    return kind, part_colour(m)
 
-UV_SLOTS = ('wood', 'decal_grille', 'decal_roblox')
+UV_SLOTS = ('wood', 'wood_team', 'wood_team_dark', 'decal_grille', 'decal_roblox')
 wheel_names = [o.name for o in scene.objects if o.name.startswith('Wheel_')]
 body_objs = [o for o in scene.objects if o.type == 'MESH' and o.parent and o.parent.name == 'ClassicJeep' and o.name not in wheel_names]
 
@@ -83,7 +82,7 @@ w.evaluated_get(dg).to_mesh_clear()
 C = Vector(((min(p.x for p in pts) + max(p.x for p in pts)) / 2, (min(p.y for p in pts) + max(p.y for p in pts)) / 2, (min(p.z for p in pts) + max(p.z for p in pts)) / 2))
 R = max(math.hypot(p.x - C.x, p.z - C.z) for p in pts)
 W = max(p.y for p in pts) - min(p.y for p in pts)
-print('wheel centre', tuple(round(c, 3) for c in C), 'radius', round(R, 3), 'width', round(W, 3), 'studs ->', round(W * K, 2), 'uu wide')
+print('wheel centre', tuple(round(c, 3) for c in C), 'radius', round(R, 3), 'width', round(W, 3), 'studs ->', round(W * K, 2), 'uu wide, centre y', round(C.y * K, 2))
 def wheel_x(p):
     d = p - C
     return Vector((d.x / R, d.z / R, -d.y / W))

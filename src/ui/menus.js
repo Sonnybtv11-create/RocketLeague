@@ -1,18 +1,20 @@
 // TURBO PITCH — menus (UI agent): main menu, play setup, free play, garage, settings (tabs + bindings),
 // controls help, lifetime stats, pause menu and end-of-match screen. Mouse-first, with keyboard
 // arrows / gamepad spatial navigation (see nav.js).
-import { CAR_BODIES, GAME_TITLE, TEAM_COLORS } from '../contracts.js';
+import { CAR_BODIES, CAR_SKINS, GAME_TITLE, TEAM_COLORS } from '../contracts.js';
 import { DEFAULT_SETTINGS, DEFAULT_BINDINGS, CONTROL_PRESETS, applyControlPreset, currentControlPreset } from '../game/settings.js';
 import { CAR_CONFIGS } from '../sim/carconfig.js';
 import { h, esc, keyName, keyList, padName, TEAM_NAME } from './dom.js';
 import { buildScoreboard, mvpPlayer } from './scoreboard.js';
 import { createNav } from './nav.js';
 import { formatCode, checkCode, lookupCode, validCodes, CODE_EXAMPLE } from '../game/modifiers.js';
-import { cleanName, NAME_MAX, formatRewardCode, redeemCode, REWARD_CODE_EXAMPLE, levelInfo } from '../game/profile.js';
+import { cleanName, NAME_MAX, formatRewardCode, redeemCode, REWARD_CODE_EXAMPLE, levelInfo, hasItem } from '../game/profile.js';
 
 const clone = (o) => JSON.parse(JSON.stringify(o));
 const cap = (str) => String(str).charAt(0).toUpperCase() + String(str).slice(1).toLowerCase();
 export const hitboxLabel = (hb) => `${cap(hb || 'OCTANE')}-class`;
+// garage bodies plus skins (unlocked with profile codes); unknown ids fall back to the first body
+const findBody = (id) => CAR_BODIES.find((b) => b.id === id) || CAR_SKINS.find((b) => b.id === id) || CAR_BODIES[0];
 
 const DIFFS = [['rookie', 'Rookie'], ['pro', 'Pro'], ['allstar', 'All-Star']];
 const ACCENTS = ['#e8e8e8', '#1c1c1c', '#ff3b3b', '#ff8a1f', '#ffd23f', '#9cff3b', '#2ee6a8', '#2fd3ff',
@@ -193,7 +195,7 @@ export function createMenus({ api, settings, stats, onOpenChange }) {
     return f;
   }
   function playerCard() {
-    const body = CAR_BODIES.find((b) => b.id === settings.game.carBody) || CAR_BODIES[0];
+    const body = findBody(settings.game.carBody);
     const team = settings.game.team === 1 ? 1 : 0;
     return h('div.tp-card',
       h('div.av', { style: { background: TEAM_COLORS[team].css } }, String(settings.game.playerName || 'P').slice(0, 1).toUpperCase()),
@@ -333,7 +335,7 @@ export function createMenus({ api, settings, stats, onOpenChange }) {
         mods: { codes: validCodes(lm.modifiers), draft: '', error: '' },
       });
       const mySize = () => (cfg.custom ? (cfg.playerTeam === 1 ? cfg.orangeSize : cfg.blueSize) : cfg.teamSize);
-      const body = CAR_BODIES.find((b) => b.id === settings.game.carBody) || CAR_BODIES[0];
+      const body = findBody(settings.game.carBody);
       p.append(h('div.tp-shade-r'), title('Play', 'Exhibition vs bots'));
       const panel = h('div.tp-panel.tp-scroll', { style: { right: 'calc(var(--u) * 3)', top: 'calc(var(--u) * 13)', width: 'min(calc(var(--u) * 70), 44vw)', maxHeight: 'calc(100% - var(--u) * 21)', padding: 'calc(var(--u) * 2.2) calc(var(--u) * 2.8)' } });
       panel.append(
@@ -411,7 +413,7 @@ export function createMenus({ api, settings, stats, onOpenChange }) {
     garage(p) {
       const g = settings.game;
       const team = g.team === 1 ? 1 : 0;
-      const body = CAR_BODIES.find((b) => b.id === g.carBody) || CAR_BODIES[0];
+      const body = findBody(g.carBody);
       const apply = (bodyId, accent, t) => {
         api.setPreviewCar(bodyId, accent, t);
         g.carBody = bodyId; g.accent = accent; g.team = t;
@@ -428,7 +430,9 @@ export function createMenus({ api, settings, stats, onOpenChange }) {
       panel.appendChild(group('Player name', nameIn));
 
       const cars = h('div.tp-cars');
-      for (const b of CAR_BODIES) {
+      const prof = (api.getProfile ? api.getProfile() : null) || { items: [] };
+      const unlocked = CAR_SKINS.filter((b) => hasItem(prof, 'car', b.id));   // from profile reward codes
+      for (const b of [...CAR_BODIES, ...unlocked]) {
         cars.appendChild(h('button.tp-carbtn' + (b.id === body.id ? '.sel' : ''), {
           type: 'button', 'data-nav': '', 'data-key': 'car:' + b.id, onclick: (e) => { e.preventDefault(); apply(b.id, g.accent, team); },
         }, h('span.n', b.name), h('span.hb', `Hitbox: ${hitboxLabel(b.hitbox)}`)));
@@ -563,7 +567,9 @@ export function createMenus({ api, settings, stats, onOpenChange }) {
         if (r.ok) {
           api.saveProfile && api.saveProfile();
           profState.draft = ''; profState.error = '';
+          const cars = r.added.filter((it) => it.type === 'car');
           profState.ok = r.added.length ? `Unlocked: ${r.added.map((it) => it.name).join(', ')}` : `Redeemed ${r.reward.name || r.code}.`;
+          if (cars.length) profState.ok += ` — it’s in your Garage.`;
         } else { profState.draft = r.code; profState.error = r.error; profState.ok = ''; }
         refresh();
       };

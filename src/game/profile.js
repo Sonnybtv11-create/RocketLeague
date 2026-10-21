@@ -4,8 +4,8 @@
 // this profile, such as a car skin. Redeemed codes and unlocked items are kept in localStorage
 // under their own key, so resetting settings never removes them.
 //
-// No codes exist yet. To add one, put an entry in REWARD_CODES (same 16-character style as the
-// modifier codes, e.g. 7F3A-0C12-9B44-E5D1):
+// To add a code, put an entry in REWARD_CODES (same style as the modifier codes: 16 characters like
+// 7F3A-0C12-9B44-E5D1, or a word such as JEEP):
 //   '7F3A-0C12-9B44-E5D1': {
 //     name: 'Gold paint',
 //     description: 'Unlocks the gold paint finish',
@@ -13,10 +13,13 @@
 //   },
 // Each item lands in profile.items (one entry per type + id). Item types the game doesn't use yet
 // are still kept, so a code can be added before the item it unlocks is built.
+// Item types in use: 'car' (id = a CAR_SKINS id in contracts.js) -> shows up in the garage.
 
 import { formatCode, isComplete, CODE_EXAMPLE } from './modifiers.js';
 
-export const REWARD_CODES = {};
+export const REWARD_CODES = {
+  JEEP: { name: 'Jeep', description: 'The classic jeep (Octane hitbox)', items: [{ type: 'car', id: 'jeep', name: 'Jeep' }] },
+};
 
 const KEY = 'turbopitch.profile.v1';
 export const DEFAULT_PROFILE = { redeemed: [], items: [] };
@@ -51,7 +54,7 @@ export const itemsOfType = (profile, type) => profile.items.filter((it) => it.ty
 export function checkRewardCode(raw, profile) {
   const code = formatRewardCode(raw);
   if (!code) return { ok: false, code, error: 'Type a code first.' };
-  if (!isComplete(code)) return { ok: false, code, error: `Codes are 16 characters, like ${REWARD_CODE_EXAMPLE}.` };
+  if (!isComplete(code)) return { ok: false, code, error: `That isn’t a code. Codes look like ${REWARD_CODE_EXAMPLE}.` };
   if (profile.redeemed.includes(code)) return { ok: false, code, error: 'You’ve already redeemed that code.' };
   const reward = lookupReward(code);
   if (!reward) return { ok: false, code, error: 'Code not recognised.' };

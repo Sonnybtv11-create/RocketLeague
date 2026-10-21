@@ -11,7 +11,7 @@ import { CAR_CONFIGS } from './sim/carconfig.js';
 import { QUALITY, CAR_BODIES, CAR_SKINS, EV, TEAM_COLORS, makeControls, GAME_TITLE } from './contracts.js';
 import { captureFrame, interpolateFrames } from './game/view.js';
 import { loadAll, saveAll, recordMatch } from './game/settings.js';
-import { loadProfile, saveProfile } from './game/profile.js';
+import { loadProfile, saveProfile, hasItem } from './game/profile.js';
 import { simToThree } from './render/util.js';
 import { createEnvironment } from './render/environment.js';
 import { createCarModel, createBallModel } from './render/cars.js';
@@ -28,6 +28,8 @@ import { createNetHost, createNetClient } from './net/session.js';
 const params = new URLSearchParams(location.search);
 const { settings, stats } = loadAll();
 const profile = loadProfile();   // redeemed codes + unlocked items (game/profile.js)
+// a skin chosen in the garage needs its unlock on this profile (e.g. after clearing site data)
+if (CAR_SKINS.some((b) => b.id === settings.game.carBody) && !hasItem(profile, 'car', settings.game.carBody)) settings.game.carBody = 'vector';
 if (params.get('q')) settings.graphics.quality = params.get('q');
 
 // ---------------------------------------------------------------- renderer

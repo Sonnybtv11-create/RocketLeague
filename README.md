@@ -97,10 +97,11 @@ the rim and the glass frame follow the arena's curved walls exactly, so they are
 (`src/render/env/wallDetail.js`) from the same profile as the collision walls. All Blender scripts
 share `tools/blender/meshpack.py` for export.
 
-Skins are alternative looks on an existing hitbox, unlocked by modifier codes (`src/game/modifiers.js`).
-The classic jeep (code `JEEP`, Octane hitbox) comes from `tools/blender/models/jeep.blend` through
-`tools/blender/import_jeep.py`. The importer scales the model to the Octane's wheels, and the game
-side lives in `src/render/cars/skins.js`.
+Skins are extra cars on an existing hitbox, unlocked with **Profile › Redeem a code**. They then appear
+in the Garage (`REWARD_CODES` in `src/game/profile.js`, `CAR_SKINS` in `src/contracts.js`).
+The jeep (code `JEEP`, Octane hitbox) comes from `tools/blender/models/jeep.blend` through
+`tools/blender/import_jeep.py`. It is scaled evenly to the Octane's footprint, and its green parts
+take the team colour. The game side lives in `src/render/cars/skins.js`.
 
 To rebuild after editing a model:
 
