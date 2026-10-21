@@ -10,7 +10,8 @@ import { arenaSDF, arenaNormal, arenaRaycast, arenaRing, arenaProfile, ARENA_PAR
 import { CAR_CONFIGS } from './sim/carconfig.js';
 import { QUALITY, CAR_BODIES, EV, TEAM_COLORS, makeControls, GAME_TITLE } from './contracts.js';
 import { captureFrame, interpolateFrames } from './game/view.js';
-import { loadAll, saveAll } from './game/settings.js';
+import { loadAll, saveAll, recordMatch } from './game/settings.js';
+import { loadProfile, saveProfile } from './game/profile.js';
 import { simToThree } from './render/util.js';
 import { createEnvironment } from './render/environment.js';
 import { createCarModel, createBallModel } from './render/cars.js';
@@ -26,6 +27,7 @@ import { createNetHost, createNetClient } from './net/session.js';
 
 const params = new URLSearchParams(location.search);
 const { settings, stats } = loadAll();
+const profile = loadProfile();   // redeemed codes + unlocked items (game/profile.js)
 if (params.get('q')) settings.graphics.quality = params.get('q');
 
 // ---------------------------------------------------------------- renderer
@@ -320,6 +322,8 @@ const api = {
   getInput() { return input; },
   getSettings() { return settings; },
   getStats() { return stats; },
+  getProfile() { return profile; },
+  saveProfile() { return saveProfile(profile); },
   async runSelfTests(onLine) {
     const mod = await import('./tests/selftest.js');
     return mod.runAllAsync(null, onLine || console.log);
@@ -561,13 +565,7 @@ function frame(now) {
 function onMatchEnd(e) {
   const mv = game.match.getView();
   const me = mv.players && mv.players.find((p) => p.carId === game.playerCarId);
-  stats.matches++;
-  if (me) {
-    if (mv.winner === me.team) stats.wins++;
-    stats.goals += me.goals || 0; stats.assists += me.assists || 0; stats.saves += me.saves || 0;
-    stats.shots += me.shots || 0; stats.demos += me.demos || 0;
-    if (mv.mvpId === me.carId) stats.mvps++;
-  }
+  recordMatch(stats, mv, me, Date.now());
   saveAll(settings, stats);
   input.setEnabled(false);
   ui.showEndScreen(mv);

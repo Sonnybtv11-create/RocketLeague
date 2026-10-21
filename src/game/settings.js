@@ -130,7 +130,25 @@ export const DEFAULT_SETTINGS = {
   },
 };
 
-export const DEFAULT_STATS = { matches: 0, wins: 0, goals: 0, assists: 0, saves: 0, shots: 0, demos: 0, mvps: 0 };
+// Lifetime stats on this device (shown on the Profile page). streak = current win streak.
+export const DEFAULT_STATS = { matches: 0, wins: 0, goals: 0, assists: 0, saves: 0, shots: 0, demos: 0, mvps: 0, streak: 0, bestStreak: 0, firstPlayed: 0, lastPlayed: 0 };
+
+// Add one finished match to the lifetime stats. mv = match view at the end, me = the player's row in
+// mv.players (null when spectating). now = timestamp in ms.
+export function recordMatch(stats, mv, me, now) {
+  stats.matches = (stats.matches || 0) + 1;
+  if (!stats.firstPlayed) stats.firstPlayed = now;
+  stats.lastPlayed = now;
+  if (!me) return stats;
+  if (mv.winner === me.team) {
+    stats.wins = (stats.wins || 0) + 1;
+    stats.streak = (stats.streak || 0) + 1;
+    stats.bestStreak = Math.max(stats.bestStreak || 0, stats.streak);
+  } else stats.streak = 0;
+  for (const k of ['goals', 'assists', 'saves', 'shots', 'demos']) stats[k] = (stats[k] || 0) + (me[k] || 0);
+  if (mv.mvpId != null && mv.mvpId === me.carId) stats.mvps = (stats.mvps || 0) + 1;
+  return stats;
+}
 
 function deepMerge(base, over) {
   if (typeof base !== 'object' || base === null || Array.isArray(base)) return over === undefined ? base : over;

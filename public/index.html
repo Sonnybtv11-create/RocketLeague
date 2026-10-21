@@ -5132,7 +5132,21 @@ var DEFAULT_SETTINGS = {
     freeplay: { predictionLine: true, unlimitedBoost: true }
   }
 };
-var DEFAULT_STATS = { matches: 0, wins: 0, goals: 0, assists: 0, saves: 0, shots: 0, demos: 0, mvps: 0 };
+var DEFAULT_STATS = { matches: 0, wins: 0, goals: 0, assists: 0, saves: 0, shots: 0, demos: 0, mvps: 0, streak: 0, bestStreak: 0, firstPlayed: 0, lastPlayed: 0 };
+function recordMatch(stats2, mv, me, now2) {
+  stats2.matches = (stats2.matches || 0) + 1;
+  if (!stats2.firstPlayed) stats2.firstPlayed = now2;
+  stats2.lastPlayed = now2;
+  if (!me) return stats2;
+  if (mv.winner === me.team) {
+    stats2.wins = (stats2.wins || 0) + 1;
+    stats2.streak = (stats2.streak || 0) + 1;
+    stats2.bestStreak = Math.max(stats2.bestStreak || 0, stats2.streak);
+  } else stats2.streak = 0;
+  for (const k of ["goals", "assists", "saves", "shots", "demos"]) stats2[k] = (stats2[k] || 0) + (me[k] || 0);
+  if (mv.mvpId != null && mv.mvpId === me.carId) stats2.mvps = (stats2.mvps || 0) + 1;
+  return stats2;
+}
 function deepMerge(base, over) {
   if (typeof base !== "object" || base === null || Array.isArray(base)) return over === void 0 ? base : over;
   const out = {};
@@ -5161,6 +5175,68 @@ function saveAll(settings2, stats2) {
   } catch (e) {
     return false;
   }
+}
+
+// src/game/profile.js
+var REWARD_CODES = {};
+var KEY2 = "turbopitch.profile.v1";
+var NAME_MAX = 16;
+var REWARD_CODE_EXAMPLE = CODE_EXAMPLE;
+var formatRewardCode = formatCode;
+var lookupReward = (code) => REWARD_CODES[code] || null;
+function cleanName(raw2) {
+  return String(raw2 || "").replace(/[^\w .\-]/g, "").replace(/\s+/g, " ").trim().slice(0, NAME_MAX);
+}
+function loadProfile() {
+  let raw2 = null;
+  try {
+    raw2 = JSON.parse(localStorage.getItem(KEY2) || "null");
+  } catch (e) {
+    raw2 = null;
+  }
+  return {
+    redeemed: Array.isArray(raw2 && raw2.redeemed) ? raw2.redeemed.filter((c) => typeof c === "string") : [],
+    items: Array.isArray(raw2 && raw2.items) ? raw2.items.filter((it) => it && it.type && it.id) : []
+  };
+}
+function saveProfile(profile2) {
+  try {
+    localStorage.setItem(KEY2, JSON.stringify(profile2));
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+var hasItem = (profile2, type, id) => profile2.items.some((it) => it.type === type && it.id === id);
+function checkRewardCode(raw2, profile2) {
+  const code = formatRewardCode(raw2);
+  if (!code) return { ok: false, code, error: "Type a code first." };
+  if (!isComplete(code)) return { ok: false, code, error: `Codes are 16 characters, like ${REWARD_CODE_EXAMPLE}.` };
+  if (profile2.redeemed.includes(code)) return { ok: false, code, error: "You’ve already redeemed that code." };
+  const reward = lookupReward(code);
+  if (!reward) return { ok: false, code, error: "Code not recognised." };
+  return { ok: true, code, reward };
+}
+function redeemCode(raw2, profile2) {
+  const r = checkRewardCode(raw2, profile2);
+  if (!r.ok) return r;
+  profile2.redeemed.push(r.code);
+  const added = [];
+  for (const it of r.reward.items || []) {
+    if (!it || !it.type || !it.id || hasItem(profile2, it.type, it.id)) continue;
+    const item = { type: String(it.type), id: String(it.id), name: String(it.name || it.id), code: r.code };
+    profile2.items.push(item);
+    added.push(item);
+  }
+  return { ...r, added };
+}
+var RANKS = [[50, "Legend"], [40, "Master"], [30, "Expert"], [20, "Veteran"], [10, "Pro"], [5, "Semi-Pro"], [0, "Rookie"]];
+function levelInfo(st = {}) {
+  const xp = (st.matches || 0) * 40 + (st.wins || 0) * 60 + (st.goals || 0) * 25 + (st.saves || 0) * 15 + (st.assists || 0) * 15;
+  const level = 1 + Math.floor(Math.sqrt(xp / 30));
+  const next = 30 * level * level;
+  const prev = 30 * (level - 1) * (level - 1);
+  return { xp, level, rank: RANKS.find(([lv]) => level >= lv)[1], progress: next > prev ? (xp - prev) / (next - prev) : 0, toNext: Math.max(0, next - xp) };
 }
 
 // src/main.js
@@ -7115,16 +7191,16 @@ function ringAt(u, sign2, s2) {
   const tl = Math.hypot(bx - ax, by - ay) || 1;
   return { x: ax + (bx - ax) * f, y: ay + (by - ay) * f, tx: (bx - ax) / tl, ty: (by - ay) / tl };
 }
-function sweep(out, frames, profile, colours) {
-  const m = profile.length;
+function sweep(out, frames, profile2, colours) {
+  const m = profile2.length;
   let ca = 0, cb = 0;
-  for (const [a, b] of profile) {
+  for (const [a, b] of profile2) {
     ca += a / m;
     cb += b / m;
   }
   const P = new THREE10.Vector3(), Q = new THREE10.Vector3(), N2 = new THREE10.Vector3();
   for (let k = 0; k < m; k++) {
-    const [a0, b0, slot] = profile[k], [a1, b1] = profile[(k + 1) % m];
+    const [a0, b0, slot] = profile2[k], [a1, b1] = profile2[(k + 1) % m];
     const o = out[slot] || (out[slot] = { pos: [], nrm: [], col: [], idx: [] });
     let ea = b1 - b0, eb = -(a1 - a0);
     if (ea * ((a0 + a1) / 2 - ca) + eb * ((b0 + b1) / 2 - cb) < 0) {
@@ -8245,12 +8321,12 @@ function M(x = 0, y = 0, z = 0, rx = 0, ry = 0, rz = 0, sx = 1, sy = 1, sz = 1) 
   _s.set(sx, sy, sz);
   return new THREE13.Matrix4().compose(_v, _q, _s);
 }
-function sweepArc(profile, a0, a1, segs = 16, closeEnds = true, crease = 50) {
+function sweepArc(profile2, a0, a1, segs = 16, closeEnds = true, crease = 50) {
   const pos = [], idx = [];
-  const P = profile.length;
+  const P = profile2.length;
   for (let i = 0; i <= segs; i++) {
     const a = lerp(a0, a1, i / segs), c = Math.cos(a), s2 = Math.sin(a);
-    for (const [r, w] of profile) pos.push(c * r, s2 * r, w);
+    for (const [r, w] of profile2) pos.push(c * r, s2 * r, w);
   }
   for (let i = 0; i < segs; i++) for (let j = 0; j < P; j++) {
     const j2 = (j + 1) % P;
@@ -8260,7 +8336,7 @@ function sweepArc(profile, a0, a1, segs = 16, closeEnds = true, crease = 50) {
   if (closeEnds) {
     for (const [i, dir] of [[0, 1], [segs, -1]]) {
       let cr = 0, cw = 0;
-      for (const [r, w] of profile) {
+      for (const [r, w] of profile2) {
         cr += r;
         cw += w;
       }
@@ -8309,8 +8385,8 @@ function orientOutward(g) {
   }
   return g;
 }
-function latheX(profile, segs = 20, crease = 40) {
-  const pts = profile.map(([x, r]) => new THREE13.Vector2(Math.max(r, 1e-3), x));
+function latheX(profile2, segs = 20, crease = 40) {
+  const pts = profile2.map(([x, r]) => new THREE13.Vector2(Math.max(r, 1e-3), x));
   const g = new THREE13.LatheGeometry(pts, segs);
   g.applyMatrix4(new THREE13.Matrix4().makeRotationZ(-Math.PI / 2));
   g.deleteAttribute("uv");
@@ -8397,8 +8473,8 @@ function buildTyre(width) {
 function lerp2(a, b, t) {
   return a + (b - a) * t;
 }
-function lathe(profile, segs) {
-  const pts = profile.map(([r, w]) => new THREE14.Vector2(Math.max(0.01, r), w));
+function lathe(profile2, segs) {
+  const pts = profile2.map(([r, w]) => new THREE14.Vector2(Math.max(0.01, r), w));
   const g = new THREE14.LatheGeometry(pts, segs);
   g.applyMatrix4(new THREE14.Matrix4().makeRotationX(Math.PI / 2));
   g.deleteAttribute("uv");
@@ -13874,6 +13950,27 @@ var CSS = String.raw`
 .tp-tile:nth-child(even) { border-left-color: var(--orange); }
 .tp-tile .v { font-size: calc(var(--u) * 5.4); font-weight: 300; line-height: 1; font-variant-numeric: tabular-nums; }
 .tp-tile .k { margin-top: calc(var(--u) * 0.6); font-size: calc(var(--u) * 1.5); letter-spacing: 0.22em; color: var(--dim); text-transform: uppercase; }
+/* profile page */
+.tp-prof .tp-tile .v { font-size: calc(var(--u) * 4.2); }
+.tp-prof .tp-sect { margin-top: calc(var(--u) * 2.6); }
+.tp-prof-head { display: grid; grid-template-columns: auto 1fr minmax(calc(var(--u) * 26), auto); gap: calc(var(--u) * 2.4); align-items: start;
+  padding-bottom: calc(var(--u) * 2); border-bottom: calc(var(--u) * 0.15) solid rgba(255, 255, 255, 0.1); }
+.tp-prof-head .av { width: calc(var(--u) * 9.4); height: calc(var(--u) * 9.4); display: flex; align-items: center; justify-content: center;
+  font-size: calc(var(--u) * 4.8); font-weight: 800; color: #fff; border-radius: calc(var(--u) * 0.6); box-shadow: inset 0 0 0 calc(var(--u) * 0.25) rgba(255, 255, 255, 0.25); }
+.tp-prof-id .lbl { font-size: calc(var(--u) * 1.4); letter-spacing: 0.22em; color: var(--dim); text-transform: uppercase; margin-bottom: calc(var(--u) * 0.7); }
+.tp-prof-name { font-size: calc(var(--u) * 2.2); font-weight: 700; }
+.tp-prof-msg { margin: calc(var(--u) * 0.8) 0 0; }
+.tp-prof-lv .rk { display: flex; align-items: center; gap: calc(var(--u) * 0.8); font-size: calc(var(--u) * 1.7); font-weight: 700; color: #f2e3a8; letter-spacing: 0.08em; }
+.tp-prof-lv .lv { min-width: calc(var(--u) * 4.4); padding: calc(var(--u) * 0.2) calc(var(--u) * 0.8); text-align: center; border-radius: calc(var(--u) * 1);
+  background: linear-gradient(#ffd86a, #c98a12); color: #2a1a00; font-weight: 900; }
+.tp-prof-bar { height: calc(var(--u) * 0.9); margin-top: calc(var(--u) * 1.4); background: rgba(255, 255, 255, 0.1); overflow: hidden; }
+.tp-prof-bar i { display: block; height: 100%; background: linear-gradient(90deg, var(--gold), var(--orange)); }
+.tp-prof-lv .nx { margin-top: calc(var(--u) * 0.7); font-size: calc(var(--u) * 1.4); color: var(--dim); }
+.tp-prof-small { font-size: calc(var(--u) * 1.4); margin: calc(var(--u) * 1) 0 0; }
+.tp-note.tp-prof-ok { color: #9cff9c; }
+.tp-prof-item .it { font-weight: 700; font-size: calc(var(--u) * 1.8); color: #fff; }
+.tp-prof-item .nm { text-align: right; text-transform: uppercase; letter-spacing: 0.18em; font-size: calc(var(--u) * 1.3); }
+@media (max-aspect-ratio: 4/3) { .tp-prof-head { grid-template-columns: auto 1fr; } .tp-prof-lv { grid-column: 1 / -1; } .tp-prof .tp-tiles { grid-template-columns: repeat(2, 1fr); } }
 .tp-help { display: grid; grid-template-columns: 1fr 1fr; gap: calc(var(--u) * 3); }
 .tp-ktable { width: 100%; border-collapse: collapse; font-size: calc(var(--u) * 1.85); }
 .tp-ktable td { padding: calc(var(--u) * 0.55) calc(var(--u) * 0.8); border-bottom: 1px solid rgba(255, 255, 255, 0.06); }
@@ -14965,6 +15062,7 @@ function createMenus({ api: api2, settings: settings2, stats: stats2, onOpenChan
     if (!wasOpen) onOpenChange && onOpenChange(true);
   }
   function push(page) {
+    if (page === "profile") profState = { draft: "", error: "", ok: "", nameMsg: "" };
     stack.push(page);
     render(true);
   }
@@ -15219,12 +15317,13 @@ function createMenus({ api: api2, settings: settings2, stats: stats2, onOpenChan
             ["Free play options", () => push("freeplay")]
           ]
         },
-        { key: "garage", label: "Garage", desc: "Change your car body, paint and player name.", go: () => push("garage") },
+        { key: "garage", label: "Garage", desc: "Change your car body and paint.", go: () => push("garage") },
+        { key: "profile", label: "Profile", desc: "Your name, your stats on this device and reward codes.", go: () => push("profile") },
         {
           key: "extras",
           label: "Extras",
-          desc: "Career stats and the full controls guide.",
-          sub: [["Career stats", () => push("stats")], ["Controls guide", () => push("controls")]]
+          desc: "The full controls guide.",
+          sub: [["Controls guide", () => push("controls")]]
         },
         { key: "opt", label: "Options", desc: "Camera, controls, video and audio settings.", go: () => push("settings") }
       ];
@@ -15310,11 +15409,7 @@ function createMenus({ api: api2, settings: settings2, stats: stats2, onOpenChan
       );
       renderTip();
       p.appendChild(news);
-      const st = stats2 || {};
-      const xp = (st.matches || 0) * 40 + (st.wins || 0) * 60 + (st.goals || 0) * 25 + (st.saves || 0) * 15 + (st.assists || 0) * 15;
-      const level = 1 + Math.floor(Math.sqrt(xp / 30));
-      const RANKS = [[50, "Legend"], [40, "Master"], [30, "Expert"], [20, "Veteran"], [10, "Pro"], [5, "Semi-Pro"], [0, "Rookie"]];
-      const rank = RANKS.find(([lv]) => level >= lv)[1];
+      const { level, rank } = levelInfo((api2.getStats ? api2.getStats() : stats2) || {});
       const team = settings2.game.team === 1 ? 1 : 0;
       p.append(
         h(
@@ -15327,6 +15422,7 @@ function createMenus({ api: api2, settings: settings2, stats: stats2, onOpenChan
               h("div.nm", settings2.game.playerName || "Player"),
               h("div.rk", h("span.lv", String(level)), h("span", rank.toUpperCase()))
             ),
+            btn("Profile", () => push("profile"), { key: "mm-band-profile", cls: "tp-mm-mini" }),
             btn("Garage", () => push("garage"), { key: "mm-band-garage", cls: "tp-mm-mini" })
           ),
           h("div.tp-mm-hints", h("span", h("span.tp-key", "↑↓"), " / mouse to choose"), h("span", h("span.tp-key", "Enter"), " or ", h("span.tp-key.pad", "A"), " to select"))
@@ -15621,16 +15717,68 @@ function createMenus({ api: api2, settings: settings2, stats: stats2, onOpenChan
       panel.append(help, h("div.tp-sect", "Mechanics"), tips);
       p.append(panel, footer());
     },
-    stats(p) {
+    // Profile: player name, level, stats on this device (updated after every match) and the
+    // redeem-code box that unlocks items such as skins (codes live in game/profile.js).
+    profile(p) {
       const st = (api2.getStats ? api2.getStats() : stats2) || {};
-      p.append(h("div.tp-shade-l"), title("Career Stats", "Lifetime · this browser"));
-      const panel = h("div.tp-panel", { style: { left: "calc(var(--u) * 4)", top: "calc(var(--u) * 13)", width: "min(calc(var(--u) * 110), calc(100% - var(--u) * 8))", padding: "calc(var(--u) * 2.6) calc(var(--u) * 3)" } });
+      const prof = (api2.getProfile ? api2.getProfile() : null) || { redeemed: [], items: [] };
+      const g = settings2.game;
+      const team = g.team === 1 ? 1 : 0;
+      const lv = levelInfo(st);
+      p.append(h("div.tp-shade-l"), title("Profile", "Saved on this device"));
+      const panel = h("div.tp-panel.tp-scroll.tp-prof", { style: { left: "calc(var(--u) * 4)", top: "calc(var(--u) * 12.5)", width: "min(calc(var(--u) * 120), calc(100% - var(--u) * 8))", maxHeight: "calc(100% - var(--u) * 20.5)", padding: "calc(var(--u) * 2.6) calc(var(--u) * 3)" } });
+      const av = h("div.av", { style: { background: TEAM_COLORS[team].css } }, String(g.playerName || "P").slice(0, 1).toUpperCase());
+      const nameIn = h("input.tp-input.tp-prof-name", { type: "text", maxlength: String(NAME_MAX), value: g.playerName || "Player", placeholder: "Player", "data-nav": "", "data-key": "prof-name", spellcheck: "false", autocomplete: "off", "aria-label": "Player name" });
+      const nameMsg = h("div.tp-note.tp-prof-msg", profState.nameMsg || `Up to ${NAME_MAX} letters, numbers, spaces, dots or dashes.`);
+      const saveName = () => {
+        const n = cleanName(nameIn.value) || "Player";
+        nameIn.value = n;
+        if (n === g.playerName) return;
+        g.playerName = n;
+        api2.saveSettings && api2.saveSettings();
+        profState.nameMsg = `Name saved as “${n}”.`;
+        refresh();
+      };
+      nameIn.addEventListener("input", () => {
+        const c = nameIn.value.replace(/[^\w .\-]/g, "").slice(0, NAME_MAX);
+        if (c !== nameIn.value) nameIn.value = c;
+        av.textContent = (c.trim() || "P").slice(0, 1).toUpperCase();
+      });
+      nameIn.addEventListener("change", saveName);
+      nameIn.addEventListener("keydown", (e) => {
+        e.stopPropagation();
+        if (e.key === "Enter") nameIn.blur();
+        else if (e.key === "Escape") {
+          nameIn.value = g.playerName || "Player";
+          nameIn.blur();
+        }
+      });
+      const bar = h("div.tp-prof-bar", h("i", { style: { width: `${Math.round(lv.progress * 100)}%` } }));
+      panel.appendChild(h(
+        "div.tp-prof-head",
+        av,
+        h(
+          "div.tp-prof-id",
+          h("div.lbl", "Player name"),
+          h("div.tp-modrow", nameIn, btn("Save", saveName, { key: "prof-name-save", cls: "tp-modadd" })),
+          nameMsg
+        ),
+        h(
+          "div.tp-prof-lv",
+          h("div.rk", h("span.lv", String(lv.level)), h("span", lv.rank.toUpperCase())),
+          bar,
+          h("div.nx", `${lv.toNext} XP to level ${lv.level + 1}`)
+        )
+      ));
       const matches = st.matches || 0, wins = st.wins || 0, shots = st.shots || 0, goals = st.goals || 0;
       const tiles = h("div.tp-tiles");
       const tile = (v, k) => tiles.appendChild(h("div.tp-tile", h("div.v", String(v)), h("div.k", k)));
-      tile(matches, "Matches");
+      tile(matches, "Games played");
       tile(wins, "Wins");
+      tile(Math.max(0, matches - wins), "Losses");
       tile(matches ? `${Math.round(wins / matches * 100)}%` : "—", "Win rate");
+      tile(st.streak || 0, "Win streak");
+      tile(st.bestStreak || 0, "Best streak");
       tile(st.mvps || 0, "MVPs");
       tile(goals, "Goals");
       tile(st.assists || 0, "Assists");
@@ -15638,10 +15786,63 @@ function createMenus({ api: api2, settings: settings2, stats: stats2, onOpenChan
       tile(shots, "Shots");
       tile(st.demos || 0, "Demolitions");
       tile(shots ? `${Math.round(goals / shots * 100)}%` : "—", "Shooting %");
-      tile(matches ? (goals / matches).toFixed(2) : "—", "Goals / match");
-      tile(matches ? ((st.saves || 0) / matches).toFixed(2) : "—", "Saves / match");
-      panel.appendChild(tiles);
+      tile(matches ? (goals / matches).toFixed(2) : "—", "Goals / game");
+      tile(matches ? ((st.saves || 0) / matches).toFixed(2) : "—", "Saves / game");
+      tile(st.firstPlayed ? new Date(st.firstPlayed).toLocaleDateString(void 0, { day: "numeric", month: "short", year: "numeric" }) : "—", "Playing since");
+      panel.append(
+        h("div.tp-sect", "Stats on this device"),
+        tiles,
+        h("div.tp-note.tp-prof-small", "Exhibition and LAN matches count. Free play doesn’t. Stats stay in this browser on this device.")
+      );
+      const codeIn = h("input.tp-input.tp-modin", { type: "text", autocomplete: "off", spellcheck: "false", maxlength: "19", placeholder: REWARD_CODE_EXAMPLE, "data-nav": "", "data-key": "prof-code-in", "aria-label": "Reward code" });
+      codeIn.value = profState.draft || "";
+      const redeem = () => {
+        const r = redeemCode(codeIn.value, prof);
+        if (r.ok) {
+          api2.saveProfile && api2.saveProfile();
+          profState.draft = "";
+          profState.error = "";
+          profState.ok = r.added.length ? `Unlocked: ${r.added.map((it) => it.name).join(", ")}` : `Redeemed ${r.reward.name || r.code}.`;
+        } else {
+          profState.draft = r.code;
+          profState.error = r.error;
+          profState.ok = "";
+        }
+        refresh();
+      };
+      codeIn.addEventListener("input", () => {
+        const f = formatRewardCode(codeIn.value);
+        if (f !== codeIn.value) codeIn.value = f;
+        profState.draft = f;
+        if (profState.error || profState.ok) {
+          profState.error = "";
+          profState.ok = "";
+          msg.textContent = "";
+          msg.style.display = "none";
+        }
+      });
+      codeIn.addEventListener("keydown", (e) => {
+        e.stopPropagation();
+        if (e.key === "Enter") redeem();
+        else if (e.key === "Escape") codeIn.blur();
+      });
+      const msg = h("div.tp-note.tp-moderr" + (profState.error ? ".err" : ".tp-prof-ok"), profState.error || profState.ok || "");
+      if (!profState.error && !profState.ok) msg.style.display = "none";
+      const items = h("div.tp-modlist");
+      for (const it of prof.items) items.appendChild(h("div.tp-modchip.tp-prof-item", h("span.it", it.name), h("span.nm", cap(it.type))));
+      panel.append(
+        h("div.tp-sect", "Redeem a code"),
+        h("div.tp-modrow", codeIn, btn("Redeem", redeem, { key: "prof-code-redeem", cls: "tp-modadd" })),
+        msg,
+        h("div.tp-note.tp-modhint", "Codes unlock things for your profile, like car skins."),
+        h("div.tp-sect", "Unlocked items"),
+        prof.items.length ? items : h("div.tp-note.tp-modhint", "Nothing unlocked yet.")
+      );
       p.append(panel, footer());
+    },
+    // older name for the page (Extras › Career stats) — shows the Profile page
+    stats(p) {
+      PAGES.profile(p);
     },
     lan(p) {
       api2.lanLeave && api2.lanLeave();
@@ -15906,6 +16107,7 @@ function createMenus({ api: api2, settings: settings2, stats: stats2, onOpenChan
   };
   let playCfg = null;
   let lanCfg = null;
+  let profState = { draft: "", error: "", ok: "", nameMsg: "" };
   let mmActive = null;
   let mmSetActive = null;
   const lanDrafts = {};
@@ -20732,8 +20934,8 @@ function createNetClient({ onChange, onStart, onEvents, onLeave }) {
     // my car id once a match starts
     profile: null,
     // join with the host's 6-digit game code
-    async joinCode(code, profile) {
-      client.profile = profile;
+    async joinCode(code, profile2) {
+      client.profile = profile2;
       client.status = "finding";
       client.error = "";
       changedC();
@@ -20882,6 +21084,7 @@ function createNetClient({ onChange, onStart, onEvents, onLeave }) {
 // src/main.js
 var params2 = new URLSearchParams(location.search);
 var { settings, stats } = loadAll();
+var profile = loadProfile();
 if (params2.get("q")) settings.graphics.quality = params2.get("q");
 var canvas2 = document.getElementById("game-canvas");
 var renderer = new THREE30.WebGLRenderer({ canvas: canvas2, antialias: false, powerPreference: "high-performance", preserveDrawingBuffer: params2.has("shot") });
@@ -21278,6 +21481,12 @@ var api = {
   getStats() {
     return stats;
   },
+  getProfile() {
+    return profile;
+  },
+  saveProfile() {
+    return saveProfile(profile);
+  },
   async runSelfTests(onLine) {
     const mod = await Promise.resolve().then(() => (init_selftest(), selftest_exports));
     return mod.runAllAsync(null, onLine || console.log);
@@ -21374,14 +21583,14 @@ var api = {
     game.lanNotice = "";
     const client = createNetClient({ onChange: lanChanged, onStart: clientStart, onEvents: (e) => frameEvents.push(...e), onLeave: clientLeft });
     game.net = client;
-    const profile = { name: settings.game.playerName || "Player", bodyId: settings.game.carBody, accent: settings.game.accent };
+    const profile2 = { name: settings.game.playerName || "Player", bodyId: settings.game.carBody, accent: settings.game.accent };
     const digits = String(code || "").replace(/\D/g, "");
     if (digits.length !== 6) {
       client.error = "Game codes are 6 digits — check the number on the host’s screen.";
       lanChanged();
       return "";
     }
-    return client.joinCode(digits, profile);
+    return client.joinCode(digits, profile2);
   },
   lanLeave() {
     if (!game.lan) lanClose();
@@ -21577,16 +21786,7 @@ function frame(now2) {
 function onMatchEnd(e) {
   const mv = game.match.getView();
   const me = mv.players && mv.players.find((p) => p.carId === game.playerCarId);
-  stats.matches++;
-  if (me) {
-    if (mv.winner === me.team) stats.wins++;
-    stats.goals += me.goals || 0;
-    stats.assists += me.assists || 0;
-    stats.saves += me.saves || 0;
-    stats.shots += me.shots || 0;
-    stats.demos += me.demos || 0;
-    if (mv.mvpId === me.carId) stats.mvps++;
-  }
+  recordMatch(stats, mv, me, Date.now());
   saveAll(settings, stats);
   input.setEnabled(false);
   ui.showEndScreen(mv);
