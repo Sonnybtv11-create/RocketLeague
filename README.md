@@ -42,6 +42,21 @@ but not LAN play. The LAN screen will say "Network play isn't set up on this web
   requests. Roughly several hours of 1v1 a day; bigger lobbies use it faster. Direct connections
   use almost none. Usage is shown in the Cloudflare dashboard.
 
+## Profile and reward codes
+
+**Profile** on the main menu (or the Profile button by your name) shows:
+
+- **Your name:** type a new one and press Save or Enter. It's used in matches and LAN lobbies.
+- **Your level and rank.**
+- **Stats on this device:** games played, wins, losses, win rate, win streaks, MVPs, goals, assists,
+  saves, shots and demolitions. Every exhibition and LAN match you finish counts; free play doesn't.
+  They're saved in this browser, so another computer has its own stats.
+- **Redeem a code:** a code unlocks items on your profile, such as a car skin. Unlocked items are listed
+  underneath and stay unlocked on this device.
+
+No reward codes exist yet. To add one, put it in `REWARD_CODES` in `src/game/profile.js`. The comment
+at the top of that file shows the format.
+
 ## Development
 
 - `node tools/assemble.mjs` bundles `src/` into `index.html` and `public/index.html`.

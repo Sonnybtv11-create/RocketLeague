@@ -8,6 +8,7 @@ import { h, esc, keyName, keyList, padName, TEAM_NAME } from './dom.js';
 import { buildScoreboard, mvpPlayer } from './scoreboard.js';
 import { createNav } from './nav.js';
 import { formatCode, checkCode, lookupCode, validCodes, CODE_EXAMPLE } from '../game/modifiers.js';
+import { cleanName, NAME_MAX, formatRewardCode, redeemCode, REWARD_CODE_EXAMPLE, levelInfo } from '../game/profile.js';
 
 const clone = (o) => JSON.parse(JSON.stringify(o));
 const cap = (str) => String(str).charAt(0).toUpperCase() + String(str).slice(1).toLowerCase();
@@ -59,7 +60,10 @@ export function createMenus({ api, settings, stats, onOpenChange }) {
     render(true);
     if (!wasOpen) onOpenChange && onOpenChange(true);
   }
-  function push(page) { stack.push(page); render(true); }
+  function push(page) {
+    if (page === 'profile') profState = { draft: '', error: '', ok: '', nameMsg: '' };
+    stack.push(page); render(true);
+  }
   function back(fromNav) {
     if (modal) { cancelRebind(); return; }
     if (stack.length > 1) { stack.pop(); render(true); return; }
@@ -235,9 +239,10 @@ export function createMenus({ api, settings, stats, onOpenChange }) {
         { key: 'train', label: 'Training', desc: 'Practice on your own with the ball prediction line and unlimited boost.',
           sub: [['Free play', () => api.startFreePlay({ bodyId: settings.game.carBody, accent: settings.game.accent, playerTeam: settings.game.team })],
             ['Free play options', () => push('freeplay')]] },
-        { key: 'garage', label: 'Garage', desc: 'Change your car body, paint and player name.', go: () => push('garage') },
-        { key: 'extras', label: 'Extras', desc: 'Career stats and the full controls guide.',
-          sub: [['Career stats', () => push('stats')], ['Controls guide', () => push('controls')]] },
+        { key: 'garage', label: 'Garage', desc: 'Change your car body and paint.', go: () => push('garage') },
+        { key: 'profile', label: 'Profile', desc: 'Your name, your stats on this device and reward codes.', go: () => push('profile') },
+        { key: 'extras', label: 'Extras', desc: 'The full controls guide.',
+          sub: [['Controls guide', () => push('controls')]] },
         { key: 'opt', label: 'Options', desc: 'Camera, controls, video and audio settings.', go: () => push('settings') },
       ];
       p.append(h('div.tp-mm-shade'));
@@ -298,11 +303,7 @@ export function createMenus({ api, settings, stats, onOpenChange }) {
       p.appendChild(news);
 
       // bottom band: player card + hints, then the ticker
-      const st = stats || {};
-      const xp = (st.matches || 0) * 40 + (st.wins || 0) * 60 + (st.goals || 0) * 25 + (st.saves || 0) * 15 + (st.assists || 0) * 15;
-      const level = 1 + Math.floor(Math.sqrt(xp / 30));
-      const RANKS = [[50, 'Legend'], [40, 'Master'], [30, 'Expert'], [20, 'Veteran'], [10, 'Pro'], [5, 'Semi-Pro'], [0, 'Rookie']];
-      const rank = RANKS.find(([lv]) => level >= lv)[1];
+      const { level, rank } = levelInfo((api.getStats ? api.getStats() : stats) || {});
       const team = settings.game.team === 1 ? 1 : 0;
       p.append(
         h('div.tp-mm-band',
@@ -310,6 +311,7 @@ export function createMenus({ api, settings, stats, onOpenChange }) {
             h('div.av', { style: { background: TEAM_COLORS[team].css } }, String(settings.game.playerName || 'P').slice(0, 1).toUpperCase()),
             h('div.who', h('div.nm', settings.game.playerName || 'Player'),
               h('div.rk', h('span.lv', String(level)), h('span', rank.toUpperCase()))),
+            btn('Profile', () => push('profile'), { key: 'mm-band-profile', cls: 'tp-mm-mini' }),
             btn('Garage', () => push('garage'), { key: 'mm-band-garage', cls: 'tp-mm-mini' })),
           h('div.tp-mm-hints', h('span', h('span.tp-key', '↑↓'), ' / mouse to choose'), h('span', h('span.tp-key', 'Enter'), ' or ', h('span.tp-key.pad', 'A'), ' to select'))),
         h('div.tp-mm-ticker', h('span.l', `WELCOME TO ${GAME_TITLE.toUpperCase()}!`), h('span.r', 'Host a LAN game and share the 6-digit code')));
@@ -497,21 +499,94 @@ export function createMenus({ api, settings, stats, onOpenChange }) {
       p.append(panel, footer());
     },
 
-    stats(p) {
+    // Profile: player name, level, stats on this device (updated after every match) and the
+    // redeem-code box that unlocks items such as skins (codes live in game/profile.js).
+    profile(p) {
       const st = (api.getStats ? api.getStats() : stats) || {};
-      p.append(h('div.tp-shade-l'), title('Career Stats', 'Lifetime · this browser'));
-      const panel = h('div.tp-panel', { style: { left: 'calc(var(--u) * 4)', top: 'calc(var(--u) * 13)', width: 'min(calc(var(--u) * 110), calc(100% - var(--u) * 8))', padding: 'calc(var(--u) * 2.6) calc(var(--u) * 3)' } });
+      const prof = (api.getProfile ? api.getProfile() : null) || { redeemed: [], items: [] };
+      const g = settings.game;
+      const team = g.team === 1 ? 1 : 0;
+      const lv = levelInfo(st);
+      p.append(h('div.tp-shade-l'), title('Profile', 'Saved on this device'));
+      const panel = h('div.tp-panel.tp-scroll.tp-prof', { style: { left: 'calc(var(--u) * 4)', top: 'calc(var(--u) * 12.5)', width: 'min(calc(var(--u) * 120), calc(100% - var(--u) * 8))', maxHeight: 'calc(100% - var(--u) * 20.5)', padding: 'calc(var(--u) * 2.6) calc(var(--u) * 3)' } });
+
+      // header: avatar, editable name, level + rank with progress to the next level
+      const av = h('div.av', { style: { background: TEAM_COLORS[team].css } }, String(g.playerName || 'P').slice(0, 1).toUpperCase());
+      const nameIn = h('input.tp-input.tp-prof-name', { type: 'text', maxlength: String(NAME_MAX), value: g.playerName || 'Player', placeholder: 'Player', 'data-nav': '', 'data-key': 'prof-name', spellcheck: 'false', autocomplete: 'off', 'aria-label': 'Player name' });
+      const nameMsg = h('div.tp-note.tp-prof-msg', profState.nameMsg || `Up to ${NAME_MAX} letters, numbers, spaces, dots or dashes.`);
+      const saveName = () => {
+        const n = cleanName(nameIn.value) || 'Player';
+        nameIn.value = n;
+        if (n === g.playerName) return;
+        g.playerName = n;
+        api.saveSettings && api.saveSettings();
+        profState.nameMsg = `Name saved as “${n}”.`;
+        refresh();
+      };
+      nameIn.addEventListener('input', () => {
+        const c = nameIn.value.replace(/[^\w .\-]/g, '').slice(0, NAME_MAX);
+        if (c !== nameIn.value) nameIn.value = c;
+        av.textContent = (c.trim() || 'P').slice(0, 1).toUpperCase();
+      });
+      nameIn.addEventListener('change', saveName);
+      nameIn.addEventListener('keydown', (e) => { e.stopPropagation(); if (e.key === 'Enter') nameIn.blur(); else if (e.key === 'Escape') { nameIn.value = g.playerName || 'Player'; nameIn.blur(); } });
+      const bar = h('div.tp-prof-bar', h('i', { style: { width: `${Math.round(lv.progress * 100)}%` } }));
+      panel.appendChild(h('div.tp-prof-head', av,
+        h('div.tp-prof-id',
+          h('div.lbl', 'Player name'),
+          h('div.tp-modrow', nameIn, btn('Save', saveName, { key: 'prof-name-save', cls: 'tp-modadd' })),
+          nameMsg),
+        h('div.tp-prof-lv',
+          h('div.rk', h('span.lv', String(lv.level)), h('span', lv.rank.toUpperCase())),
+          bar, h('div.nx', `${lv.toNext} XP to level ${lv.level + 1}`))));
+
+      // stats on this device
       const matches = st.matches || 0, wins = st.wins || 0, shots = st.shots || 0, goals = st.goals || 0;
       const tiles = h('div.tp-tiles');
       const tile = (v, k) => tiles.appendChild(h('div.tp-tile', h('div.v', String(v)), h('div.k', k)));
-      tile(matches, 'Matches'); tile(wins, 'Wins');
-      tile(matches ? `${Math.round((wins / matches) * 100)}%` : '—', 'Win rate'); tile(st.mvps || 0, 'MVPs');
-      tile(goals, 'Goals'); tile(st.assists || 0, 'Assists'); tile(st.saves || 0, 'Saves'); tile(shots, 'Shots');
-      tile(st.demos || 0, 'Demolitions'); tile(shots ? `${Math.round((goals / shots) * 100)}%` : '—', 'Shooting %');
-      tile(matches ? (goals / matches).toFixed(2) : '—', 'Goals / match'); tile(matches ? ((st.saves || 0) / matches).toFixed(2) : '—', 'Saves / match');
-      panel.appendChild(tiles);
+      tile(matches, 'Games played'); tile(wins, 'Wins'); tile(Math.max(0, matches - wins), 'Losses');
+      tile(matches ? `${Math.round((wins / matches) * 100)}%` : '—', 'Win rate');
+      tile(st.streak || 0, 'Win streak'); tile(st.bestStreak || 0, 'Best streak'); tile(st.mvps || 0, 'MVPs'); tile(goals, 'Goals');
+      tile(st.assists || 0, 'Assists'); tile(st.saves || 0, 'Saves'); tile(shots, 'Shots'); tile(st.demos || 0, 'Demolitions');
+      tile(shots ? `${Math.round((goals / shots) * 100)}%` : '—', 'Shooting %');
+      tile(matches ? (goals / matches).toFixed(2) : '—', 'Goals / game');
+      tile(matches ? ((st.saves || 0) / matches).toFixed(2) : '—', 'Saves / game');
+      tile(st.firstPlayed ? new Date(st.firstPlayed).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : '—', 'Playing since');
+      panel.append(h('div.tp-sect', 'Stats on this device'), tiles,
+        h('div.tp-note.tp-prof-small', 'Exhibition and LAN matches count. Free play doesn’t. Stats stay in this browser on this device.'));
+
+      // redeem code -> unlocks items on this profile
+      const codeIn = h('input.tp-input.tp-modin', { type: 'text', autocomplete: 'off', spellcheck: 'false', maxlength: '19', placeholder: REWARD_CODE_EXAMPLE, 'data-nav': '', 'data-key': 'prof-code-in', 'aria-label': 'Reward code' });
+      codeIn.value = profState.draft || '';
+      const redeem = () => {
+        const r = redeemCode(codeIn.value, prof);
+        if (r.ok) {
+          api.saveProfile && api.saveProfile();
+          profState.draft = ''; profState.error = '';
+          profState.ok = r.added.length ? `Unlocked: ${r.added.map((it) => it.name).join(', ')}` : `Redeemed ${r.reward.name || r.code}.`;
+        } else { profState.draft = r.code; profState.error = r.error; profState.ok = ''; }
+        refresh();
+      };
+      codeIn.addEventListener('input', () => {
+        const f = formatRewardCode(codeIn.value);
+        if (f !== codeIn.value) codeIn.value = f;
+        profState.draft = f;
+        if (profState.error || profState.ok) { profState.error = ''; profState.ok = ''; msg.textContent = ''; msg.style.display = 'none'; }
+      });
+      codeIn.addEventListener('keydown', (e) => { e.stopPropagation(); if (e.key === 'Enter') redeem(); else if (e.key === 'Escape') codeIn.blur(); });
+      const msg = h('div.tp-note.tp-moderr' + (profState.error ? '.err' : '.tp-prof-ok'), profState.error || profState.ok || '');
+      if (!profState.error && !profState.ok) msg.style.display = 'none';
+      const items = h('div.tp-modlist');
+      for (const it of prof.items) items.appendChild(h('div.tp-modchip.tp-prof-item', h('span.it', it.name), h('span.nm', cap(it.type))));
+      panel.append(h('div.tp-sect', 'Redeem a code'),
+        h('div.tp-modrow', codeIn, btn('Redeem', redeem, { key: 'prof-code-redeem', cls: 'tp-modadd' })), msg,
+        h('div.tp-note.tp-modhint', 'Codes unlock things for your profile, like car skins.'),
+        h('div.tp-sect', 'Unlocked items'),
+        prof.items.length ? items : h('div.tp-note.tp-modhint', 'Nothing unlocked yet.'));
       p.append(panel, footer());
     },
+    // older name for the page (Extras › Career stats) — shows the Profile page
+    stats(p) { PAGES.profile(p); },
 
     lan(p) {
       api.lanLeave && api.lanLeave(); // coming back here closes any lobby that isn't playing
@@ -681,6 +756,7 @@ export function createMenus({ api, settings, stats, onOpenChange }) {
   };
   let playCfg = null;
   let lanCfg = null;
+  let profState = { draft: '', error: '', ok: '', nameMsg: '' };  // Profile page: typed code + messages
   let mmActive = null;          // main menu: highlighted item key
   let mmSetActive = null;
   const lanDrafts = {};       // slot id / 'join' -> pasted code being typed
