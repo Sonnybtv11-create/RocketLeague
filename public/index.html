@@ -4780,11 +4780,41 @@ var init_selftest = __esm({
 // src/main.js
 init_world();
 init_ball();
+import * as THREE30 from "three";
+
+// src/game/modifiers.js
+var MODIFIERS = {};
+var HEX = /[^0-9A-F]/g;
+var CODE_EXAMPLE = "A503-264B-E09A-0F2E";
+function formatCode(raw2) {
+  const hex = String(raw2 || "").toUpperCase().replace(/O/g, "0").replace(HEX, "").slice(0, 16);
+  return hex.replace(/(.{4})(?=.)/g, "$1-");
+}
+var isComplete = (code) => /^[0-9A-F]{4}(-[0-9A-F]{4}){3}$/.test(code);
+var lookupCode = (code) => MODIFIERS[code] || null;
+function checkCode(raw2, already = []) {
+  const code = formatCode(raw2);
+  if (!code) return { ok: false, code, error: "Type a code first." };
+  if (!isComplete(code)) return { ok: false, code, error: `Codes are 16 characters, like ${CODE_EXAMPLE}.` };
+  if (already.includes(code)) return { ok: false, code, error: "That code is already added." };
+  const modifier = lookupCode(code);
+  if (!modifier) return { ok: false, code, error: "Code not recognised." };
+  return { ok: true, code, modifier };
+}
+var validCodes = (codes) => Array.isArray(codes) ? codes.filter((c) => lookupCode(c)) : [];
+function applyModifiers(cfg) {
+  for (const code of validCodes(cfg.modifiers)) {
+    const m = lookupCode(code);
+    if (m.apply) m.apply(cfg);
+  }
+  return cfg;
+}
+
+// src/main.js
 init_const();
 init_arena();
 init_carconfig();
 init_contracts();
-import * as THREE30 from "three";
 
 // src/game/view.js
 init_math();
@@ -13893,6 +13923,16 @@ var CSS = String.raw`
 .tp-gamecode .sub b { color: #fff; }
 .tp-gamecode .act { display: flex; justify-content: center; margin: calc(var(--u) * 0.8) 0; }
 .tp-codein { height: calc(var(--u) * 8); text-align: center; font-size: calc(var(--u) * 5); font-weight: 800; letter-spacing: 0.3em; font-variant-numeric: tabular-nums; }
+.tp-modrow { display: flex; gap: calc(var(--u) * 1); align-items: stretch; }
+.tp-modin { flex: 1; font-family: ui-monospace, Menlo, Consolas, monospace; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; }
+.tp-btn.tp-modadd { height: calc(var(--u) * 4.4); flex: none; }
+.tp-moderr, .tp-modhint { margin: calc(var(--u) * 0.8) 0 0; }
+.tp-modlist { display: flex; flex-direction: column; gap: calc(var(--u) * 0.6); margin-top: calc(var(--u) * 1); }
+.tp-modchip { display: flex; align-items: center; gap: calc(var(--u) * 1.2); padding: calc(var(--u) * 0.6) calc(var(--u) * 1.2); background: rgba(255, 160, 40, 0.12); border-left: calc(var(--u) * 0.4) solid var(--gold); }
+.tp-modchip .cd { font-family: ui-monospace, Menlo, Consolas, monospace; font-weight: 700; letter-spacing: 0.1em; }
+.tp-modchip .nm { color: var(--dim); font-size: calc(var(--u) * 1.5); flex: 1; }
+.tp-modchip .x { background: none; border: 0; color: #fff; font-size: calc(var(--u) * 2.2); cursor: pointer; pointer-events: auto; padding: 0 calc(var(--u) * 0.6); }
+.tp-modchip .x:hover, .tp-modchip .x.tp-focus { color: var(--gold); }
 .tp-note { font-size: calc(var(--u) * 1.6); color: var(--dim); line-height: 1.5; margin-bottom: calc(var(--u) * 2); }
 .tp-note b { color: #fff; }
 .tp-note.warn { color: #ffcf7a; }
@@ -15058,6 +15098,59 @@ function createMenus({ api: api2, settings: settings2, stats: stats2, onOpenChan
       h("div.val")
     );
   }
+  function modifierBox(st, key) {
+    const inp = h("input.tp-input.tp-modin", { type: "text", autocomplete: "off", spellcheck: "false", maxlength: "19", placeholder: CODE_EXAMPLE, "data-nav": "", "data-key": key + "-in" });
+    inp.value = st.draft || "";
+    const add2 = () => {
+      const r = checkCode(inp.value, st.codes);
+      if (r.ok) {
+        st.codes.push(r.code);
+        st.draft = "";
+        st.error = "";
+      } else {
+        st.draft = r.code;
+        st.error = r.error;
+      }
+      refresh();
+    };
+    inp.addEventListener("input", () => {
+      const f = formatCode(inp.value);
+      if (f !== inp.value) inp.value = f;
+      st.draft = f;
+      if (st.error) {
+        st.error = "";
+        err.textContent = "";
+        err.style.display = "none";
+      }
+    });
+    inp.addEventListener("keydown", (e) => {
+      e.stopPropagation();
+      if (e.key === "Enter") add2();
+      else if (e.key === "Escape") inp.blur();
+    });
+    const err = h("div.tp-note.err.tp-moderr", st.error || "");
+    if (!st.error) err.style.display = "none";
+    const list = h("div.tp-modlist");
+    for (const code of st.codes) {
+      const m = lookupCode(code);
+      list.appendChild(h(
+        "div.tp-modchip",
+        h("span.cd", code),
+        h("span.nm", m ? m.name : ""),
+        h("button.x", { type: "button", "data-nav": "", "data-key": key + "-rm-" + code, title: "Remove", onclick: (e) => {
+          e.preventDefault();
+          st.codes = st.codes.filter((c) => c !== code);
+          refresh();
+        } }, "×")
+      ));
+    }
+    return group(
+      "Modifier codes",
+      h("div.tp-modrow", inp, btn("Add", add2, { key: key + "-add", cls: "tp-modadd" })),
+      err,
+      st.codes.length ? list : h("div.tp-note.tp-modhint", "Optional. Codes change how the match plays.")
+    );
+  }
   function title(main, crumb) {
     return h("div.tp-head", h("div.tp-title", h("span.main", main), crumb ? h("span.crumb", crumb) : null));
   }
@@ -15253,7 +15346,8 @@ function createMenus({ api: api2, settings: settings2, stats: stats2, onOpenChan
         durationSec: lm.durationSec || 300,
         custom: !!(lm.blueSize && lm.orangeSize && lm.blueSize !== lm.orangeSize),
         blueSize: lm.blueSize || lm.teamSize || 1,
-        orangeSize: lm.orangeSize || lm.teamSize || 1
+        orangeSize: lm.orangeSize || lm.teamSize || 1,
+        mods: { codes: validCodes(lm.modifiers), draft: "", error: "" }
       });
       const mySize = () => cfg.custom ? cfg.playerTeam === 1 ? cfg.orangeSize : cfg.blueSize : cfg.teamSize;
       const body = CAR_BODIES.find((b) => b.id === settings2.game.carBody) || CAR_BODIES[0];
@@ -15345,6 +15439,7 @@ function createMenus({ api: api2, settings: settings2, stats: stats2, onOpenChan
           h("div.nm", `${body.name}`, h("small", `Hitbox: ${hitboxLabel(body.hitbox)}`)),
           btn("Garage", () => push("garage"), { cls: "ital", key: "to-garage" })
         )),
+        modifierBox(cfg.mods, "play-mod"),
         btn("Start match", () => {
           const c = {
             teamSize: cfg.custom ? Math.max(cfg.blueSize, cfg.orangeSize) : cfg.teamSize,
@@ -15356,7 +15451,8 @@ function createMenus({ api: api2, settings: settings2, stats: stats2, onOpenChan
             playerTeam: cfg.playerTeam,
             bodyId: settings2.game.carBody,
             accent: settings2.game.accent,
-            durationSec: cfg.durationSec
+            durationSec: cfg.durationSec,
+            modifiers: cfg.mods.codes.slice()
           };
           if (settings2.game.team !== cfg.playerTeam) {
             settings2.game.team = cfg.playerTeam;
@@ -15582,10 +15678,16 @@ function createMenus({ api: api2, settings: settings2, stats: stats2, onOpenChan
         st = api2.lanState();
       }
       const last2 = settings2.game.lastLan || {};
-      const cfg = lanCfg || (lanCfg = { teamSize: last2.teamSize || 2, bots: last2.noBots ? false : true, difficulty: last2.difficulty || "pro", durationSec: last2.durationSec || 300 });
+      const cfg = lanCfg || (lanCfg = {
+        teamSize: last2.teamSize || 2,
+        bots: last2.noBots ? false : true,
+        difficulty: last2.difficulty || "pro",
+        durationSec: last2.durationSec || 300,
+        mods: { codes: validCodes(last2.modifiers), draft: "", error: "" }
+      });
       const slots = st.slots;
       const live = slots.filter((s2) => s2.status !== "left");
-      api2.lanSetInfo(`${cfg.teamSize}v${cfg.teamSize} · ${cfg.bots ? "bots fill empty spots" : "no bots"} · ${Math.round(cfg.durationSec / 60)} min`);
+      api2.lanSetInfo(`${cfg.teamSize}v${cfg.teamSize} · ${cfg.bots ? "bots fill empty spots" : "no bots"} · ${Math.round(cfg.durationSec / 60)} min` + (cfg.mods.codes.length ? ` · modifiers: ${cfg.mods.codes.map((c) => lookupCode(c).name).join(", ")}` : ""));
       p.append(h("div.tp-shade-r"), title("Host", "LAN lobby"));
       const panel = h("div.tp-panel.tp-scroll", { style: { right: "calc(var(--u) * 3)", top: "calc(var(--u) * 13)", width: "min(calc(var(--u) * 78), 50vw)", maxHeight: "calc(100% - var(--u) * 21)", padding: "calc(var(--u) * 2.2) calc(var(--u) * 2.8)" } });
       const teamSeg = (team, onPick, key) => seg([[0, "Blue"], [1, "Orange"]], team, onPick, { key, orangeFor: 1, swatch: { 0: TEAM_COLORS[0].css, 1: TEAM_COLORS[1].css } });
@@ -15658,6 +15760,7 @@ function createMenus({ api: api2, settings: settings2, stats: stats2, onOpenChan
           cfg.durationSec = v;
           refresh();
         }, { key: "lan-len" })),
+        modifierBox(cfg.mods, "lan-mod"),
         btn("Start match", () => {
           api2.lanStart({
             teamSize: cfg.teamSize,
@@ -15667,7 +15770,8 @@ function createMenus({ api: api2, settings: settings2, stats: stats2, onOpenChan
             difficulty: cfg.difficulty,
             teammateDifficulty: cfg.difficulty,
             opponentDifficulty: cfg.difficulty,
-            durationSec: cfg.durationSec
+            durationSec: cfg.durationSec,
+            modifiers: cfg.mods.codes.slice()
           });
         }, { cls: "primary", key: "lan-start", sub: live.some((s2) => s2.status !== "connected") ? "Players still joining will miss this match" : "" })
       );
@@ -20887,6 +20991,7 @@ function bodyHitbox(bodyId) {
   return (CAR_BODIES.find((b) => b.id === bodyId) || CAR_BODIES[0]).hitbox;
 }
 function newSession(cfg, mode) {
+  applyModifiers(cfg);
   const world = new World();
   game.world = world;
   game.cfg = cfg;

@@ -7,6 +7,7 @@ import { CAR_CONFIGS } from '../sim/carconfig.js';
 import { h, esc, keyName, keyList, padName, TEAM_NAME } from './dom.js';
 import { buildScoreboard, mvpPlayer } from './scoreboard.js';
 import { createNav } from './nav.js';
+import { formatCode, checkCode, lookupCode, validCodes, CODE_EXAMPLE } from '../game/modifiers.js';
 
 const clone = (o) => JSON.parse(JSON.stringify(o));
 const cap = (str) => String(str).charAt(0).toUpperCase() + String(str).slice(1).toLowerCase();
@@ -148,6 +149,37 @@ export function createMenus({ api, settings, stats, onOpenChange }) {
       seg(options, obj[key], (v) => { obj[key] = v; changed(); refresh(); }, { key: 's:' + label }), h('div.val'));
   }
   // page header: dark band across the top so titles never sit on busy stadium boards
+  // Modifier codes box (Play and LAN host lobbies): type a code in Rocket League's training-pack style
+  // (XXXX-XXXX-XXXX-XXXX), Add / Enter checks it; accepted codes are listed and go into the match config.
+  function modifierBox(st, key) {
+    const inp = h('input.tp-input.tp-modin', { type: 'text', autocomplete: 'off', spellcheck: 'false', maxlength: '19', placeholder: CODE_EXAMPLE, 'data-nav': '', 'data-key': key + '-in' });
+    inp.value = st.draft || '';
+    const add = () => {
+      const r = checkCode(inp.value, st.codes);
+      if (r.ok) { st.codes.push(r.code); st.draft = ''; st.error = ''; }
+      else { st.draft = r.code; st.error = r.error; }
+      refresh();
+    };
+    inp.addEventListener('input', () => {
+      const f = formatCode(inp.value);
+      if (f !== inp.value) inp.value = f;
+      st.draft = f;
+      if (st.error) { st.error = ''; err.textContent = ''; err.style.display = 'none'; }
+    });
+    inp.addEventListener('keydown', (e) => { e.stopPropagation(); if (e.key === 'Enter') add(); else if (e.key === 'Escape') inp.blur(); });
+    const err = h('div.tp-note.err.tp-moderr', st.error || '');
+    if (!st.error) err.style.display = 'none';
+    const list = h('div.tp-modlist');
+    for (const code of st.codes) {
+      const m = lookupCode(code);
+      list.appendChild(h('div.tp-modchip',
+        h('span.cd', code), h('span.nm', m ? m.name : ''),
+        h('button.x', { type: 'button', 'data-nav': '', 'data-key': key + '-rm-' + code, title: 'Remove', onclick: (e) => { e.preventDefault(); st.codes = st.codes.filter((c) => c !== code); refresh(); } }, '×')));
+    }
+    return group('Modifier codes', h('div.tp-modrow', inp, btn('Add', add, { key: key + '-add', cls: 'tp-modadd' })), err,
+      st.codes.length ? list : h('div.tp-note.tp-modhint', 'Optional. Codes change how the match plays.'));
+  }
+
   function title(main, crumb) { return h('div.tp-head', h('div.tp-title', h('span.main', main), crumb ? h('span.crumb', crumb) : null)); }
   function footer(...extra) {
     const f = h('div.tp-footer');
@@ -296,6 +328,7 @@ export function createMenus({ api, settings, stats, onOpenChange }) {
         custom: !!(lm.blueSize && lm.orangeSize && lm.blueSize !== lm.orangeSize),
         blueSize: lm.blueSize || lm.teamSize || 1,
         orangeSize: lm.orangeSize || lm.teamSize || 1,
+        mods: { codes: validCodes(lm.modifiers), draft: '', error: '' },
       });
       const mySize = () => (cfg.custom ? (cfg.playerTeam === 1 ? cfg.orangeSize : cfg.blueSize) : cfg.teamSize);
       const body = CAR_BODIES.find((b) => b.id === settings.game.carBody) || CAR_BODIES[0];
@@ -332,6 +365,7 @@ export function createMenus({ api, settings, stats, onOpenChange }) {
         group('Car', h('div.tp-row', { style: { padding: 0, borderBottom: 0, gridTemplateColumns: '1fr auto' } },
           h('div.nm', `${body.name}`, h('small', `Hitbox: ${hitboxLabel(body.hitbox)}`)),
           btn('Garage', () => push('garage'), { cls: 'ital', key: 'to-garage' }))),
+        modifierBox(cfg.mods, 'play-mod'),
         btn('Start match', () => {
           const c = {
             teamSize: cfg.custom ? Math.max(cfg.blueSize, cfg.orangeSize) : cfg.teamSize, difficulty: cfg.difficulty,
@@ -339,6 +373,7 @@ export function createMenus({ api, settings, stats, onOpenChange }) {
             teammateDifficulty: cfg.split ? cfg.teammateDifficulty : cfg.difficulty,
             opponentDifficulty: cfg.split ? cfg.opponentDifficulty : cfg.difficulty,
             playerTeam: cfg.playerTeam, bodyId: settings.game.carBody, accent: settings.game.accent, durationSec: cfg.durationSec,
+            modifiers: cfg.mods.codes.slice(),
           };
           if (settings.game.team !== cfg.playerTeam) { settings.game.team = cfg.playerTeam; api.saveSettings && api.saveSettings(); }
           api.startMatch(c);
@@ -500,10 +535,12 @@ export function createMenus({ api, settings, stats, onOpenChange }) {
       let st = api.lanState();
       if (st.role !== 'host') { api.lanHost(); st = api.lanState(); }
       const last = settings.game.lastLan || {};
-      const cfg = lanCfg || (lanCfg = { teamSize: last.teamSize || 2, bots: last.noBots ? false : true, difficulty: last.difficulty || 'pro', durationSec: last.durationSec || 300 });
+      const cfg = lanCfg || (lanCfg = { teamSize: last.teamSize || 2, bots: last.noBots ? false : true, difficulty: last.difficulty || 'pro', durationSec: last.durationSec || 300,
+        mods: { codes: validCodes(last.modifiers), draft: '', error: '' } });
       const slots = st.slots;
       const live = slots.filter((s) => s.status !== 'left');
-      api.lanSetInfo(`${cfg.teamSize}v${cfg.teamSize} · ${cfg.bots ? 'bots fill empty spots' : 'no bots'} · ${Math.round(cfg.durationSec / 60)} min`);
+      api.lanSetInfo(`${cfg.teamSize}v${cfg.teamSize} · ${cfg.bots ? 'bots fill empty spots' : 'no bots'} · ${Math.round(cfg.durationSec / 60)} min`
+        + (cfg.mods.codes.length ? ` · modifiers: ${cfg.mods.codes.map((c) => lookupCode(c).name).join(', ')}` : ''));
       p.append(h('div.tp-shade-r'), title('Host', 'LAN lobby'));
       const panel = h('div.tp-panel.tp-scroll', { style: { right: 'calc(var(--u) * 3)', top: 'calc(var(--u) * 13)', width: 'min(calc(var(--u) * 78), 50vw)', maxHeight: 'calc(100% - var(--u) * 21)', padding: 'calc(var(--u) * 2.2) calc(var(--u) * 2.8)' } });
       const teamSeg = (team, onPick, key) => seg([[0, 'Blue'], [1, 'Orange']], team, onPick, { key, orangeFor: 1, swatch: { 0: TEAM_COLORS[0].css, 1: TEAM_COLORS[1].css } });
@@ -543,9 +580,10 @@ export function createMenus({ api, settings, stats, onOpenChange }) {
       if (cfg.bots) panel.appendChild(group('Bot difficulty', seg(DIFFS, cfg.difficulty, (v) => { cfg.difficulty = v; refresh(); }, { key: 'lan-diff' })));
       panel.append(
         group('Match length', seg([[180, '3:00'], [300, '5:00'], [600, '10:00']], cfg.durationSec, (v) => { cfg.durationSec = v; refresh(); }, { key: 'lan-len' })),
+        modifierBox(cfg.mods, 'lan-mod'),
         btn('Start match', () => {
           api.lanStart({ teamSize: cfg.teamSize, blueSize: cfg.teamSize, orangeSize: cfg.teamSize, noBots: !cfg.bots, difficulty: cfg.difficulty,
-            teammateDifficulty: cfg.difficulty, opponentDifficulty: cfg.difficulty, durationSec: cfg.durationSec });
+            teammateDifficulty: cfg.difficulty, opponentDifficulty: cfg.difficulty, durationSec: cfg.durationSec, modifiers: cfg.mods.codes.slice() });
         }, { cls: 'primary', key: 'lan-start', sub: live.some((s) => s.status !== 'connected') ? 'Players still joining will miss this match' : '' }));
       p.append(panel, footer());
     },

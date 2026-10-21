@@ -4,6 +4,7 @@
 import * as THREE from 'three';
 import { World } from './sim/world.js';
 import { BallPredictor } from './sim/ball.js';
+import { applyModifiers } from './game/modifiers.js';
 import * as K from './sim/const.js';
 import { arenaSDF, arenaNormal, arenaRaycast, arenaRing, arenaProfile, ARENA_PARAMS } from './sim/arena.js';
 import { CAR_CONFIGS } from './sim/carconfig.js';
@@ -113,6 +114,7 @@ function rosterOf(world) {
 function bodyHitbox(bodyId) { return (CAR_BODIES.find((b) => b.id === bodyId) || CAR_BODIES[0]).hitbox; }
 
 function newSession(cfg, mode) {
+  applyModifiers(cfg);
   const world = new World();
   game.world = world; game.cfg = cfg; game.mode = mode;
   game.bots = new Map();

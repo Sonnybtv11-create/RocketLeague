@@ -450,6 +450,16 @@ export const CSS = String.raw`
 .tp-gamecode .sub b { color: #fff; }
 .tp-gamecode .act { display: flex; justify-content: center; margin: calc(var(--u) * 0.8) 0; }
 .tp-codein { height: calc(var(--u) * 8); text-align: center; font-size: calc(var(--u) * 5); font-weight: 800; letter-spacing: 0.3em; font-variant-numeric: tabular-nums; }
+.tp-modrow { display: flex; gap: calc(var(--u) * 1); align-items: stretch; }
+.tp-modin { flex: 1; font-family: ui-monospace, Menlo, Consolas, monospace; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; }
+.tp-btn.tp-modadd { height: calc(var(--u) * 4.4); flex: none; }
+.tp-moderr, .tp-modhint { margin: calc(var(--u) * 0.8) 0 0; }
+.tp-modlist { display: flex; flex-direction: column; gap: calc(var(--u) * 0.6); margin-top: calc(var(--u) * 1); }
+.tp-modchip { display: flex; align-items: center; gap: calc(var(--u) * 1.2); padding: calc(var(--u) * 0.6) calc(var(--u) * 1.2); background: rgba(255, 160, 40, 0.12); border-left: calc(var(--u) * 0.4) solid var(--gold); }
+.tp-modchip .cd { font-family: ui-monospace, Menlo, Consolas, monospace; font-weight: 700; letter-spacing: 0.1em; }
+.tp-modchip .nm { color: var(--dim); font-size: calc(var(--u) * 1.5); flex: 1; }
+.tp-modchip .x { background: none; border: 0; color: #fff; font-size: calc(var(--u) * 2.2); cursor: pointer; pointer-events: auto; padding: 0 calc(var(--u) * 0.6); }
+.tp-modchip .x:hover, .tp-modchip .x.tp-focus { color: var(--gold); }
 .tp-note { font-size: calc(var(--u) * 1.6); color: var(--dim); line-height: 1.5; margin-bottom: calc(var(--u) * 2); }
 .tp-note b { color: #fff; }
 .tp-note.warn { color: #ffcf7a; }
