@@ -1,32 +1,36 @@
 // TURBO PITCH — modifier codes.
 // Typed into the Play (bots) lobby or the LAN host lobby before a match. They are written like
-// Rocket League's training-pack codes: 16 hexadecimal characters in four groups, e.g. A503-264B-E09A-0F2E.
+// Rocket League's training-pack codes: 16 hexadecimal characters in four groups, e.g. A503-264B-E09A-0F2E,
+// or a short word code (letters and digits, e.g. JEEP).
 // The accepted codes travel with the match config as cfg.modifiers (array of codes) and each code's
 // apply(cfg) runs when the match is set up (newSession), so a modifier can change anything the config
 // controls.
 //
-// No codes exist yet. To add one, put an entry in MODIFIERS:
+// To add one, put an entry in MODIFIERS:
 //   'A503-264B-E09A-0F2E': { name: 'Moon ball', description: 'Low gravity for the ball', apply(cfg) { ... } },
 
-export const MODIFIERS = {};
+export const MODIFIERS = {
+  // Classic Roblox jeep skin on the player's car (Octane hitbox), see src/render/cars/skins.js
+  JEEP: { name: 'Classic Jeep skin', description: 'Your car becomes the classic jeep (Octane hitbox).', apply(cfg) { cfg.bodyId = 'jeep'; } },
+};
 
-const HEX = /[^0-9A-F]/g;
 export const CODE_EXAMPLE = 'A503-264B-E09A-0F2E';
 
-// Normalise what was typed: upper case, hex digits only (O -> 0 for convenience), dashes every 4 characters.
+// Normalise what was typed: upper case, letters and digits only. A code made only of hex digits gets
+// a dash every 4 characters (training-pack style); a word code (any other letter) is left as typed.
 export function formatCode(raw) {
-  const hex = String(raw || '').toUpperCase().replace(/O/g, '0').replace(HEX, '').slice(0, 16);
-  return hex.replace(/(.{4})(?=.)/g, '$1-');
+  const s = String(raw || '').toUpperCase().replace(/[^0-9A-Z]/g, '').slice(0, 16);
+  return /^[0-9A-F]+$/.test(s) && s.length > 4 ? s.replace(/(.{4})(?=.)/g, '$1-') : s;
 }
 
-export const isComplete = (code) => /^[0-9A-F]{4}(-[0-9A-F]{4}){3}$/.test(code);
+export const isComplete = (code) => /^[0-9A-F]{4}(-[0-9A-F]{4}){3}$/.test(code) || /^[0-9A-Z]{3,12}$/.test(code);
 export const lookupCode = (code) => MODIFIERS[code] || null;
 
 // -> { ok, code, modifier } or { ok: false, code, error }
 export function checkCode(raw, already = []) {
   const code = formatCode(raw);
   if (!code) return { ok: false, code, error: 'Type a code first.' };
-  if (!isComplete(code)) return { ok: false, code, error: `Codes are 16 characters, like ${CODE_EXAMPLE}.` };
+  if (!isComplete(code)) return { ok: false, code, error: `That isn’t a code. Codes look like ${CODE_EXAMPLE}.` };
   if (already.includes(code)) return { ok: false, code, error: 'That code is already added.' };
   const modifier = lookupCode(code);
   if (!modifier) return { ok: false, code, error: 'Code not recognised.' };

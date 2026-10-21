@@ -88,6 +88,10 @@ export const CAR_BODIES = [
   { id: 'nomad',    name: 'Nomad',    hitbox: 'HYBRID' },
   { id: 'bulwark',  name: 'Bulwark',  hitbox: 'MERC' },
 ];
+// Skins unlocked by modifier codes (not in the garage): a different look on an existing hitbox.
+export const CAR_SKINS = [
+  { id: 'jeep', name: 'Classic Jeep', hitbox: 'OCTANE' },
+];
 
 // ---- Controls (input) schema ---------------------------------------------
 // One per car per tick. Analog values are already deadzoned/sensitivity-scaled.

@@ -3,13 +3,14 @@
 #
 # Format (decoded by src/render/meshpack.js and the car body decoder): per material slot, quantised
 # int16 positions (value * q, Blender axes x / y / z up), int8 normals, one palette index per vertex
-# (uint8, into meta.palette), optional uint16 UVs (uv * uvq) for slots listed in uv_slots, then
+# (uint8, into meta.palette), optional uint16 UVs (uv * uvq, so uv in [0, 65535 / uvq]) for slots
+# listed in uv_slots, then
 # uint16 / uint32 triangle indices. Every block is 4-byte aligned.
 import bpy, struct, base64, json
 from mathutils import Vector
 
 
-def collect(objs, slot_of, xform, nxform=lambda n: n, q=64, uv_slots=()):
+def collect(objs, slot_of, xform, nxform=lambda n: n, q=64, uv_slots=(), uvq=65535):
     """Triangles of the evaluated objects, grouped by slot. slot_of(material) -> (slot, rgb)."""
     dg = bpy.context.evaluated_depsgraph_get()
     slots = {}
@@ -33,7 +34,7 @@ def collect(objs, slot_of, xform, nxform=lambda n: n, q=64, uv_slots=()):
                 n = Vector(cn[li].vector)
                 if n.length < 1e-6: n = Vector(lt.normal)   # decimation can leave degenerate corner normals
                 n = nxform((N3 @ n).normalized())
-                uv = (round(uvl[li].uv.x * 65535), round(uvl[li].uv.y * 65535)) if slot in uv_slots and uvl else (0, 0)
+                uv = (round(uvl[li].uv.x * uvq), round(uvl[li].uv.y * uvq)) if slot in uv_slots and uvl else (0, 0)
                 key = (round(p.x * q), round(p.y * q), round(p.z * q), round(n.x * 100), round(n.y * 100), round(n.z * 100), col, uv)
                 k = d['v'].get(key)
                 if k is None:
@@ -47,7 +48,7 @@ def collect(objs, slot_of, xform, nxform=lambda n: n, q=64, uv_slots=()):
     return slots
 
 
-def pack(slots, q=64, uv_slots=()):
+def pack(slots, q=64, uv_slots=(), uvq=65535):
     palette = [(1, 1, 1)]
     blob = bytearray(); meta = []
     for slot, d in slots.items():
@@ -70,7 +71,7 @@ def pack(slots, q=64, uv_slots=()):
         blob += struct.pack(f'<{ni}{"I" if wide else "H"}', *d['idx'])
         while len(blob) % 4: blob.append(0)
     hdr = {'q': q, 'palette': palette, 'parts': meta}
-    if uv_slots: hdr = {'q': q, 'uvq': 65535, 'palette': palette, 'parts': meta}
+    if uv_slots: hdr = {'q': q, 'uvq': uvq, 'palette': palette, 'parts': meta}
     return hdr, bytes(blob)
 
 

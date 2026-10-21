@@ -8,7 +8,7 @@ import { applyModifiers } from './game/modifiers.js';
 import * as K from './sim/const.js';
 import { arenaSDF, arenaNormal, arenaRaycast, arenaRing, arenaProfile, ARENA_PARAMS } from './sim/arena.js';
 import { CAR_CONFIGS } from './sim/carconfig.js';
-import { QUALITY, CAR_BODIES, EV, TEAM_COLORS, makeControls, GAME_TITLE } from './contracts.js';
+import { QUALITY, CAR_BODIES, CAR_SKINS, EV, TEAM_COLORS, makeControls, GAME_TITLE } from './contracts.js';
 import { captureFrame, interpolateFrames } from './game/view.js';
 import { loadAll, saveAll } from './game/settings.js';
 import { simToThree } from './render/util.js';
@@ -111,7 +111,7 @@ const DEFAULT_DODGE_DEADZONE = 0.5;
 function rosterOf(world) {
   return world.cars.map((c) => ({ id: c.id, team: c.team, name: c.name, isBot: !!c.isBot, bodyId: c.bodyId, hitbox: c.hitbox, accent: c.accent }));
 }
-function bodyHitbox(bodyId) { return (CAR_BODIES.find((b) => b.id === bodyId) || CAR_BODIES[0]).hitbox; }
+function bodyHitbox(bodyId) { return ([...CAR_BODIES, ...CAR_SKINS].find((b) => b.id === bodyId) || CAR_BODIES[0]).hitbox; }
 
 function newSession(cfg, mode) {
   applyModifiers(cfg);

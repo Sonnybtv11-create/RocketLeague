@@ -82,12 +82,18 @@ the rim and the glass frame follow the arena's curved walls exactly, so they are
 (`src/render/env/wallDetail.js`) from the same profile as the collision walls. All Blender scripts
 share `tools/blender/meshpack.py` for export.
 
+Skins are alternative looks on an existing hitbox, unlocked by modifier codes (`src/game/modifiers.js`).
+The classic jeep (code `JEEP`, Octane hitbox) comes from `tools/blender/models/jeep.blend` through
+`tools/blender/import_jeep.py`. The importer scales the model to the Octane's wheels, and the game
+side lives in `src/render/cars/skins.js`.
+
 To rebuild after editing a model:
 
     uv venv --python 3.13 .bl && uv pip install --python .bl/bin/python bpy
     .bl/bin/python tools/blender/import_octane.py [--target 26000] [--wheel 7000]
     .bl/bin/python tools/blender/import_ball.py [--target 46000] [--print 9000]
     .bl/bin/python tools/blender/arena_assets.py [--preview out_prefix]
+    .bl/bin/python tools/blender/import_jeep.py
     node tools/assemble.mjs
 
 `tools/blender/octane_build.py` is the earlier script-built body. To use it again, run it in place

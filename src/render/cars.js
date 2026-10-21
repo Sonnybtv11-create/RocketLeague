@@ -34,6 +34,7 @@ import { CAR_CONFIGS } from '../sim/carconfig.js';
 import { TEAM_COLORS, CAR_BODIES } from '../contracts.js';
 import { applySimTransform } from './util.js';
 import { buildBody, bodySpec } from './cars/bodies.js';
+import { isSkin, buildSkin } from './cars/skins.js';
 import { getWheelGeometries } from './cars/wheels.js';
 import { getSharedMaterials, getPaint, getAccent, syncEnvironment } from './cars/materials.js';
 import { createNameplate } from './cars/nameplate.js';
@@ -46,11 +47,13 @@ const DEV_TEAM = params.get('carteam');
 const DEV_FOV = params.get('carfov');
 const DEV_DEBUG = params.has('cardebug');
 
+// a garage body or a skin (src/render/cars/skins.js, unlocked by modifier codes)
+const bodyOrSkin = (bodyId) => (isSkin(bodyId) ? buildSkin(bodyId) : buildBody(bodySpec(bodyId)));
 export function getBoostNozzles(bodyId) {
-  return buildBody(bodySpec(bodyId)).nozzles.map((v) => v.clone());
+  return bodyOrSkin(bodyId).nozzles.map((v) => v.clone());
 }
 export function getBoostNozzleRadius(bodyId) {
-  return buildBody(bodySpec(bodyId)).nozzleRadius.slice();
+  return bodyOrSkin(bodyId).nozzleRadius.slice();
 }
 
 // temporaries (no per-frame allocation)
@@ -61,9 +64,9 @@ const Q_FLIP = new THREE.Quaternion().setFromAxisAngle(AX_Y, Math.PI);
 
 export function createCarModel(ctx, opts) {
   let bodyId = DEV_BODY || opts.bodyId;
-  if (!bodyId || !CAR_BODIES.find((b) => b.id === bodyId)) bodyId = bodySpec(opts.hitbox || 'OCTANE');
+  if (!bodyId || !(isSkin(bodyId) || CAR_BODIES.find((b) => b.id === bodyId))) bodyId = bodySpec(opts.hitbox || 'OCTANE');
   const team = DEV_TEAM != null ? Number(DEV_TEAM) : opts.team;
-  const body = buildBody(bodyId);
+  const body = bodyOrSkin(bodyId);
   const hitbox = body.hitbox;
   const cfg = CAR_CONFIGS[hitbox];
   const sh = getSharedMaterials();
@@ -83,17 +86,18 @@ export function createCarModel(ctx, opts) {
   for (const slot of Object.keys(body.geoms)) {
     const g = body.geoms[slot];
     if (!g) continue;
-    const m = new THREE.Mesh(g, mats[slot]);
+    const m = new THREE.Mesh(g, (body.materials && body.materials[slot]) || mats[slot]);
     m.name = slot;
-    m.castShadow = slot !== 'light' && slot !== 'glow';
-    m.receiveShadow = slot === 'paint' || slot === 'accent' || slot === 'trim';
+    m.castShadow = slot !== 'light' && slot !== 'glow' && !slot.startsWith('decal');
+    m.receiveShadow = slot === 'paint' || slot === 'accent' || slot === 'trim' || slot === 'wood';
     carG.add(m);
     meshes[slot] = m;
   }
   // wheels: 2 instanced meshes
   const wg = body.wheel || getWheelGeometries(1, body.tyre.spokes || 5);
-  const tyres = new THREE.InstancedMesh(wg.tyre, sh.tyre, 4);
-  const rims = new THREE.InstancedMesh(wg.rim, sh.rim, 4);
+  const wm = body.wheelMaterials || sh;
+  const tyres = new THREE.InstancedMesh(wg.tyre, wm.tyre, 4);
+  const rims = new THREE.InstancedMesh(wg.rim, wm.rim, 4);
   for (const im of [tyres, rims]) {
     im.frustumCulled = false; im.receiveShadow = false;
     im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
@@ -220,7 +224,7 @@ export function createCarModel(ctx, opts) {
       contact.material.dispose();
       if (plate) plate.dispose();
       tyres.dispose(); rims.dispose();
-      // body/wheel geometries and team/accent materials are shared caches: not disposed here
+      // body/wheel geometries and team/accent/skin materials are shared caches: not disposed here
     },
   };
 }
