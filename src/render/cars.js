@@ -140,22 +140,6 @@ export function createCarModel(ctx, opts) {
     rims.setMatrixAt(i, _m);
   }
 
-  // contact shadow: soft occlusion patch under the car at tyre-contact level, in the car's own frame,
-  // so it sits on floor, walls or ceiling alike; fades out as the wheels leave the surface
-  const contact = new THREE.Mesh(CONTACT_GEO, getContactMaterial());
-  contact.material = contact.material.clone();
-  {
-    const len = (cfg.hitboxSize.x + 22) / 100, wid = (cfg.hitboxSize.y + 26) / 100;
-    const groundY = (Math.min(cfg.frontWheels.offset.z - (cfg.frontWheels.suspRest - 14) - cfg.frontWheels.radius,
-      cfg.backWheels.offset.z - (cfg.backWheels.suspRest - 14) - cfg.backWheels.radius) + 5.5) / 100; // above the grass tips
-    contact.scale.set(len, wid, 1);
-    contact.rotation.x = -Math.PI / 2;
-    contact.position.set(cfg.hitboxOffset.x / 100 * 0.6, groundY, 0);
-  }
-  contact.renderOrder = 1;
-  contact.frustumCulled = false;
-  carG.add(contact);
-  let contactAmt = 1;
 
   // hitbox debug wireframe
   if (DEV_HITBOX) {
@@ -202,11 +186,6 @@ export function createCarModel(ctx, opts) {
         accentHex = cv.accent; accent = getAccent(accentHex);
         if (meshes.accent) meshes.accent.material = accent;
       }
-      // contact shadow follows how many wheels touch the surface
-      const touching = (cv.numWheelsInContact || 0) / 4;
-      contactAmt += (touching - contactAmt) * Math.min(1, dt * 10);
-      contact.visible = contactAmt > 0.02;
-      contact.material.opacity = 0.62 * contactAmt;
       // wheels
       const ws = cv.wheels;
       if (ws && ws.length === 4) {
@@ -224,7 +203,6 @@ export function createCarModel(ctx, opts) {
     },
     dispose() {
       glowMat.dispose();
-      contact.material.dispose();
       if (plate) plate.dispose();
       tyres.dispose(); rims.dispose();
       // body/wheel geometries and team/accent/skin materials are shared caches: not disposed here
@@ -232,28 +210,4 @@ export function createCarModel(ctx, opts) {
   };
 }
 const _white = new THREE.Color();
-// soft rounded-rectangle occlusion texture for the contact shadow (shared)
-const CONTACT_GEO = new THREE.PlaneGeometry(1, 1);
-let contactMat = null;
-function getContactMaterial() {
-  if (contactMat) return contactMat;
-  const c = document.createElement('canvas');
-  c.width = 128; c.height = 128;
-  const g = c.getContext('2d');
-  // soft elliptical falloff drawn with a gradient (canvas blur filters are not supported everywhere,
-  // e.g. Safari, which left a hard dark box under the car)
-  const grd = g.createRadialGradient(64, 64, 0, 64, 64, 64);
-  grd.addColorStop(0, 'rgba(255,255,255,1)');
-  grd.addColorStop(0.45, 'rgba(255,255,255,0.75)');
-  grd.addColorStop(0.75, 'rgba(255,255,255,0.25)');
-  grd.addColorStop(1, 'rgba(255,255,255,0)');
-  g.fillStyle = grd;
-  g.fillRect(0, 0, 128, 128);
-  const tex = new THREE.CanvasTexture(c);
-  contactMat = new THREE.MeshBasicMaterial({
-    color: 0x000000, alphaMap: tex, transparent: true, opacity: 0.55, depthWrite: false,
-    polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4, toneMapped: false, fog: false, name: 'car.contact',
-  });
-  return contactMat;
-}
 const TYRE_WIDEN = 1.35, TYRE_OUT = 2.5;

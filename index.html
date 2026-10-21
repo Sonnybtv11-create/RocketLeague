@@ -9908,22 +9908,6 @@ function createCarModel(ctx2, opts) {
     tyres.setMatrixAt(i, _m);
     rims.setMatrixAt(i, _m);
   }
-  const contact = new THREE20.Mesh(CONTACT_GEO, getContactMaterial());
-  contact.material = contact.material.clone();
-  {
-    const len3 = (cfg.hitboxSize.x + 22) / 100, wid = (cfg.hitboxSize.y + 26) / 100;
-    const groundY = (Math.min(
-      cfg.frontWheels.offset.z - (cfg.frontWheels.suspRest - 14) - cfg.frontWheels.radius,
-      cfg.backWheels.offset.z - (cfg.backWheels.suspRest - 14) - cfg.backWheels.radius
-    ) + 5.5) / 100;
-    contact.scale.set(len3, wid, 1);
-    contact.rotation.x = -Math.PI / 2;
-    contact.position.set(cfg.hitboxOffset.x / 100 * 0.6, groundY, 0);
-  }
-  contact.renderOrder = 1;
-  contact.frustumCulled = false;
-  carG.add(contact);
-  let contactAmt = 1;
   if (DEV_HITBOX) {
     const s2 = cfg.hitboxSize, o = cfg.hitboxOffset;
     const box = new THREE20.LineSegments(
@@ -9973,10 +9957,6 @@ function createCarModel(ctx2, opts) {
         accent = getAccent(accentHex);
         if (meshes.accent) meshes.accent.material = accent;
       }
-      const touching = (cv.numWheelsInContact || 0) / 4;
-      contactAmt += (touching - contactAmt) * Math.min(1, dt * 10);
-      contact.visible = contactAmt > 0.02;
-      contact.material.opacity = 0.62 * contactAmt;
       const ws = cv.wheels;
       if (ws && ws.length === 4) {
         const steer = cv.steer || 0;
@@ -9992,7 +9972,6 @@ function createCarModel(ctx2, opts) {
     },
     dispose() {
       glowMat.dispose();
-      contact.material.dispose();
       if (plate) plate.dispose();
       tyres.dispose();
       rims.dispose();
@@ -10000,37 +9979,6 @@ function createCarModel(ctx2, opts) {
   };
 }
 var _white = new THREE20.Color();
-var CONTACT_GEO = new THREE20.PlaneGeometry(1, 1);
-var contactMat = null;
-function getContactMaterial() {
-  if (contactMat) return contactMat;
-  const c = document.createElement("canvas");
-  c.width = 128;
-  c.height = 128;
-  const g = c.getContext("2d");
-  const grd = g.createRadialGradient(64, 64, 0, 64, 64, 64);
-  grd.addColorStop(0, "rgba(255,255,255,1)");
-  grd.addColorStop(0.45, "rgba(255,255,255,0.75)");
-  grd.addColorStop(0.75, "rgba(255,255,255,0.25)");
-  grd.addColorStop(1, "rgba(255,255,255,0)");
-  g.fillStyle = grd;
-  g.fillRect(0, 0, 128, 128);
-  const tex = new THREE20.CanvasTexture(c);
-  contactMat = new THREE20.MeshBasicMaterial({
-    color: 0,
-    alphaMap: tex,
-    transparent: true,
-    opacity: 0.55,
-    depthWrite: false,
-    polygonOffset: true,
-    polygonOffsetFactor: -4,
-    polygonOffsetUnits: -4,
-    toneMapped: false,
-    fog: false,
-    name: "car.contact"
-  });
-  return contactMat;
-}
 var TYRE_WIDEN = 1.35;
 var TYRE_OUT = 2.5;
 
