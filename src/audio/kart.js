@@ -10,18 +10,22 @@
 import { KART_SOUNDS } from './kartSounds.js';
 import { tgt, clamp01 } from './synth.js';
 
-// decode once per AudioContext (async); resolves to { engine_loop, flag_flap, horn, rattle1.., squeak }
-const decoded = new WeakMap();
-export function loadKartSounds(ac) {
-  if (decoded.has(ac)) return decoded.get(ac);
-  const p = Promise.all(Object.entries(KART_SOUNDS).map(([name, b64]) => {
+// decode a packed sound table once per AudioContext (async) -> { name: AudioBuffer }
+const decoded = new WeakMap();   // ac -> Map(table -> Promise)
+export function decodeSounds(ac, table) {
+  if (!decoded.has(ac)) decoded.set(ac, new Map());
+  const per = decoded.get(ac);
+  if (per.has(table)) return per.get(table);
+  const p = Promise.all(Object.entries(table).map(([name, b64]) => {
     const bin = atob(b64), bytes = new Uint8Array(bin.length);
     for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
     return new Promise((res, rej) => ac.decodeAudioData(bytes.buffer, res, rej)).then((buf) => [name, buf]);
   })).then((list) => Object.fromEntries(list));
-  decoded.set(ac, p);
+  per.set(table, p);
   return p;
 }
+// { engine_loop, flag_flap, horn, rattle1.., squeak }
+export const loadKartSounds = (ac) => decodeSounds(ac, KART_SOUNDS);
 
 const MAX_SHOTS = 5;   // per kart
 

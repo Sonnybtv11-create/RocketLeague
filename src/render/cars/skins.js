@@ -5,13 +5,24 @@
 // uses instead of its own (or wheelMaterialsFor(team)), and optional tyre.x / tyre.r ([front, rear]
 // allowed): where its wheels are drawn (uu) when they differ from the hitbox's. Skins with moving
 // parts also give `parts` ({ id: { pivot (model metres) } }, mesh slots "<part>.<material>") and
-// createRig(groups, { team, cfg, meshes }) -> { update(carView, dt), dispose() }.
+// createRig(groups, { team, cfg, meshes, root }) -> { update(carView, dt), demoed?(carView, dt), dispose() }
+// (demoed runs instead of update while the car is demolished; root is the car's world-space group).
+// A skin can add a second mesh (extraMesh, same format), e.g. a driver.
 import * as THREE from 'three';
 import { decodeMesh } from '../meshpack.js';
 import { registerEnvUser } from './materials.js';
 import { TEAM_COLORS } from '../../contracts.js';
 import { JEEP_MESH_META, JEEP_MESH_B64, JEEP_WHEEL_META, JEEP_WHEEL_B64, JEEP_TEX } from './jeepMesh.js';
 import { KART_SKIN } from './kart.js';
+import { BACON_MESH_META, BACON_MESH_B64, BACON_INFO, BACON_TEX } from './baconMesh.js';
+import { createR6Driver } from './r6driver.js';
+
+// the jeep's driver: the bacon-hair avatar's parts (model metres; pivot, and box relative to it)
+const toModel = (v) => new THREE.Vector3(v[0] / 100, v[2] / 100, -v[1] / 100);
+const BACON_PARTS = Object.fromEntries(BACON_INFO.parts.map((p) => {
+  const a = toModel(p.box[0]), b = toModel(p.box[1]);
+  return [p.id, { pivot: toModel(p.pivot), box: [[a.x, Math.min(a.y, b.y), Math.min(a.z, b.z)], [b.x, Math.max(a.y, b.y), Math.max(a.z, b.z)]] }];
+}));
 
 function texture(url, { repeat = 1, wrap = true } = {}) {
   const t = new THREE.TextureLoader().load(url);
@@ -25,7 +36,8 @@ const SKINS = {
   kart: KART_SKIN,   // the ATK kart, with moving parts (kart.js)
   // Classic Roblox jeep (tools/blender/import_jeep.py), Octane hitbox, scaled uniformly to the Octane's
   // footprint. Its green parts take the team colour. Wheels: 4 studs (28 uu) wide, radius 14, drawn
-  // at the jeep's own axles.
+  // at the jeep's own axles. Driven by a bacon-hair R6 avatar (import_bacon.py, r6driver.js) in its
+  // own colours.
   jeep: {
     hitbox: 'OCTANE',
     tyre: { wF: 28, wB: 28, extraF: 2.1, extraB: -1.5, spokes: 0, modelled: true, x: [38.38, -24.62], r: 14 },
@@ -51,9 +63,16 @@ const SKINS = {
         decal_grille: decal(JEEP_TEX.grille, 'skin.jeep.grille'),
         decal_roblox: decal(JEEP_TEX.roblox, 'skin.jeep.roblox'),
       };
+      // Roblox avatar parts: smooth plastic
+      const avatarMat = (url, name) => { const m = new THREE.MeshStandardMaterial({ map: texture(url, { wrap: false }), roughness: 0.55, metalness: 0, name }); registerEnvUser(m); return m; };
+      shared.r6 = avatarMat(BACON_TEX.body, 'skin.jeep.driver');
+      shared.hair = avatarMat(BACON_TEX.hair, 'skin.jeep.driverhair');
       const perTeam = new Map();
       return {
         mesh: [JEEP_MESH_META, JEEP_MESH_B64],
+        extraMesh: [BACON_MESH_META, BACON_MESH_B64],
+        parts: BACON_PARTS,
+        createRig: (groups, { root }) => createR6Driver(groups, BACON_PARTS, root),
         wheel: [JEEP_WHEEL_META, JEEP_WHEEL_B64],
         materialsFor(team) {
           const t = team === 1 ? 1 : 0;
@@ -84,7 +103,7 @@ export function buildSkin(id) {
   const b = spec.build();
   const res = {
     id, hitbox: spec.hitbox, tyre: spec.tyre,
-    geoms: decodeMesh(...b.mesh, { scale: 0.01 }),          // uu -> metres, Blender axes -> model axes
+    geoms: { ...decodeMesh(...b.mesh, { scale: 0.01 }), ...(b.extraMesh ? decodeMesh(...b.extraMesh, { scale: 0.01 }) : null) },   // uu -> metres, Blender axes -> model axes
     wheel: decodeMesh(...b.wheel, { blenderAxes: false }),   // already in wheel space
     materialsFor: b.materialsFor, wheelMaterials: b.wheelMaterials, wheelMaterialsFor: b.wheelMaterialsFor,
     parts: b.parts || null, createRig: b.createRig || null,

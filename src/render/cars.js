@@ -95,7 +95,7 @@ export function createCarModel(ctx, opts) {
     const m = new THREE.Mesh(g, mats[slot] || mats[cls]);
     m.name = slot;
     m.castShadow = cls !== 'light' && cls !== 'glow' && cls !== 'lamp' && !cls.startsWith('decal');
-    m.receiveShadow = cls === 'paint' || cls === 'accent' || cls === 'trim' || cls.startsWith('wood') || ['satin', 'matte', 'gloss'].includes(cls);
+    m.receiveShadow = cls === 'paint' || cls === 'accent' || cls === 'trim' || cls.startsWith('wood') || ['satin', 'matte', 'gloss', 'r6', 'hair'].includes(cls);
     const part = pid && body.parts && body.parts[pid];
     if (part) {
       let grp = partGroups[pid];
@@ -121,7 +121,7 @@ export function createCarModel(ctx, opts) {
     wheelMeshes.push(im);
   }
   const tyres = wheelMeshes.find((m) => m.name === 'tyres'), rims = wheelMeshes.find((m) => m.name === 'rims');
-  const rig = body.createRig ? body.createRig(partGroups, { team, cfg, meshes }) : null;
+  const rig = body.createRig ? body.createRig(partGroups, { team, cfg, meshes, root }) : null;
   // chunky tyres that poke out past the body (wider than the base spec, pushed outward)
   const widen = body.tyre.modelled ? 1 : TYRE_WIDEN, out = body.tyre.modelled ? 0 : TYRE_OUT;
   const tyreW = [body.tyre.wF * widen / 100, body.tyre.wB * widen / 100];
@@ -194,7 +194,7 @@ export function createCarModel(ctx, opts) {
         if (on) { _wp.set(cv.pos.x / 100, cv.pos.z / 100, cv.pos.y / 100); plate.update(_wp, cv.boost, ctx.camera, true, view); }
         else plate.update(null, 0, null, false, view);
       }
-      if (!vis) return;
+      if (!vis) { if (rig && rig.demoed) rig.demoed(cv, dt); return; }
       applySimTransform(carG, cv.pos, cv.rot);
       // accent colour may change live (garage preview)
       if (cv.accent && cv.accent !== accentHex) {

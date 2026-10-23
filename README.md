@@ -104,6 +104,19 @@ The jeep (code `JEEP`, Octane hitbox) comes from `tools/blender/models/jeep.blen
 `tools/blender/import_jeep.py`. It is scaled evenly to the Octane's footprint, and its green parts
 take the team colour. The game side lives in `src/render/cars/skins.js`.
 
+The jeep is driven by a bacon-hair Roblox avatar: "Bacon Hair." by John Doe (@mauimorehu) on
+[Sketchfab](https://sketchfab.com/3d-models/bacon-hair-55184f05d7104daa80a3662f73648142), CC BY 4.0
+(`tools/blender/models/bacon_hair.glb`). `tools/blender/import_bacon.py` splits it into Roblox's six R6
+parts (head, torso, two arms, two legs) plus the hair, and seats it the way Roblox seats an R6 in a
+VehicleSeat. `src/render/cars/r6driver.js` animates it like Roblox does:
+
+- **Driving:** the R6 seated pose: arms straight out to the wheel, legs straight along the seat, the
+  body welded rigidly to the jeep. The joints turn at Roblox's motor speed, so the driver snaps from
+  standing into the seat when the jeep appears.
+- **Demolished:** like a Roblox death, the joints break and the parts and hair are thrown apart, tumble
+  and lie on the floor, with an "oof" (a CC0 recording, `tools/sounds/jeep/CREDITS.md`). The driver is
+  back in the seat when the jeep respawns.
+
 The ATK Kart (code `KART`, Octane hitbox) comes from `tools/blender/models/kart.blend` through
 `tools/blender/import_kart.py`, which bakes every surface into one colour atlas and splits off the
 parts that move. `src/render/cars/kart.js` draws it and moves those parts:
@@ -121,7 +134,7 @@ parts that move. `src/render/cars/kart.js` draws it and moves those parts:
   metal rattles on landings and bumps, a plush squeak when the charms bounce, and a beep-beep horn
   when the kart scores or demolishes someone (`src/audio/kart.js`). All are CC0 from BigSoundBank;
   sources and edits are listed in `tools/sounds/kart/CREDITS.md`. `node tools/pack_sounds.mjs`
-  packs them into `src/audio/kartSounds.js`.
+  packs every `tools/sounds/<set>/` into `src/audio/<set>Sounds.js`.
 
 To rebuild after editing a model:
 
@@ -130,6 +143,7 @@ To rebuild after editing a model:
     .bl/bin/python tools/blender/import_ball.py [--target 46000] [--print 9000]
     .bl/bin/python tools/blender/arena_assets.py [--preview out_prefix]
     .bl/bin/python tools/blender/import_jeep.py
+    .bl/bin/python tools/blender/import_bacon.py
     .bl/bin/python tools/blender/import_kart.py [--target 30000] [--atlas 1024]
     node tools/assemble.mjs
 

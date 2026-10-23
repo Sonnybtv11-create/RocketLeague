@@ -1,5 +1,5 @@
 // TURBO PITCH — audio engine (owned by the audio agent). Web Audio, everything synthesised except
-// the kart skin's recorded sounds (kart.js).
+// the kart skin's recorded sounds (kart.js) and the jeep driver's "oof".
 // createAudio({ settings }) -> { unlock(), onEvents(events, view), update(view, listener, frameDt),
 //                               setVolumes(audioSettings), setPaused(bool), dispose() }
 // listener = { pos: THREE.Vector3 (three space, metres), quaternion: THREE.Quaternion, camera, playerCarId }
@@ -16,7 +16,8 @@ import { EV } from '../contracts.js';
 import { simToThree } from '../render/util.js';
 import { makeLib, bakeCrowdChannel, CROWD_SR, buildMaster, Shot, RECIPES, tgt, clamp01 } from './synth.js';
 import { CarVoice, CrowdBed, makePanner } from './voices.js';
-import { loadKartSounds, KartLayer } from './kart.js';
+import { loadKartSounds, KartLayer, decodeSounds } from './kart.js';
+import { JEEP_SOUNDS } from './jeepSounds.js';
 
 const MAX_SHOTS = 24;
 
@@ -43,6 +44,7 @@ export function createAudio({ settings, devHooks = true } = {}) {
   const v3 = simToThree({ x: 0, y: 0, z: 0 });
   const seenIds = new Set();
   let kartBufs = null, kartLoading = false;   // kart recordings, decoded when the first kart appears
+  let jeepBufs = null, jeepLoading = false;   // the jeep driver's "oof", decoded when the first jeep appears
 
   // ------------------------------------------------------------ context lifecycle
   function canStart() {
@@ -94,6 +96,24 @@ export function createAudio({ settings, devHooks = true } = {}) {
     if (kartLoading) return;
     kartLoading = true;
     loadKartSounds(ac).then((b) => { kartBufs = b; }).catch(() => { /* stay on the synth engine */ });
+  }
+  function loadJeep() {
+    if (jeepLoading) return;
+    jeepLoading = true;
+    decodeSounds(ac, JEEP_SOUNDS).then((b) => { jeepBufs = b; }).catch(() => { /* no oof */ });
+  }
+  // a recorded one-shot at a sim position (null: non-spatial)
+  function playBuffer(name, buf, pos, gain = 1, rate = 1) {
+    if (!buf || !ready() || paused) return;
+    const now = ac.currentTime;
+    const s = ac.createBufferSource(); s.buffer = buf; s.playbackRate.value = rate;
+    const g = ac.createGain(); g.gain.value = gain;
+    s.connect(g);
+    let p = null;
+    if (pos) { p = makePanner(ac, 'equalpower'); setNodePos(p, pos); g.connect(p); p.connect(bus.sfxIn); } else g.connect(bus.sfxIn);
+    s.start(now + 0.01);
+    s.onended = () => { try { s.disconnect(); g.disconnect(); if (p) p.disconnect(); } catch (e) { /* */ } };
+    stats.played++; stats.byType[name] = (stats.byType[name] || 0) + 1;
   }
   const kartOf = (id) => { const v = voices.get(id); return v && v.kart ? v.kart : null; };
 
@@ -197,10 +217,14 @@ export function createAudio({ settings, devHooks = true } = {}) {
           for (const id of [e.attackerId, e.victimId]) if (kartOf(id)) kartOf(id).rattle(ac.currentTime, 0.2 + 0.4 * clamp01((e.speed || 0) / 2000));
           play('carBump', { speed: e.speed }, { pos: e.pos, prio: 2, key: 'bump' + Math.min(e.attackerId, e.victimId) + '_' + Math.max(e.attackerId, e.victimId), gap: 0.2, send: 0.12 });
           break;
-        case EV.DEMO:
+        case EV.DEMO: {
+          // the jeep's bacon-hair driver goes "oof" (Roblox death)
+          const victim = carById(view, e.victimId);
+          if (victim && victim.bodyId === 'jeep' && jeepBufs) playBuffer('oof', jeepBufs.oof, e.victimId === playerCarId ? null : e.pos, 0.9, 1.12);
           if (kartOf(e.attackerId)) kartOf(e.attackerId).horn(ac.currentTime);
           play('explosion', { size: 0.75 }, { pos: e.victimId === playerCarId ? null : e.pos, prio: 3, send: 0.4 });
           break;
+        }
         case EV.RESPAWN:
           play('respawn', {}, { pos: carSoundPos(view, null, e.carId), prio: 0, gain: e.carId === playerCarId ? 1 : 0.7 });
           break;
@@ -379,6 +403,7 @@ export function createAudio({ settings, devHooks = true } = {}) {
       let v = voices.get(cv.id);
       if (!v) { v = new CarVoice(ac, lib, bus.sfxIn, bus.revIn, cv.id + 1); voices.set(cv.id, v); }
       if (cv.bodyId === 'kart' && !v.kart) attachKart(v);
+      if (cv.bodyId === 'jeep' && !jeepBufs) loadJeep();
       v.setPanningModel(panModel);
       simToThree(cv.pos, v3);
       v.setPos(v3.x, v3.y, v3.z, t);
