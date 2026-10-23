@@ -9,7 +9,7 @@
 //   * object3d is a root Group at identity; it contains the car body group (placed with
 //     applySimTransform every frame) and, for non-player cars, a camera-facing nameplate
 //     (settings.graphics.nameplates) positioned in world space above the car.
-//   * Wheels: one InstancedMesh for the 4 tyres + one for the 4 rims; placed at the wheel
+//   * Wheels: one InstancedMesh for the 4 tyres + one for the 4 rims (skins: one per wheel material); placed at the wheel
 //     hard points minus suspension length (suspension travel visible), spun by `spin`,
 //     front wheels steered by cv.steer. Visual track is pushed outward a few uu per body so
 //     the tyres sit under the fenders (physics hard points are unchanged).
@@ -84,29 +84,44 @@ export function createCarModel(ctx, opts) {
   const meshes = {};
   const mats = { paint, trim: sh.trim, accent, glass: sh.glass, light: sh.light, chrome: sh.chrome, glow: glowMat,
     ...(body.materialsFor ? body.materialsFor(team) : null) };   // skins bring their own (team-coloured) materials
+  // Skins may split their mesh into moving parts: slot "<part>.<material>", geometry relative to the
+  // part's pivot. Each part gets a group at its pivot, which the skin's rig moves every frame.
+  const partGroups = {};
   for (const slot of Object.keys(body.geoms)) {
     const g = body.geoms[slot];
     if (!g) continue;
-    const m = new THREE.Mesh(g, mats[slot]);
+    const dot = slot.indexOf('.');
+    const pid = dot > 0 ? slot.slice(0, dot) : null, cls = dot > 0 ? slot.slice(dot + 1) : slot;
+    const m = new THREE.Mesh(g, mats[slot] || mats[cls]);
     m.name = slot;
-    m.castShadow = slot !== 'light' && slot !== 'glow' && !slot.startsWith('decal');
-    m.receiveShadow = slot === 'paint' || slot === 'accent' || slot === 'trim' || slot.startsWith('wood');
-    carG.add(m);
+    m.castShadow = cls !== 'light' && cls !== 'glow' && cls !== 'lamp' && !cls.startsWith('decal');
+    m.receiveShadow = cls === 'paint' || cls === 'accent' || cls === 'trim' || cls.startsWith('wood') || ['satin', 'matte', 'gloss'].includes(cls);
+    const part = pid && body.parts && body.parts[pid];
+    if (part) {
+      let grp = partGroups[pid];
+      if (!grp) { grp = partGroups[pid] = new THREE.Group(); grp.name = 'part:' + pid; grp.position.copy(part.pivot); carG.add(grp); }
+      grp.add(m);
+    } else carG.add(m);
     meshes[slot] = m;
   }
-  // wheels: 2 instanced meshes
+  // wheels: one instanced mesh per wheel material (garage bodies: tyre + rim)
   const wg = body.wheel || getWheelGeometries(1, body.tyre.spokes || 5);
-  const wm = body.wheelMaterials || sh;
-  const tyres = new THREE.InstancedMesh(wg.tyre, wm.tyre, 4);
-  const rims = new THREE.InstancedMesh(wg.rim, wm.rim, 4);
-  for (const im of [tyres, rims]) {
+  const wm = (body.wheelMaterialsFor && body.wheelMaterialsFor(team)) || body.wheelMaterials || sh;
+  const wheelMeshes = [];
+  for (const [slot, geo] of Object.entries(wg)) {
+    if (!geo) continue;
+    const im = new THREE.InstancedMesh(geo, wm[slot] || sh.rim, 4);
     im.frustumCulled = false; im.receiveShadow = false;
     im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    im.name = slot === 'tyre' ? 'tyres' : slot === 'rim' ? 'rims' : 'wheel.' + slot;
+    // only the tyres cast a shadow (the rest sits inside them)
+    im.castShadow = slot === 'tyre';
+    if (slot === 'tyre') im.customDepthMaterial = sh.tyreDepth;
     carG.add(im);
+    wheelMeshes.push(im);
   }
-  tyres.name = 'tyres'; rims.name = 'rims';
-  tyres.castShadow = true; tyres.customDepthMaterial = sh.tyreDepth; // rims sit inside the tyres: no shadow
-  rims.castShadow = false;
+  const tyres = wheelMeshes.find((m) => m.name === 'tyres'), rims = wheelMeshes.find((m) => m.name === 'rims');
+  const rig = body.createRig ? body.createRig(partGroups, { team, cfg, meshes }) : null;
   // chunky tyres that poke out past the body (wider than the base spec, pushed outward)
   const widen = body.tyre.modelled ? 1 : TYRE_WIDEN, out = body.tyre.modelled ? 0 : TYRE_OUT;
   const tyreW = [body.tyre.wF * widen / 100, body.tyre.wB * widen / 100];
@@ -120,14 +135,15 @@ export function createCarModel(ctx, opts) {
       const w = ws[i], left = (i % 2) === 1, front = i < 2;
       setWheel(i, { offset: { x: w.offset.x, y: left ? -w.offset.y : w.offset.y, z: w.offset.z }, radius: w.radius, suspLen: restSusp(w), spin: 0, front, left }, 0);
     }
-    tyres.instanceMatrix.needsUpdate = true; rims.instanceMatrix.needsUpdate = true;
+    for (const im of wheelMeshes) im.instanceMatrix.needsUpdate = true;
   }
 
   function setWheel(i, w, steer) {
     const front = w.front, left = w.left;
     const ex = front ? extra[0] : extra[1];
     // skins may draw their wheels elsewhere / at another size than the hitbox's: same contact height
-    const vx = body.tyre.x ? body.tyre.x[front ? 0 : 1] : w.offset.x, vr = body.tyre.r || w.radius;
+    const tr = body.tyre.r;
+    const vx = body.tyre.x ? body.tyre.x[front ? 0 : 1] : w.offset.x, vr = (Array.isArray(tr) ? tr[front ? 0 : 1] : tr) || w.radius;
     _p.set(vx / 100, (w.offset.z - w.suspLen - w.radius + vr) / 100, (w.offset.y + (left ? -ex : ex)) / 100);
     _qs.setFromAxisAngle(AX_Z, left ? w.spin : -w.spin);
     if (front && steer) { _qf.setFromAxisAngle(AX_Y, -steer); _q.copy(_qf); } else _q.identity();
@@ -136,8 +152,7 @@ export function createCarModel(ctx, opts) {
     const r = vr / 100;
     _s.set(r, r, front ? tyreW[0] : tyreW[1]);
     _m.compose(_p, _q, _s);
-    tyres.setMatrixAt(i, _m);
-    rims.setMatrixAt(i, _m);
+    for (const im of wheelMeshes) im.setMatrixAt(i, _m);
   }
 
 
@@ -191,9 +206,9 @@ export function createCarModel(ctx, opts) {
       if (ws && ws.length === 4) {
         const steer = cv.steer || 0;
         for (let i = 0; i < 4; i++) setWheel(i, ws[i], steer);
-        tyres.instanceMatrix.needsUpdate = true;
-        rims.instanceMatrix.needsUpdate = true;
+        for (const im of wheelMeshes) im.instanceMatrix.needsUpdate = true;
       }
+      if (rig) rig.update(cv, dt);
       // boost nozzle glow (idle ember -> hot core while boosting, slight flicker)
       t += dt;
       const target = cv.isBoosting ? 3.2 + Math.sin(t * 47) * 0.35 + Math.sin(t * 23.3) * 0.25 : 0.22;
@@ -204,7 +219,8 @@ export function createCarModel(ctx, opts) {
     dispose() {
       glowMat.dispose();
       if (plate) plate.dispose();
-      tyres.dispose(); rims.dispose();
+      for (const im of wheelMeshes) im.dispose();
+      if (rig && rig.dispose) rig.dispose();
       // body/wheel geometries and team/accent/skin materials are shared caches: not disposed here
     },
   };

@@ -19,6 +19,7 @@ import { formatCode, isComplete, CODE_EXAMPLE } from './modifiers.js';
 
 export const REWARD_CODES = {
   JEEP: { name: 'Jeep', description: 'The classic jeep (Octane hitbox)', items: [{ type: 'car', id: 'jeep', name: 'Jeep' }] },
+  KART: { name: 'ATK Kart', description: 'The all-terrain kart (Octane hitbox)', items: [{ type: 'car', id: 'kart', name: 'ATK Kart' }] },
 };
 
 const KEY = 'turbopitch.profile.v1';

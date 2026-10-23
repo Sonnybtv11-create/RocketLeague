@@ -2,13 +2,16 @@
 // picked in the garage. A skin drives on an existing hitbox but brings its own body mesh, wheel,
 // materials and boost nozzle. buildSkin(id) returns the same shape as bodies.js buildBody(), plus
 // materialsFor(team) -> { [body slot]: material } and wheelMaterials ({ tyre, rim }), which cars.js
-// uses instead of its own, and optional tyre.x / tyre.r: where its wheels are drawn (uu) when they
-// differ from the hitbox's.
+// uses instead of its own (or wheelMaterialsFor(team)), and optional tyre.x / tyre.r ([front, rear]
+// allowed): where its wheels are drawn (uu) when they differ from the hitbox's. Skins with moving
+// parts also give `parts` ({ id: { pivot (model metres) } }, mesh slots "<part>.<material>") and
+// createRig(groups, { team, cfg, meshes }) -> { update(carView, dt), dispose() }.
 import * as THREE from 'three';
 import { decodeMesh } from '../meshpack.js';
 import { registerEnvUser } from './materials.js';
 import { TEAM_COLORS } from '../../contracts.js';
 import { JEEP_MESH_META, JEEP_MESH_B64, JEEP_WHEEL_META, JEEP_WHEEL_B64, JEEP_TEX } from './jeepMesh.js';
+import { KART_SKIN } from './kart.js';
 
 function texture(url, { repeat = 1, wrap = true } = {}) {
   const t = new THREE.TextureLoader().load(url);
@@ -19,6 +22,7 @@ function texture(url, { repeat = 1, wrap = true } = {}) {
 }
 
 const SKINS = {
+  kart: KART_SKIN,   // the ATK kart, with moving parts (kart.js)
   // Classic Roblox jeep (tools/blender/import_jeep.py), Octane hitbox, scaled uniformly to the Octane's
   // footprint. Its green parts take the team colour. Wheels: 4 studs (28 uu) wide, radius 14, drawn
   // at the jeep's own axles.
@@ -82,7 +86,8 @@ export function buildSkin(id) {
     id, hitbox: spec.hitbox, tyre: spec.tyre,
     geoms: decodeMesh(...b.mesh, { scale: 0.01 }),          // uu -> metres, Blender axes -> model axes
     wheel: decodeMesh(...b.wheel, { blenderAxes: false }),   // already in wheel space
-    materialsFor: b.materialsFor, wheelMaterials: b.wheelMaterials,
+    materialsFor: b.materialsFor, wheelMaterials: b.wheelMaterials, wheelMaterialsFor: b.wheelMaterialsFor,
+    parts: b.parts || null, createRig: b.createRig || null,
     nozzles: spec.nozzles.map(([x, y, z]) => new THREE.Vector3(x / 100, y / 100, z / 100)),
     nozzleRadius: spec.nozzles.map((n) => n[3] / 100),
   };

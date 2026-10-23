@@ -86,6 +86,9 @@ export class CarVoice {
     this.panModel = 'equalpower';
   }
 
+  // kart skin: recorded engine / flag / rattles on this car's panner (audio/kart.js)
+  attachKart(layer) { this.kart = layer; }
+
   setPanningModel(m) { if (m !== this.panModel) { this.panModel = m; try { this.panner.panningModel = m; } catch (e) { /* unsupported */ } } }
   setPos(x, y, z, t) { setPannerPos(this.panner, x, y, z, t); }
 
@@ -112,9 +115,11 @@ export class CarVoice {
     tgt(this.o2.frequency, f * 1.0075, t, 0.03);
     tgt(this.sub.frequency, f * 0.5, t, 0.03);
     tgt(this.engFilt.frequency, 260 + rpm * 1100 * (0.45 + 0.55 * load) + speed * 0.15, t, 0.05);
-    tgt(this.engGain.gain, 0.07 + 0.1 * load + 0.07 * rpm, t, 0.06);
+    const synth = this.kart ? 0.15 : 1;   // a kart's own engine recording replaces most of the synth
+    tgt(this.engGain.gain, (0.07 + 0.1 * load + 0.07 * rpm) * synth, t, 0.06);
     tgt(this.whine.frequency, (340 + speed * 0.78) * this.detune, t, 0.05);
-    tgt(this.whineGain.gain, 0.006 + 0.022 * (speed / 2300) * (0.4 + 0.6 * load), t, 0.08);
+    tgt(this.whineGain.gain, (0.006 + 0.022 * (speed / 2300) * (0.4 + 0.6 * load)) * (this.kart ? 0.5 : 1), t, 0.08);
+    if (this.kart) this.kart.update(cv, rpm, gear, load, onGround, t, dt);
 
     // ---- boost
     tgt(this.boostGain.gain, cv.isBoosting ? 0.45 : 0, t, cv.isBoosting ? 0.025 : 0.09);
@@ -151,6 +156,7 @@ export class CarVoice {
   dispose(t) {
     if (!this.alive) return;
     this.alive = false;
+    if (this.kart) this.kart.dispose(t);
     try { this.mix.gain.cancelScheduledValues(t); this.mix.gain.setTargetAtTime(0, t, 0.03); } catch (e) { /* closed */ }
     const stopAt = t + 0.2;
     for (const n of this.nodes) if (n.stop) { try { n.stop(stopAt); } catch (e) { /* stopped */ } }

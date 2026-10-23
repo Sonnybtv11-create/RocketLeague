@@ -54,8 +54,9 @@ but not LAN play. The LAN screen will say "Network play isn't set up on this web
 - **Redeem a code:** a code unlocks items on your profile, such as a car skin. Unlocked items are listed
   underneath and stay unlocked on this device.
 
-No reward codes exist yet. To add one, put it in `REWARD_CODES` in `src/game/profile.js`. The comment
-at the top of that file shows the format.
+Codes so far: `JEEP` (the Jeep) and `KART` (the ATK Kart). Both are cars on the Octane hitbox and go
+straight into your Garage. To add a code, put it in `REWARD_CODES` in `src/game/profile.js`. The
+comment at the top of that file shows the format.
 
 ## Development
 
@@ -103,6 +104,25 @@ The jeep (code `JEEP`, Octane hitbox) comes from `tools/blender/models/jeep.blen
 `tools/blender/import_jeep.py`. It is scaled evenly to the Octane's footprint, and its green parts
 take the team colour. The game side lives in `src/render/cars/skins.js`.
 
+The ATK Kart (code `KART`, Octane hitbox) comes from `tools/blender/models/kart.blend` through
+`tools/blender/import_kart.py`, which bakes every surface into one colour atlas and splits off the
+parts that move. `src/render/cars/kart.js` draws it and moves those parts:
+
+- **Team colour:** the kart is blue-trimmed. On the orange team every blue surface (stripes, bumpers,
+  rim lips, seats, piping) turns orange at the same brightness; white, yellow, red and green stay.
+- **Hanging and loose parts** are small pendulums driven by the car's real motion (speeding up,
+  braking, cornering, jumps and landings): the tomato and burger charms swing on their strings and
+  stream back in the wind; the whip flag bends and its cloth flutters harder with speed; the llama
+  bobble-head wobbles; the cooler, axe and propane tank jiggle and hop on landings; the cooler lid
+  bangs open; the pickaxe sign swings on its hinge; the roof light bar rocks.
+- **Driver controls:** the steering wheel turns with steering, the GO / STOP pedals press, the coil
+  springs follow the suspension and the tail lights brighten when braking.
+- **Sounds** are real recordings: a small engine loop pitched by speed, a flag flapping in the wind,
+  metal rattles on landings and bumps, a plush squeak when the charms bounce, and a beep-beep horn
+  when the kart scores or demolishes someone (`src/audio/kart.js`). All are CC0 from BigSoundBank;
+  sources and edits are listed in `tools/sounds/kart/CREDITS.md`. `node tools/pack_sounds.mjs`
+  packs them into `src/audio/kartSounds.js`.
+
 To rebuild after editing a model:
 
     uv venv --python 3.13 .bl && uv pip install --python .bl/bin/python bpy
@@ -110,6 +130,7 @@ To rebuild after editing a model:
     .bl/bin/python tools/blender/import_ball.py [--target 46000] [--print 9000]
     .bl/bin/python tools/blender/arena_assets.py [--preview out_prefix]
     .bl/bin/python tools/blender/import_jeep.py
+    .bl/bin/python tools/blender/import_kart.py [--target 30000] [--atlas 1024]
     node tools/assemble.mjs
 
 `tools/blender/octane_build.py` is the earlier script-built body. To use it again, run it in place

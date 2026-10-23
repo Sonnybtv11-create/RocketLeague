@@ -1,4 +1,5 @@
-// TURBO PITCH — audio engine (owned by the audio agent). Web Audio, everything synthesised.
+// TURBO PITCH — audio engine (owned by the audio agent). Web Audio, everything synthesised except
+// the kart skin's recorded sounds (kart.js).
 // createAudio({ settings }) -> { unlock(), onEvents(events, view), update(view, listener, frameDt),
 //                               setVolumes(audioSettings), setPaused(bool), dispose() }
 // listener = { pos: THREE.Vector3 (three space, metres), quaternion: THREE.Quaternion, camera, playerCarId }
@@ -15,6 +16,7 @@ import { EV } from '../contracts.js';
 import { simToThree } from '../render/util.js';
 import { makeLib, bakeCrowdChannel, CROWD_SR, buildMaster, Shot, RECIPES, tgt, clamp01 } from './synth.js';
 import { CarVoice, CrowdBed, makePanner } from './voices.js';
+import { loadKartSounds, KartLayer } from './kart.js';
 
 const MAX_SHOTS = 24;
 
@@ -40,6 +42,7 @@ export function createAudio({ settings, devHooks = true } = {}) {
   let prevBallVel = null, lastReplayHitT = -99;
   const v3 = simToThree({ x: 0, y: 0, z: 0 });
   const seenIds = new Set();
+  let kartBufs = null, kartLoading = false;   // kart recordings, decoded when the first kart appears
 
   // ------------------------------------------------------------ context lifecycle
   function canStart() {
@@ -85,6 +88,14 @@ export function createAudio({ settings, devHooks = true } = {}) {
   const onGesture = () => { if (!ac || ac.state !== 'running') unlock(); };
   const GESTURES = ['pointerdown', 'keydown', 'touchend', 'mousedown'];
   if (typeof window !== 'undefined') for (const g of GESTURES) window.addEventListener(g, onGesture, { capture: true, passive: true });
+
+  function attachKart(v) {
+    if (kartBufs) { v.attachKart(new KartLayer(ac, kartBufs, v.mix)); return; }
+    if (kartLoading) return;
+    kartLoading = true;
+    loadKartSounds(ac).then((b) => { kartBufs = b; }).catch(() => { /* stay on the synth engine */ });
+  }
+  const kartOf = (id) => { const v = voices.get(id); return v && v.kart ? v.kart : null; };
 
   const ready = () => !!ac && !disposed && ac.state !== 'closed';
 
@@ -183,9 +194,11 @@ export function createAudio({ settings, devHooks = true } = {}) {
           play('ballBounce', { speed: e.speed }, { pos: e.pos, prio: 1, key: 'bounce', gap: 0.07, send: 0.12 });
           break;
         case EV.CAR_BUMP:
+          for (const id of [e.attackerId, e.victimId]) if (kartOf(id)) kartOf(id).rattle(ac.currentTime, 0.2 + 0.4 * clamp01((e.speed || 0) / 2000));
           play('carBump', { speed: e.speed }, { pos: e.pos, prio: 2, key: 'bump' + Math.min(e.attackerId, e.victimId) + '_' + Math.max(e.attackerId, e.victimId), gap: 0.2, send: 0.12 });
           break;
         case EV.DEMO:
+          if (kartOf(e.attackerId)) kartOf(e.attackerId).horn(ac.currentTime);
           play('explosion', { size: 0.75 }, { pos: e.victimId === playerCarId ? null : e.pos, prio: 3, send: 0.4 });
           break;
         case EV.RESPAWN:
@@ -193,10 +206,12 @@ export function createAudio({ settings, devHooks = true } = {}) {
           break;
         case EV.JUMP: case EV.DOUBLE_JUMP: case EV.DODGE: {
           const own = e.carId === playerCarId;
+          if (e.type === EV.DODGE && kartOf(e.carId)) kartOf(e.carId).squeak(ac.currentTime, 0.16);
           play(e.type, {}, { pos: carSoundPos(view, e, e.carId), prio: own ? 1 : 0, gain: own ? 1 : 0.85, key: e.type + e.carId, gap: 0.05 });
           break;
         }
         case EV.LAND:
+          if (kartOf(e.carId)) kartOf(e.carId).land(ac.currentTime, e.speed || 0);
           if ((e.speed || 0) > 160) play('land', { speed: e.speed }, { pos: carSoundPos(view, e, e.carId), prio: e.carId === playerCarId ? 1 : 0, key: 'land' + e.carId, gap: 0.2 });
           break;
         case EV.WALL_SCRAPE: {
@@ -213,6 +228,7 @@ export function createAudio({ settings, devHooks = true } = {}) {
           break;
         }
         case EV.GOAL:
+          if (kartOf(e.scorerId)) kartOf(e.scorerId).horn(ac.currentTime + 0.4);
           hype = 1; lastGoalT = ac.currentTime; threat = null;
           play('explosion', { size: 1 }, { prio: 3, send: 0.5, gain: 0.9 });
           play('horn', { len: 1.9 }, { prio: 3, send: 0.45, delay: 0.25 });
@@ -362,6 +378,7 @@ export function createAudio({ settings, devHooks = true } = {}) {
       seen.add(cv.id);
       let v = voices.get(cv.id);
       if (!v) { v = new CarVoice(ac, lib, bus.sfxIn, bus.revIn, cv.id + 1); voices.set(cv.id, v); }
+      if (cv.bodyId === 'kart' && !v.kart) attachKart(v);
       v.setPanningModel(panModel);
       simToThree(cv.pos, v3);
       v.setPos(v3.x, v3.y, v3.z, t);
@@ -425,7 +442,7 @@ export function createAudio({ settings, devHooks = true } = {}) {
   // ------------------------------------------------------------ dev hooks
   const debugStats = () => ({
     state: ac ? ac.state : 'none', shots: shots.length, peakShots: stats.peakShots, maxShots: MAX_SHOTS,
-    carVoices: voices.size, peakCarVoices: stats.peakCarVoices, played: stats.played, dropped: stats.dropped,
+    carVoices: voices.size, kartVoices: [...voices.values()].filter((v) => v.kart).length, peakCarVoices: stats.peakCarVoices, played: stats.played, dropped: stats.dropped,
     stolen: stats.stolen, updates: stats.updates, byType: { ...stats.byType }, crowdReady: !!crowd, paused, excite: +excite.toFixed(3), hype: +hype.toFixed(3),
     bakeMs: lib ? Object.fromEntries(Object.entries(lib.timings).map(([k, v]) => [k, +v.toFixed(1)])) : null, sampleRate: ac ? ac.sampleRate : null,
   });
