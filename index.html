@@ -9667,6 +9667,13 @@ function createRig(groups, { team, cfg, meshes }) {
   hop("cooler", { spring: 0, hop: 1, max: 0.05 });
   hop("axe", { spring: 3, hop: 0.6, max: 0.025 });
   hop("propane", { spring: 6, hop: 0.4, max: 0.015 });
+  if (groups.sign) {
+    const face = new THREE17.Group();
+    face.position.set(0, 0, 0.024);
+    face.rotation.y = Math.PI;
+    for (const c of [...groups.sign.children]) face.add(c);
+    groups.sign.add(face);
+  }
   const pole = groups.flag, cloth = groups.flag_cloth;
   let flagU = null;
   if (pole && cloth) {

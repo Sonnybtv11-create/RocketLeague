@@ -237,6 +237,14 @@ function createRig(groups, { team, cfg, meshes }) {
   hop('axe', { spring: 3, hop: 0.6, max: 0.025 });
   hop('propane', { spring: 6, hop: 0.4, max: 0.015 });
 
+  // the pickaxe sign is modelled facing into the cargo bed: turn it to face out (half a turn about
+  // its own vertical centre line, 12 mm out from the hinge, so it keeps its place on the rack)
+  if (groups.sign) {
+    const face = new THREE.Group();
+    face.position.set(0, 0, 0.024); face.rotation.y = Math.PI;
+    for (const c of [...groups.sign.children]) face.add(c);
+    groups.sign.add(face);
+  }
   // the cloth rides on the pole: re-parent it (same pivot)
   const pole = groups.flag, cloth = groups.flag_cloth;
   let flagU = null;
