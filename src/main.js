@@ -72,6 +72,7 @@ const post = createPost(ctx);
 const vfx = createVFX(ctx);
 const camCtl = createCameraController(ctx);
 const audio = createAudio({ settings });
+ctx.sfx = (name, pos) => audio.playSfx(name, pos);   // sounds started by render rigs (the jeep driver)
 const ballModel = createBallModel(ctx);
 scene.add(ballModel.object3d);
 applyRenderScale();

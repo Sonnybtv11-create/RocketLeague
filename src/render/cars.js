@@ -121,7 +121,7 @@ export function createCarModel(ctx, opts) {
     wheelMeshes.push(im);
   }
   const tyres = wheelMeshes.find((m) => m.name === 'tyres'), rims = wheelMeshes.find((m) => m.name === 'rims');
-  const rig = body.createRig ? body.createRig(partGroups, { team, cfg, meshes, root }) : null;
+  const rig = body.createRig ? body.createRig(partGroups, { team, cfg, meshes, root, sfx: (name, pos) => ctx.sfx && ctx.sfx(name, pos) }) : null;
   // chunky tyres that poke out past the body (wider than the base spec, pushed outward)
   const widen = body.tyre.modelled ? 1 : TYRE_WIDEN, out = body.tyre.modelled ? 0 : TYRE_OUT;
   const tyreW = [body.tyre.wF * widen / 100, body.tyre.wB * widen / 100];
@@ -208,7 +208,7 @@ export function createCarModel(ctx, opts) {
         for (let i = 0; i < 4; i++) setWheel(i, ws[i], steer);
         for (const im of wheelMeshes) im.instanceMatrix.needsUpdate = true;
       }
-      if (rig) rig.update(cv, dt);
+      if (rig) rig.update(cv, dt, view);
       // boost nozzle glow (idle ember -> hot core while boosting, slight flicker)
       t += dt;
       const target = cv.isBoosting ? 3.2 + Math.sin(t * 47) * 0.35 + Math.sin(t * 23.3) * 0.25 : 0.22;

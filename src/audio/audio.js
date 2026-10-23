@@ -115,6 +115,11 @@ export function createAudio({ settings, devHooks = true } = {}) {
     s.onended = () => { try { s.disconnect(); g.disconnect(); if (p) p.disconnect(); } catch (e) { /* */ } };
     stats.played++; stats.byType[name] = (stats.byType[name] || 0) + 1;
   }
+  // sounds the render rigs start (the jeep driver: 'oof' when he hits the floor, 'bye' as he waves)
+  function playSfx(name, pos) {
+    if (name === 'oof' && jeepBufs) playBuffer('oof', jeepBufs.oof, pos, 0.9, 1.12);
+    else if (name === 'bye' && jeepBufs && jeepBufs.bye) playBuffer('bye', jeepBufs.bye, pos, 0.9);
+  }
   const kartOf = (id) => { const v = voices.get(id); return v && v.kart ? v.kart : null; };
 
   const ready = () => !!ac && !disposed && ac.state !== 'closed';
@@ -218,9 +223,6 @@ export function createAudio({ settings, devHooks = true } = {}) {
           play('carBump', { speed: e.speed }, { pos: e.pos, prio: 2, key: 'bump' + Math.min(e.attackerId, e.victimId) + '_' + Math.max(e.attackerId, e.victimId), gap: 0.2, send: 0.12 });
           break;
         case EV.DEMO: {
-          // the jeep's bacon-hair driver goes "oof" (Roblox death)
-          const victim = carById(view, e.victimId);
-          if (victim && victim.bodyId === 'jeep' && jeepBufs) playBuffer('oof', jeepBufs.oof, e.victimId === playerCarId ? null : e.pos, 0.9, 1.12);
           if (kartOf(e.attackerId)) kartOf(e.attackerId).horn(ac.currentTime);
           play('explosion', { size: 0.75 }, { pos: e.victimId === playerCarId ? null : e.pos, prio: 3, send: 0.4 });
           break;
@@ -479,5 +481,5 @@ export function createAudio({ settings, devHooks = true } = {}) {
   }
 
   unlock(); // no-op unless the page already had a user gesture (or ?audio=1)
-  return { unlock, onEvents, update, setVolumes, setPaused, dispose, _debugStats: debugStats };
+  return { unlock, onEvents, update, setVolumes, setPaused, dispose, playSfx, _debugStats: debugStats };
 }

@@ -112,10 +112,15 @@ VehicleSeat. `src/render/cars/r6driver.js` animates it like Roblox does:
 
 - **Driving:** the R6 seated pose: arms straight out to the wheel, legs straight along the seat, the
   body welded rigidly to the jeep. The joints turn at Roblox's motor speed, so the driver snaps from
-  standing into the seat when the jeep appears.
-- **Demolished:** like a Roblox death, the joints break and the parts and hair are thrown apart, tumble
-  and lie on the floor, with an "oof" (a CC0 recording, `tools/sounds/jeep/CREDITS.md`). The driver is
-  back in the seat when the jeep respawns.
+  standing into the seat when the jeep appears. When the jeep is in the air his arms go straight up
+  (the R6 jump pose).
+- **His team scores:** he jumps out of the jeep, falls (R6 fall pose), breaks apart when he hits the
+  floor and goes "oof" (a CC0 recording, `tools/sounds/jeep/CREDITS.md`). He's back in his seat for
+  the replay or kickoff.
+- **Demolished:** he pops out of the wreck, lands on his feet, waves goodbye and falls apart. He's back
+  in the seat when the jeep respawns.
+- **End of the match:** the winners' drivers stand on their seats and do the R6 dance; the losers stay
+  seated with their heads down.
 
 The ATK Kart (code `KART`, Octane hitbox) comes from `tools/blender/models/kart.blend` through
 `tools/blender/import_kart.py`, which bakes every surface into one colour atlas and splits off the

@@ -72,7 +72,7 @@ const SKINS = {
         mesh: [JEEP_MESH_META, JEEP_MESH_B64],
         extraMesh: [BACON_MESH_META, BACON_MESH_B64],
         parts: BACON_PARTS,
-        createRig: (groups, { root }) => createR6Driver(groups, BACON_PARTS, root),
+        createRig: (groups, { root, sfx }) => createR6Driver(groups, BACON_PARTS, root, sfx),
         wheel: [JEEP_WHEEL_META, JEEP_WHEEL_B64],
         materialsFor(team) {
           const t = team === 1 ? 1 : 0;

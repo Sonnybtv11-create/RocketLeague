@@ -3944,6 +3944,10 @@ function createAudio({ settings: settings2, devHooks = true } = {}) {
     stats2.played++;
     stats2.byType[name] = (stats2.byType[name] || 0) + 1;
   }
+  function playSfx(name, pos) {
+    if (name === "oof" && jeepBufs) playBuffer("oof", jeepBufs.oof, pos, 0.9, 1.12);
+    else if (name === "bye" && jeepBufs && jeepBufs.bye) playBuffer("bye", jeepBufs.bye, pos, 0.9);
+  }
   const kartOf = (id) => {
     const v = voices.get(id);
     return v && v.kart ? v.kart : null;
@@ -4061,8 +4065,6 @@ function createAudio({ settings: settings2, devHooks = true } = {}) {
           play("carBump", { speed: e.speed }, { pos: e.pos, prio: 2, key: "bump" + Math.min(e.attackerId, e.victimId) + "_" + Math.max(e.attackerId, e.victimId), gap: 0.2, send: 0.12 });
           break;
         case EV.DEMO: {
-          const victim = carById(view, e.victimId);
-          if (victim && victim.bodyId === "jeep" && jeepBufs) playBuffer("oof", jeepBufs.oof, e.victimId === playerCarId ? null : e.pos, 0.9, 1.12);
           if (kartOf(e.attackerId)) kartOf(e.attackerId).horn(ac.currentTime);
           play("explosion", { size: 0.75 }, { pos: e.victimId === playerCarId ? null : e.pos, prio: 3, send: 0.4 });
           break;
@@ -4359,7 +4361,7 @@ function createAudio({ settings: settings2, devHooks = true } = {}) {
     }
   }
   unlock();
-  return { unlock, onEvents, update, setVolumes, setPaused, dispose, _debugStats: debugStats };
+  return { unlock, onEvents, update, setVolumes, setPaused, dispose, playSfx, _debugStats: debugStats };
 }
 var MAX_SHOTS2;
 var init_audio = __esm({
@@ -7753,12 +7755,12 @@ function buildFlags(L, H5) {
   }
   const R = rng(7);
   const pos = [], uv = [], idx = [], linePos = [];
-  const FW = 330, FH = 230, STEP = 520, Y0 = 9300;
+  const FW = 330, FH = 230, STEP2 = 520, Y0 = 9300;
   for (const { x, zEnd } of cables) {
     const sag = 2600;
     const zAt = (y) => zEnd - sag * (1 - (y / Y0) ** 2);
     for (let y = -Y0; y < Y0; y += 300) linePos.push(x * S6, zAt(y) * S6, y * S6, x * S6, zAt(y + 300) * S6, (y + 300) * S6);
-    for (let y = -Y0 + STEP; y < Y0 - STEP / 2; y += STEP) {
+    for (let y = -Y0 + STEP2; y < Y0 - STEP2 / 2; y += STEP2) {
       const k = Math.floor(R() * 16), u0 = k % 8 / 8, v0 = 1 - Math.floor(k / 8) * 0.5;
       const z0 = zAt(y), base = pos.length / 3;
       const tilt = (R() - 0.5) * 60;
@@ -8130,24 +8132,24 @@ function createEnvironment(ctx2) {
   cam.updateProjectionMatrix();
   const lightRot = new THREE12.Matrix4().lookAt(SUN_DIR, new THREE12.Vector3(), new THREE12.Vector3(0, 1, 0));
   const lightInv = lightRot.clone().invert();
-  const _f3 = new THREE12.Vector3(), _d2 = new THREE12.Vector3(), _ls = new THREE12.Vector3();
+  const _f4 = new THREE12.Vector3(), _d2 = new THREE12.Vector3(), _ls = new THREE12.Vector3();
   const LIM_X = X4 * S7 - 4, LIM_Z = (Y6 + GD4) * S7 - 4;
   function fitShadow(camera2) {
     if (!camera2) return;
-    camera2.getWorldPosition(_f3);
+    camera2.getWorldPosition(_f4);
     camera2.getWorldDirection(_d2);
-    let t = _d2.y < -0.05 ? Math.min(22, -_f3.y / _d2.y) : 22;
-    _f3.addScaledVector(_d2, t);
-    _f3.x = Math.max(-LIM_X, Math.min(LIM_X, _f3.x));
-    _f3.z = Math.max(-LIM_Z, Math.min(LIM_Z, _f3.z));
-    _f3.y = 0;
+    let t = _d2.y < -0.05 ? Math.min(22, -_f4.y / _d2.y) : 22;
+    _f4.addScaledVector(_d2, t);
+    _f4.x = Math.max(-LIM_X, Math.min(LIM_X, _f4.x));
+    _f4.z = Math.max(-LIM_Z, Math.min(LIM_Z, _f4.z));
+    _f4.y = 0;
     const texel = 2 * SHADOW_HALF / sun.shadow.mapSize.x;
-    _ls.copy(_f3).applyMatrix4(lightInv);
+    _ls.copy(_f4).applyMatrix4(lightInv);
     _ls.x = Math.round(_ls.x / texel) * texel;
     _ls.y = Math.round(_ls.y / texel) * texel;
-    _f3.copy(_ls).applyMatrix4(lightRot);
-    target.position.copy(_f3);
-    sun.position.copy(SUN_DIR).multiplyScalar(SHADOW_DIST).add(_f3);
+    _f4.copy(_ls).applyMatrix4(lightRot);
+    target.position.copy(_f4);
+    sun.position.copy(SUN_DIR).multiplyScalar(SHADOW_DIST).add(_f4);
     target.updateMatrixWorld();
   }
   sun.position.copy(SUN_DIR).multiplyScalar(SHADOW_DIST);
@@ -9853,71 +9855,203 @@ var BACON_TEX = { "body": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAgAAAAI
 
 // src/render/cars/r6driver.js
 import * as THREE18 from "three";
-var ANGLES = { arm_r: Math.PI / 2, arm_l: Math.PI / 2, leg_r: Math.PI / 2, leg_l: Math.PI / 2 };
-var SIT_RATE = 0.15 * 60;
-var AXIS = new THREE18.Vector3(0, 0, 1);
+var STEP = 60;
+var AX = new THREE18.Vector3(1, 0, 0);
+var AY = new THREE18.Vector3(0, 1, 0);
+var AZ = new THREE18.Vector3(0, 0, 1);
+var STUD = 0.07;
+var STAND = 1.5 * STUD;
+var FEET = 3 * STUD;
+var LIMBS = ["arm_r", "arm_l", "leg_r", "leg_l"];
 var GRAV = 9.8;
 var ARENA_X = 40.4;
 var ARENA_Z = 50.6;
-var _m = new THREE18.Matrix4();
+var PI = Math.PI;
 var _p = new THREE18.Vector3();
 var _v3 = new THREE18.Vector3();
 var _q3 = new THREE18.Quaternion();
-var _c = new THREE18.Vector3();
 var _up = new THREE18.Vector3(0, 1, 0);
 var _axis = new THREE18.Vector3();
-function createR6Driver(groups, parts, root) {
+var _f3 = new THREE18.Vector3();
+function createR6Driver(groups, parts, root, sfx = () => {
+}) {
   const ids = Object.keys(parts).filter((id) => groups[id]);
   if (!ids.length) return null;
-  const home = new Map(ids.map((id) => [id, { parent: groups[id].parent, pos: groups[id].position.clone() }]));
-  const motors = Object.keys(ANGLES).filter((id) => groups[id]).map((id) => ({ id, cur: 0, want: ANGLES[id] }));
-  const corners = {}, centre = {};
+  const car = groups.torso ? groups.torso.parent : groups[ids[0]].parent;
+  const body = new THREE18.Group();
+  body.name = "r6:body";
+  const bodyHome = (groups.torso ? groups.torso.position : groups[ids[0]].position).clone();
+  body.position.copy(bodyHome);
+  car.add(body);
+  for (const id of ids) {
+    const g = groups[id];
+    g.position.sub(bodyHome);
+    body.add(g);
+  }
+  const home = new Map(ids.map((id) => [id, groups[id].position.clone()]));
+  const corners = {};
   for (const id of ids) {
     const [a, b] = parts[id].box;
     corners[id] = [];
     for (let i = 0; i < 8; i++) corners[id].push(new THREE18.Vector3(i & 1 ? b[0] : a[0], i & 2 ? b[1] : a[1], i & 4 ? b[2] : a[2]));
-    centre[id] = new THREE18.Vector3((a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2);
   }
-  const lastPos = new THREE18.Vector3(), lastVel = new THREE18.Vector3();
-  let haveLast = false, dead = null;
-  function sitDown() {
-    for (const mo of motors) mo.cur = 0;
+  const J = {};
+  for (const id of [...LIMBS, "head"]) J[id] = { p: 0, r: 0, want: { p: 0, r: 0 } };
+  const B = { rise: 0, yaw: 0, want: { rise: 0, yaw: 0 } };
+  const toward = (cur, want, max) => {
+    const d = want - cur;
+    return Math.abs(d) <= max ? want : cur + Math.sign(d) * max;
+  };
+  function stepJoints(rates, dt) {
+    for (const [id, j] of Object.entries(J)) {
+      const m2 = (rates[id] ?? rates.all) * STEP * dt;
+      j.p = toward(j.p, j.want.p, m2);
+      j.r = toward(j.r, j.want.r, m2);
+    }
+    const m = (rates.body ?? rates.all) * STEP * dt;
+    B.rise = toward(B.rise, B.want.rise, m * 0.12);
+    B.yaw = toward(B.yaw, B.want.yaw, m);
   }
-  function stepMotors(dt) {
-    for (const mo of motors) {
-      const d = mo.want - mo.cur, s2 = SIT_RATE * dt;
-      mo.cur += Math.abs(d) <= s2 ? d : Math.sign(d) * s2;
-      groups[mo.id].quaternion.setFromAxisAngle(AXIS, mo.cur);
+  function applyJoints() {
+    for (const id of LIMBS) if (groups[id]) groups[id].quaternion.setFromAxisAngle(AX, J[id].r).multiply(_q3.setFromAxisAngle(AZ, J[id].p));
+    for (const id of ["head", "hair"]) if (groups[id]) groups[id].quaternion.setFromAxisAngle(AY, J.head.r).multiply(_q3.setFromAxisAngle(AZ, J.head.p));
+    if (mode === "seat") {
+      body.position.copy(bodyHome).addScaledVector(AY, B.rise);
+      body.quaternion.setFromAxisAngle(AY, B.yaw);
     }
   }
-  function breakApart() {
-    const car = groups[ids[0]].parent;
+  const set = (id, p, r = 0) => {
+    J[id].want.p = p;
+    J[id].want.r = r;
+  };
+  const sitDown = () => {
+    for (const j of Object.values(J)) {
+      j.p = 0;
+      j.r = 0;
+    }
+    B.rise = 0;
+    B.yaw = 0;
+  };
+  let mode = "seat", bye = false, modeT = 0, said = false;
+  const vel = new THREE18.Vector3();
+  const lastPos = new THREE18.Vector3(), lastVel = new THREE18.Vector3();
+  let haveLast = false, t = 0, airT = 0, seenGoal, wasDemoed = false, dead = null;
+  function leave(v) {
     car.updateMatrixWorld(true);
-    const carCentre = _c.setFromMatrixPosition(car.matrixWorld);
+    root.attach(body);
+    const f = _f3.set(1, 0, 0).transformDirection(car.matrixWorld);
+    body.quaternion.setFromAxisAngle(AY, Math.atan2(-f.z, f.x));
+    vel.copy(v);
+    mode = "air";
+    modeT = 0;
+    said = false;
+  }
+  function jumpOut() {
+    car.updateMatrixWorld(true);
+    const left = _v3.set(0, 0, -1).transformDirection(car.matrixWorld);
+    left.y = 0;
+    left.normalize();
+    leave(lastVel.clone().multiplyScalar(0.6).addScaledVector(left, 1.4).add(_p.set(0, 4.2, 0)));
+    bye = false;
+  }
+  function popOut() {
+    leave(lastVel.clone().multiplyScalar(0.25).add(_p.set(0, 2.5, 0)));
+    bye = true;
+  }
+  const simPos = (p) => ({ x: p.x * 100, y: p.z * 100, z: p.y * 100 });
+  function stepOut(dt) {
+    modeT += dt;
+    if (mode === "air") {
+      vel.y -= GRAV * dt;
+      body.position.addScaledVector(vel, dt);
+      if (Math.abs(body.position.x) > ARENA_X) {
+        body.position.x = Math.sign(body.position.x) * ARENA_X;
+        vel.x *= -0.3;
+      }
+      if (Math.abs(body.position.z) > ARENA_Z) {
+        body.position.z = Math.sign(body.position.z) * ARENA_Z;
+        vel.z *= -0.3;
+      }
+      if (body.position.y - FEET <= 0 && vel.y <= 0) {
+        body.position.y = FEET;
+        if (bye) {
+          mode = "stand";
+          modeT = 0;
+          vel.set(0, 0, 0);
+        } else {
+          breakApart(vel, true);
+          sfx("oof", simPos(body.position));
+        }
+      }
+    } else if (mode === "stand") {
+      if (!said && modeT > 0.25) {
+        said = true;
+        sfx("bye", simPos(body.position));
+      }
+      if (modeT > 1.9) breakApart(_v3.set(0, 0, 0), false);
+    }
+  }
+  function outPose() {
+    if (mode === "air") {
+      const fall = vel.y < 0 ? Math.min(1, -vel.y / 3) : 0, k = Math.sin(t * 14);
+      set("arm_r", PI, 0.35 * fall);
+      set("arm_l", PI, -0.35 * fall);
+      set("leg_r", 0.25 * fall * k);
+      set("leg_l", -0.25 * fall * k);
+      set("head", 0.15 * fall);
+      return { all: 0.5 };
+    }
+    set("arm_r", 2.75, 0.2 + 0.4 * Math.sin(t * 9));
+    set("arm_l", 0);
+    set("leg_r", 0);
+    set("leg_l", 0);
+    set("head", 0, 0.15 * Math.sin(t * 3));
+    return { all: 0.5 };
+  }
+  function seatPose(cv, view) {
+    const m = view && view.match, team = cv.team;
+    const ended = m && m.state === "ended";
+    if (ended && m.winner === team) {
+      const w = t * PI * 2;
+      set("arm_r", 1.4 + 1.3 * Math.sin(w), 0.25);
+      set("arm_l", 1.4 - 1.3 * Math.sin(w), -0.25);
+      set("leg_r", 0.35 * Math.max(0, Math.sin(w)));
+      set("leg_l", 0.35 * Math.max(0, -Math.sin(w)));
+      set("head", 0.12 * Math.sin(w * 2), 0.25 * Math.sin(w));
+      B.want.rise = STAND + 0.012 * Math.abs(Math.sin(w * 2));
+      B.want.yaw = 0.3 * Math.sin(w);
+      return { all: 0.5 };
+    }
+    set("leg_r", PI / 2);
+    set("leg_l", PI / 2);
+    set("head", ended ? -0.5 : 0, 0);
+    B.want.rise = 0;
+    B.want.yaw = 0;
+    if (airT > 0.08) {
+      set("arm_r", PI);
+      set("arm_l", PI);
+      return { all: 0.15, arm_r: 0.5, arm_l: 0.5, head: 0.1 };
+    }
+    set("arm_r", PI / 2);
+    set("arm_l", PI / 2);
+    return { all: 0.15, head: 0.1 };
+  }
+  function breakApart(v, hard) {
+    body.updateMatrixWorld(true);
+    const centre = new THREE18.Vector3().setFromMatrixPosition(body.matrixWorld);
     dead = [];
     for (const id of ids) {
       const g = groups[id];
       root.attach(g);
-      const wc = centre[id].clone().applyMatrix4(g.matrixWorld);
-      const out = wc.clone().sub(carCentre);
+      const out = _v3.setFromMatrixPosition(g.matrixWorld).sub(centre);
       out.y = 0;
       if (out.lengthSq() < 1e-6) out.set(Math.random() - 0.5, 0, Math.random() - 0.5);
       out.normalize();
-      const v = lastVel.clone().multiplyScalar(0.35).addScaledVector(out, 1.5 + Math.random() * 2).add(_v3.set((Math.random() - 0.5) * 1.5, 2.5 + Math.random() * 2.5, (Math.random() - 0.5) * 1.5));
-      const w = new THREE18.Vector3(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).normalize().multiplyScalar(5 + Math.random() * 9);
-      dead.push({ id, g, v, w, rest: 0 });
+      const pv = new THREE18.Vector3().copy(v).multiplyScalar(hard ? 0.5 : 0).setY(0).addScaledVector(out, (hard ? 0.8 : 0.3) + Math.random() * 0.6).add(_f3.set((Math.random() - 0.5) * 0.4, (hard ? 0.6 : 0.2) + Math.random() * 0.8, (Math.random() - 0.5) * 0.4));
+      const w = new THREE18.Vector3(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).normalize().multiplyScalar((hard ? 4 : 2) + Math.random() * 5);
+      dead.push({ id, g, v: pv, w });
     }
-  }
-  function putBack() {
-    for (const id of ids) {
-      const g = groups[id], h2 = home.get(id);
-      h2.parent.add(g);
-      g.position.copy(h2.pos);
-      g.quaternion.identity();
-    }
-    dead = null;
-    haveLast = false;
-    sitDown();
+    mode = "dead";
   }
   function stepDebris(dt) {
     for (const d of dead) {
@@ -9940,9 +10074,7 @@ function createR6Driver(groups, parts, root) {
         d.v.z *= f;
         d.w.multiplyScalar(Math.exp(-dt * 5));
         if (d.v.lengthSq() < 0.25) {
-          d.rest += dt;
-          const best = flatten(g.quaternion);
-          g.quaternion.slerp(best, Math.min(1, dt * 6));
+          g.quaternion.slerp(flatten(g.quaternion), Math.min(1, dt * 6));
           d.w.multiplyScalar(Math.exp(-dt * 8));
         }
       }
@@ -9956,25 +10088,72 @@ function createR6Driver(groups, parts, root) {
       }
     }
   }
-  sitDown();
+  function stepOutside(dt) {
+    const n = Math.min(15, Math.max(1, Math.ceil(dt * 60))), h2 = dt / n;
+    for (let i = 0; i < n; i++) {
+      if (mode === "dead") stepDebris(h2);
+      else stepOut(h2);
+    }
+    if (mode === "air" || mode === "stand") {
+      stepJoints(outPose(), dt);
+      applyJoints();
+    }
+  }
+  function putBack() {
+    car.add(body);
+    for (const id of ids) {
+      const g = groups[id];
+      body.add(g);
+      g.position.copy(home.get(id));
+      g.quaternion.identity();
+    }
+    dead = null;
+    haveLast = false;
+    mode = "seat";
+    modeT = 0;
+    sitDown();
+    applyJoints();
+  }
+  putBack();
   return {
-    update(cv, dt) {
-      if (dead) putBack();
+    update(cv, dt, view) {
+      t += dt;
+      const m = view && view.match;
+      if (m && seenGoal === void 0) seenGoal = m.lastGoal;
+      const newGoal = m && m.lastGoal && m.lastGoal !== seenGoal ? m.lastGoal : null;
+      if (newGoal) seenGoal = newGoal;
+      const between = !!(view && view.isReplay) || !!(m && (m.state === "replay" || m.state === "countdown" || m.state === "ended"));
+      if (mode !== "seat" && (wasDemoed || between || (!m || m.mode === "freeplay") && mode === "dead" && modeT > 3)) putBack();
+      wasDemoed = false;
       const p = _p.set(cv.pos.x / 100, cv.pos.z / 100, cv.pos.y / 100);
       if (haveLast && dt > 0 && p.distanceTo(lastPos) < 4) lastVel.copy(p).sub(lastPos).divideScalar(dt);
       else lastVel.set(0, 0, 0);
       lastPos.copy(p);
       haveLast = true;
-      stepMotors(dt);
+      if (mode === "seat") {
+        if (newGoal && newGoal.team === cv.team && !between) {
+          jumpOut();
+          stepOutside(dt);
+          return;
+        }
+        const air = (cv.numWheelsInContact || 0) === 0 && !cv.isOnGround;
+        airT = air ? airT + dt : 0;
+        stepJoints(seatPose(cv, view), dt);
+        applyJoints();
+      } else {
+        if (mode === "dead") modeT += dt;
+        stepOutside(dt);
+      }
     },
-    // the car is demolished (hidden): break apart once, then let the pieces fall
+    // the jeep is demolished (hidden): he pops out and waves goodbye before falling apart
     demoed(cv, dt) {
-      if (!dead) breakApart();
-      const n = Math.min(15, Math.ceil(dt * 60));
-      for (let i = 0; i < n; i++) stepDebris(dt / n);
+      wasDemoed = true;
+      if (mode === "seat") popOut();
+      if (mode === "dead") modeT += dt;
+      stepOutside(dt);
     },
     dispose() {
-      if (dead) putBack();
+      if (mode !== "seat") putBack();
     }
   };
 }
@@ -10066,7 +10245,7 @@ var SKINS = {
         mesh: [JEEP_MESH_META, JEEP_MESH_B64],
         extraMesh: [BACON_MESH_META, BACON_MESH_B64],
         parts: BACON_PARTS,
-        createRig: (groups, { root }) => createR6Driver(groups, BACON_PARTS, root),
+        createRig: (groups, { root, sfx }) => createR6Driver(groups, BACON_PARTS, root, sfx),
         wheel: [JEEP_WHEEL_META, JEEP_WHEEL_B64],
         materialsFor(team) {
           const t = team === 1 ? 1 : 0;
@@ -10596,7 +10775,7 @@ var bodyOrSkin = (bodyId) => isSkin(bodyId) ? buildSkin(bodyId) : buildBody(body
 function getBoostNozzles(bodyId) {
   return bodyOrSkin(bodyId).nozzles.map((v) => v.clone());
 }
-var _m2 = new THREE22.Matrix4();
+var _m = new THREE22.Matrix4();
 var _q4 = new THREE22.Quaternion();
 var _qs = new THREE22.Quaternion();
 var _qf = new THREE22.Quaternion();
@@ -10674,7 +10853,7 @@ function createCarModel(ctx2, opts) {
     wheelMeshes.push(im);
   }
   const tyres = wheelMeshes.find((m) => m.name === "tyres"), rims = wheelMeshes.find((m) => m.name === "rims");
-  const rig = body.createRig ? body.createRig(partGroups, { team, cfg, meshes, root }) : null;
+  const rig = body.createRig ? body.createRig(partGroups, { team, cfg, meshes, root, sfx: (name, pos) => ctx2.sfx && ctx2.sfx(name, pos) }) : null;
   const widen = body.tyre.modelled ? 1 : TYRE_WIDEN, out = body.tyre.modelled ? 0 : TYRE_OUT;
   const tyreW = [body.tyre.wF * widen / 100, body.tyre.wB * widen / 100];
   const extra = [body.tyre.extraF + out, body.tyre.extraB + out];
@@ -10702,8 +10881,8 @@ function createCarModel(ctx2, opts) {
     _q4.multiply(_qs);
     const r = vr / 100;
     _s2.set(r, r, front ? tyreW[0] : tyreW[1]);
-    _m2.compose(_p2, _q4, _s2);
-    for (const im of wheelMeshes) im.setMatrixAt(i, _m2);
+    _m.compose(_p2, _q4, _s2);
+    for (const im of wheelMeshes) im.setMatrixAt(i, _m);
   }
   if (DEV_HITBOX) {
     const s2 = cfg.hitboxSize, o = cfg.hitboxOffset;
@@ -10763,7 +10942,7 @@ function createCarModel(ctx2, opts) {
         for (let i = 0; i < 4; i++) setWheel(i, ws[i], steer);
         for (const im of wheelMeshes) im.instanceMatrix.needsUpdate = true;
       }
-      if (rig) rig.update(cv, dt);
+      if (rig) rig.update(cv, dt, view);
       t += dt;
       const target = cv.isBoosting ? 3.2 + Math.sin(t * 47) * 0.35 + Math.sin(t * 23.3) * 0.25 : 0.22;
       glowLevel += (target - glowLevel) * Math.min(1, dt * (cv.isBoosting ? 30 : 8));
@@ -12091,7 +12270,7 @@ function createVFX(ctx2) {
   const _q5 = new THREE30.Quaternion(), _one = new THREE30.Vector3(1, 1, 1);
   const _fw = new THREE30.Vector3(), _rt = new THREE30.Vector3(), _up2 = new THREE30.Vector3(), _cv = new THREE30.Vector3();
   const _col1 = [0, 0, 0, 0];
-  const _c2 = new THREE30.Color(), _cw = new THREE30.Color(1, 1, 1);
+  const _c = new THREE30.Color(), _cw = new THREE30.Color(1, 1, 1);
   const cars = /* @__PURE__ */ new Map();
   let slotsDirty = true;
   function nozzlesFor(bodyId, hitbox) {
@@ -12456,7 +12635,7 @@ function createVFX(ctx2) {
     cvel.multiplyScalar(0.35);
     add2.style([4, 3.2, 1.8, 1], [1.5, 0.5, 0.1, 0], 0, 0, SHAPE.GLOW, 0, 0);
     add2.emit(c.x, c.y, c.z, 0, 0, 0, 0.22, 1.2, 4.5);
-    startFlash(c, _c2.setRGB(1, 0.55, 0.2), 450, 0.8);
+    startFlash(c, _c.setRGB(1, 0.55, 0.2), 450, 0.8);
     let k = cnt(16);
     add2.style([2.6, 1.6, 0.5, 0.7], [1.2, 0.25, 0.04, 0], 3.5, -0.8, SHAPE.GLOW, 0, 0.04);
     for (let i = 0; i < k; i++) {
@@ -12585,7 +12764,7 @@ function createVFX(ctx2) {
       add2.emit(c.x + _cv.x * r, Math.max(0.5, c.y + _cv.y * r * 0.7), c.z + _cv.z * r + fz * r * 0.4, 0, 0.5, 0, rr(0.3, 0.5), rr(0.5, 1.1), 0.1, time + rr(0.05, 1.5));
     }
     k = cnt(28);
-    const hz = _c2.copy(pal.l).lerp(_cw, 0.55);
+    const hz = _c.copy(pal.l).lerp(_cw, 0.55);
     const sm0 = [hz.r * 0.9, hz.g * 0.9, hz.b * 0.9, 0.09], sm1 = [hz.r, hz.g, hz.b, 0];
     smoke.style(sm0, sm1, 1.2, -0.5, SHAPE.SMOKE, 0, 0.25);
     for (let i = 0; i < k; i++) {
@@ -17971,7 +18150,7 @@ function jumpTimeTo(h2, dbl) {
 var maxJumpHeight = (dbl) => dbl ? tables().j2max : tables().j1max;
 
 // src/bots/util.js
-var PI = Math.PI;
+var PI2 = Math.PI;
 var TAU = Math.PI * 2;
 var GRAVITY = 650;
 var BALL_R = 91.25;
@@ -18050,7 +18229,7 @@ function orientTo(car, tf, tu, c, opts) {
     ex = 0;
     ey = 0;
     ez = 0;
-  } else if (ang > PI - 1e-3) {
+  } else if (ang > PI2 - 1e-3) {
     const xx = Math.sqrt(Math.max(0, (q00 + 1) / 2)), yy = Math.sqrt(Math.max(0, (q11 + 1) / 2)), zz = Math.sqrt(Math.max(0, (q22 + 1) / 2));
     ex = xx * ang;
     ey = (q01 >= 0 ? yy : -yy) * ang;
@@ -22010,6 +22189,7 @@ var post = createPost(ctx);
 var vfx = createVFX(ctx);
 var camCtl = createCameraController(ctx);
 var audio = createAudio({ settings });
+ctx.sfx = (name, pos) => audio.playSfx(name, pos);
 var ballModel = createBallModel(ctx);
 scene.add(ballModel.object3d);
 applyRenderScale();
